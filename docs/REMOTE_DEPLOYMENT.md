@@ -1,18 +1,29 @@
-# Remote control deployment plan
+# Remote control deployment
 
-The local hub is ready to accept an authenticated remote hostname, but remote mode is disabled until the access change is approved and configured. Do not route the existing M-TechLabs Docker tunnel to the local hub: that container cannot reach the hub's loopback listener. Do not rebind the hub or controllers to a LAN address to make it reachable.
+The owner approved a dedicated remote route on 28 October 2026. The deployment on MulattoTechBox uses `https://fleet.m-techlabs.com` and keeps the hub and native controllers bound to loopback. No tunnel credential, Access token, local logs or fleet runtime data is stored in this repository.
 
-## Proposed route
+## Deployed route
 
-1. Create a dedicated **owner only** Cloudflare Access self-hosted application for `fleet.m-techlabs.com`, with the same owner identity as the existing M-TechLabs hub. Record its application audience tag.
-2. Create a dedicated Cloudflare Tunnel route for that hostname, with a `cloudflared` connector on MulattoTechBox forwarding to `http://127.0.0.1:4320`. Set tunnel ingress Access JWT verification to required and restrict it to the new application's audience. Keep a 404 catch-all.
-3. Set `FLEET_HUB_REMOTE_HOST=fleet.m-techlabs.com`, `CF_ACCESS_TEAM_DOMAIN=https://<team>.cloudflareaccess.com`, `CF_ACCESS_AUD=<application audience>`, and `CF_ACCESS_OWNER_EMAIL=<owner email>` in the machine's protected local service configuration. These values are never committed. The hub also verifies the signed Access JWT on every remote request, including assets and status.
-4. Confirm an unauthenticated request is denied before testing a signed-in browser. Verify status, then test scoped pause/stop against a disposable fixture before any live action. Add a link in the existing M-TechLabs portal only after these checks.
+- A dedicated Cloudflare Access self-hosted application has an owner-only allow policy through the existing Cloudflare identity provider. Its application audience is stored only in local deployment configuration.
+- A dedicated Tunnel forwards the fleet hostname to `http://127.0.0.1:4320`; the catch-all returns 404. Tunnel ingress requires a valid Access JWT for that application audience.
+- Proxied CNAME: `fleet.m-techlabs.com` points to the dedicated tunnel. The connector runs on MulattoTechBox with a restricted token file under the owner's local application-data directory. The token is never placed in a command line or in Git.
+- Hub remote mode sets `FLEET_HUB_REMOTE_HOST`, `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD`, and `CF_ACCESS_OWNER_EMAIL` in a local launcher. The hub separately verifies the signed Access JWT issuer, audience, token type and owner email on **every** request to the remote hostname.
+- Windows logon tasks `Fleet Control Hub` and `Fleet Control Tunnel` launch the hub and connector under the owner's account. Their local launch scripts and token file are restricted to that account and SYSTEM. These tasks need an owner logon; they are not system boot services.
 
-The hub includes guarded Start flows. It reads current quota and roster information, shows the spending consequences, and requires an exact confirmation phrase. BabyTracker uses its bounded native Start and remains blocked while draining. MJobs uses a native MJobs-only subset, bound to the unchanged global snapshot and an exact revision. Its scoped restore passed source tests; no live Start action was submitted during development. Remote deployment remains disabled pending approval.
+## Verification on 28 October 2026
 
-The M-TechLabs portal currently serves read-only mission status and explicitly avoids command proxies. A remote fleet route would materially expand control access. Creating the Access app, tunnel route, connector credential or portal link requires action-time confirmation. No such change is made by this repository.
+- Both logon tasks were started and reported running after their prior ad hoc processes were stopped. One tunnel connector process was present; its command line contained only the token-file path.
+- `http://127.0.0.1:4320/api/status` returned 200 from the task-launched hub.
+- A direct loopback request with `Host: fleet.m-techlabs.com` and no Access JWT returned 403.
+- An unauthenticated request to `https://fleet.m-techlabs.com/api/status` returned 302 to Cloudflare Access sign-in.
+- A signed-in end-to-end test is **still unverified**. The browser's Cloudflare identity-provider authorization failed once; a retry ended in a redirect loop. Until a successful owner sign-in and status fetch are observed, remote control usability is unconfirmed. No fleet Start, Pause or Stop was submitted for this test.
 
-Review candidates can be read through the hub, but review assessment is restricted to the local hub origin. The hub deliberately omits the underlying MJobs review evidence, so a remote decision could not be verified in this interface.
+The route's authentication has two layers: Cloudflare Access at the edge and the hub's own signature/claim check at the origin. Action endpoints additionally require a same-origin request and a session action token. Start flows use a fresh preview and exact confirmation, and native controllers enforce their own scope. Review assessment remains local-only because the remote view does not provide underlying review evidence.
+
+## Operations
+
+If MulattoTechBox is logged out or restarted, log in as the owner to launch both tasks. Check that the two tasks are running and open `https://fleet.m-techlabs.com` in an owner-signed-in browser. Resolve any Cloudflare identity-provider redirect loop before relying on remote commands. Keep the local tunnel token file private; rotate it through Cloudflare and replace the local file if exposed. Do not copy it into Git or an issue.
+
+The existing M-TechLabs Docker tunnel was left unchanged; that container cannot reach the hub's loopback listener. No native controller port is published through Cloudflare. The public repository is source code, while the protected remote control interface is hosted through Cloudflare Access.
 
 Cloudflare references: [Access application tokens](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/application-token/), [validate Access JWTs](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/), and [Tunnel origin Access validation](https://developers.cloudflare.com/tunnel/reference/origin-parameters/#access-settings).
