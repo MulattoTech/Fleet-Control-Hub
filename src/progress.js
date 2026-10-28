@@ -1,0 +1,33 @@
+'use strict';
+const fs=require('node:fs');
+const path=require('node:path');
+const DEFAULT_MJOBS_ROOT='C:\\Tools\\AO-Fleet-Control';
+function readLedger(root,name){
+  const file=path.join(root,name);
+  const stat=fs.lstatSync(file);
+  if(!stat.isFile()||stat.isSymbolicLink()||stat.size>2_000_000)throw Error('Ledger unavailable');
+  const ledger=JSON.parse(fs.readFileSync(file,'utf8').replace(/^\uFEFF/,''));
+  if(ledger?.version!==1||!ledger.tasks||Array.isArray(ledger.tasks)||typeof ledger.tasks!=='object')throw Error('Ledger format changed');
+  const tasks=Object.values(ledger.tasks);
+  if(tasks.length>3000||tasks.some(t=>!t||typeof t!=='object'))throw Error('Ledger format changed');
+  return tasks;
+}
+function tally(tasks,states){return tasks.filter(t=>states.includes(t.state)).length;}
+function readMJobsProgress(root=process.env.MJOBS_CONTROL_ROOT||DEFAULT_MJOBS_ROOT){
+  try{
+    const reviews=readLedger(root,'artifact-review-state.json');
+    const drafts=readLedger(root,'productive-work-state.json');
+    return {available:true,
+      reviews:{total:reviews.length,ready:tally(reviews,['review_ready']),inFlight:tally(reviews,['reserved','submitted','uncertain']),unassessed:reviews.filter(t=>t.acceptance==='unassessed').length},
+      drafts:{total:drafts.length,ready:tally(drafts,['artifact_ready']),inFlight:tally(drafts,['reserved','submitted','uncertain']),unreviewed:drafts.filter(t=>t.acceptance==='unreviewed').length}
+    };
+  }catch{return {available:false};}
+}
+function babyProgress(raw){
+  if(!Array.isArray(raw.tasks))return {available:false};
+  const tasks=raw.tasks;
+  return {available:true,tasks:{total:tasks.length,proposed:tasks.filter(t=>t.status==='proposed').length,
+    inFlight:tasks.filter(t=>['queued','submitted','submitting','awaiting_reconciliation'].includes(t.status)).length,
+    accepted:tasks.filter(t=>t.status==='accepted').length,unassessed:tasks.filter(t=>t.acceptance==='NOT_ASSESSED').length}};
+}
+module.exports={readMJobsProgress,babyProgress};

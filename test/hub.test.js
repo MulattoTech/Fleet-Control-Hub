@@ -2,7 +2,9 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const {createAdapters,loopbackEndpoint}=require('../src/adapters');
+const {readMJobsProgress,babyProgress}=require('../src/progress');
 const {makeServer}=require('../src/server');
+const fs=require('node:fs');const os=require('node:os');const path=require('node:path');
 
 function fixture(){const calls=[];const fetcher=async(url,options={})=>{calls.push({url,options});
   if(url.endsWith('/api/state')&&url.includes(':8787'))return {ok:true,json:async()=>({projectId:'mjobs-luna',sessions:[{id:'a'}],summary:{total:1,working:0,idle:1,idlePending:0,ciAttention:0}})};
@@ -31,6 +33,20 @@ test('pause targets only the selected controller',async()=>{
   await api.pause('mjobs');assert.equal(calls.at(-1).url,'http://127.0.0.1:8787/api/master/pause');
   assert.equal(calls.at(-1).options.headers['x-ao-fleet'],'1');
   await assert.rejects(api.pause('other'));
+  await api.control('mjobs','graceful-stop');assert.equal(calls.at(-1).url,'http://127.0.0.1:8787/api/master/drain');
+  assert.equal(JSON.parse(calls.at(-1).options.body).confirm,'GRACEFUL STOP');
+  await api.control('babytracker','graceful-stop');assert.equal(JSON.parse(calls.at(-1).options.body).action,'drain');
+  await assert.rejects(api.control('babytracker','start'));
+});
+test('progress summaries contain counts only and preserve unknown evidence',()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'fleet-hub-test-'));
+  try{
+    fs.writeFileSync(path.join(dir,'artifact-review-state.json'),JSON.stringify({version:1,tasks:{a:{state:'review_ready',acceptance:'unassessed'},b:{state:'uncertain'}}}));
+    fs.writeFileSync(path.join(dir,'productive-work-state.json'),JSON.stringify({version:1,tasks:{c:{state:'artifact_ready',acceptance:'unreviewed'}}}));
+    assert.deepEqual(readMJobsProgress(dir),{available:true,reviews:{total:2,ready:1,inFlight:1,unassessed:1},drafts:{total:1,ready:1,inFlight:0,unreviewed:1}});
+    assert.deepEqual(babyProgress({tasks:[{title:'private',status:'proposed',acceptance:'NOT_ASSESSED'}]}),{available:true,tasks:{total:1,proposed:1,inFlight:0,accepted:0,unassessed:1}});
+    assert.deepEqual(readMJobsProgress(path.join(dir,'missing')),{available:false});
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
 test('local hub rejects cross-origin actions and needs an action token',async()=>{
   const {fetcher}=fixture();const server=makeServer({adapters:createAdapters({fetcher}),port:4322});
@@ -41,5 +57,6 @@ test('local hub rejects cross-origin actions and needs an action token',async()=
     const denied=await fetch(base+'/api/pause',{method:'POST',headers:{origin:'http://evil.test','content-type':'application/json'},body:'{"id":"mjobs"}'});assert.equal(denied.status,403);
     const token=(await (await fetch(base+'/api/session')).json()).token;
     const paused=await fetch(base+'/api/pause',{method:'POST',headers:{origin:base,'content-type':'application/json','x-fleet-hub':token},body:'{"id":"mjobs"}'});assert.equal(paused.status,200);
+    const bad=await fetch(base+'/api/control',{method:'POST',headers:{origin:base,'content-type':'application/json','x-fleet-hub':token},body:'{"id":"mjobs","action":"start"}'});assert.equal(bad.status,400);
   }finally{await new Promise(resolve=>server.close(resolve));}
 });

@@ -25,15 +25,16 @@ function makeServer({adapters=createAdapters(),port=Number(process.env.FLEET_HUB
         const file=files[url.pathname];if(!file)return json(404,{error:'Not found'});
         res.writeHead(200,{'Content-Type':file[1]});return res.end(fs.readFileSync(path.join(root,file[0])));
       }
-      if(req.method!=='POST'||url.pathname!=='/api/pause')return json(405,{error:'Method not allowed'});
+      if(req.method!=='POST'||!['/api/pause','/api/control'].includes(url.pathname))return json(405,{error:'Method not allowed'});
       if(!allowed.map(x=>'http://'+x).includes(req.headers.origin))return json(403,{error:'Same origin required'});
       const candidate=String(req.headers['x-fleet-hub']||'');
       if(candidate.length!==token.length||!timingSafeEqual(Buffer.from(candidate),Buffer.from(token)))return json(403,{error:'Invalid action token'});
       if(!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))return json(415,{error:'JSON required'});
       let bytes=0,parts=[];for await(const part of req){bytes+=part.length;if(bytes>1024)return json(413,{error:'Request too large'});parts.push(part);}
       const input=JSON.parse(Buffer.concat(parts).toString('utf8'));
-      if(!input||!['mjobs','babytracker'].includes(input.id)||Object.keys(input).length!==1)return json(400,{error:'Choose one known fleet'});
-      return json(200,await adapters.pause(input.id));
+      const action=url.pathname==='/api/pause'?'pause':input?.action;
+      if(!input||!['mjobs','babytracker'].includes(input.id)||!['pause','graceful-stop'].includes(action)||Object.keys(input).some(k=>!['id','action'].includes(k)))return json(400,{error:'Choose one known fleet and control action'});
+      return json(200,await adapters.control(input.id,action));
     }catch(e){return json(502,{error:String(e.message).slice(0,200)});}
   });
   return server;
