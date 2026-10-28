@@ -9,6 +9,7 @@ The owner approved a dedicated remote route on 28 October 2026. The deployment o
 - Proxied CNAME: `fleet.m-techlabs.com` points to the dedicated tunnel. The connector runs on MulattoTechBox with a restricted token file under the owner's local application-data directory. The token is never placed in a command line or in Git.
 - Hub remote mode sets `FLEET_HUB_REMOTE_HOST`, `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD`, and `CF_ACCESS_OWNER_EMAIL` in a local launcher. The hub separately verifies the signed Access JWT issuer, audience, token type and owner email on **every** request to the remote hostname.
 - Windows logon tasks `Fleet Control Hub` and `Fleet Control Tunnel` launch the hub and connector under the owner's account. Their local launch scripts and token file are restricted to that account and SYSTEM. These tasks need an owner logon; they are not system boot services.
+- Each task now runs a local, credential-free `wscript.exe` wrapper that launches its existing PowerShell script hidden and waits for its exit status. This prevents the services from opening Windows Terminal tabs while preserving task supervision. The scripts and token remain outside Git.
 
 ## Verification on 28 October 2026
 
@@ -19,6 +20,7 @@ The owner approved a dedicated remote route on 28 October 2026. The deployment o
 - The owner signed in through Cloudflare Access and the remote dashboard loaded both fleets' live status. The Access app uses a `SameSite=Lax` authorization cookie to complete the identity-provider redirect, while retaining its owner-only policy and HttpOnly cookie.
 - Missing and invalid Access JWTs were rejected at the origin with 403. An unauthenticated action request was also rejected with 403. The source tests cover signed owner assertions, same-origin action tokens and rejection of cross-site POST requests.
 - A later owner-authorized browser test exercised Pause and Graceful stop for both fleets and one bounded BabyTracker Start attempt. The Start did not verify a new session; native control stayed paused and required explicit reconciliation. These outcomes do not establish active-work behavior or full controller parity.
+- After changing only the two task launch actions to hidden WScript wrappers, both tasks reported running, the hub returned HTTP 200 locally, and an unauthenticated public request redirected to Cloudflare Access. Windows Terminal dropped from eight tabs to six after the old service instances exited. The remaining tabs belong to the Codex CLI and its app-server/MCP processes; they were preserved.
 
 The route's authentication has two layers: Cloudflare Access at the edge and the hub's own signature/claim check at the origin. Action endpoints additionally require a same-origin request and a session action token. Start flows use a fresh preview and exact confirmation, and native controllers enforce their own scope. Review assessment remains local-only because the remote view does not provide underlying review evidence.
 

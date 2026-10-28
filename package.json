@@ -2,10 +2,13 @@
   "name": "fleet-control-hub",
   "version": "0.1.0",
   "private": true,
-  "description": "One local entry point for MJobs and BabyTracker status, progress, and guarded controls",
+  "description": "Canonical shared Fleet UI and project-scoped controller packages",
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test test/hub.test.js"
+    "test": "node --test test/*.test.js",
+    "test:babytracker": "node --test packages/babytracker-controller/test/*.test.js",
+    "test:mjobs": "node packages/mjobs-controller/check-fleet.js",
+    "verify:packages": "node scripts/controller-package.js verify babytracker-controller && node scripts/controller-package.js verify mjobs-controller"
   },
   "engines": {
     "node": ">=22"

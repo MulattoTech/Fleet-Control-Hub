@@ -9,3 +9,11 @@ screenshots/
 *.db
 *.sqlite*
 scope-staging/
+
+# Controller migration: private runtime data never belongs to source.
+**/diagnostics/
+**/node_modules/
+**/__pycache__/
+**/*.log
+**/*.jsonl
+**/runtime-state/

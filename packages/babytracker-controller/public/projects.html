@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>All Projects - Fleet Control</title>
+<link rel="stylesheet" href="/mjobs-style.css"><link rel="stylesheet" href="/babytracker.css">
+<script src="/projects.js" defer></script></head>
+<body><div class="app-shell"><aside class="sidebar"><div class="brand"><div class="brand-mark">F</div><div class="brand-text"><strong>M-TechLabs</strong><small>FLEET CONTROL</small></div></div>
+<div class="workspace-switch"><div class="workspace-icon">F</div><div class="workspace-name"><strong>All projects</strong><small>Shared view, isolated operations</small></div></div>
+<div class="nav-label">WORKSPACES</div><nav class="nav-links"><a class="nav-link active" href="/projects">Fleet overview</a><a class="nav-link" href="/">BabyTracker</a><a class="nav-link" href="http://127.0.0.1:8787">MJobs</a></nav>
+<div class="sidebar-spacer"></div><div class="sidebar-note"><div class="note-top">SAFETY</div><p>Each project retains its own worktrees, run queue, controller state and stop controls. This overview does not launch or kill workers.</p></div><div class="sidebar-bottom">LOCAL CONNECTION <small>127.0.0.1</small></div></aside>
+<main class="main"><header class="topbar"><div class="breadcrumb">M-TechLabs <span>/</span><strong>All projects</strong></div><div class="top-actions"><span class="last-sync" id="lastSync">Connecting...</span><button id="refreshProjects" class="icon-button" aria-label="Refresh project list">Refresh</button></div></header><div class="main-content">
+<section class="headline"><div><div class="eyebrow">UNIFIED VIEW / ISOLATED PROJECTS</div><h1>One home.<br><em>Every fleet.</em></h1><p>A consistent control center across your AO projects. Choose a project to open its existing native control dashboard.</p></div><div class="headline-side"><span class="live-label" id="hubStatus">CONNECTING</span></div></section>
+<div id="hubNotice" class="status-notice" role="status">Reading registered AO projects without starting agent work.</div>
+<div id="projectCards" class="project-grid"></div>
+<section class="panel section-panel"><div class="panel-header"><div><span class="section-kicker">SHARED DESIGN SYSTEM</span><h2>Project isolation</h2></div></div><p>BabyTracker and MJobs use the same visual language and runtime, but they keep independent budgets, queues, permissions and emergency stops. Project creation and cross-project controls are not silently enabled; additional AO projects appear here as read-only until their own controller template is installed.</p><p class="helper">Codex usage is shared across projects. AGY / Google Gemini uses a different allowance with no verified automatic percentage stop in this integration.</p></section>
+</div></main></div></body></html>

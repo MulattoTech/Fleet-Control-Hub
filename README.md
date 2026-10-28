@@ -1,5 +1,28 @@
 # Fleet Control Hub
 
+**Canonical shared Fleet source:** the hub plus both project-scoped controllers now
+live in this repository. BabyTracker and MJobs contain application code, not separate
+maintained controller implementations. See [controller packages](docs/CONTROLLER_PACKAGES.md).
+
+```powershell
+cd C:\Tools\Dev\Fleet-Control-Hub
+npm ci
+npm run verify:packages
+npm test
+npm run test:babytracker
+npm run test:mjobs
+npm start
+```
+
+The BabyTracker package runs with its existing external state directory. The MJobs
+package is installed into its existing runtime directory with the source-only,
+hash-checked installer; no runtime state is imported into this repository.
+`projects.json` records explicit repository, package, port and emergency scope bindings.
+The native control semantics still differ; repository consolidation is not a claim
+that all lifecycle behavior is interchangeable.
+
+## Existing control contract and historical deployment details
+
 A single local entry point for the **MJobs** and **BabyTracker** fleet controllers. The hub displays both fleets' live session counts, work state and progress evidence with shared work-stage counts. Unsupported stages remain unknown rather than appearing as zero. It offers **Pause dispatch** and **Graceful stop** for each fleet, guarded **Start fleet** when the native controller proves a safe project scope, and links to existing advanced controls when opened locally.
 
 This is a clean public source repository. It contains no runtime state, logs, tokens, baby records, worktrees or backups. The controllers continue to own their state and authorization. The hub does not start workers on launch or status refresh. Its MJobs progress adapter reads only counts from local review and draft ledgers; it never returns task content to the browser.
@@ -35,15 +58,15 @@ The MulattoTechBox installation has a dedicated Cloudflare Access route at <http
 
 MJobs' emergency stop can affect Codex and AO on the machine. The hub deliberately does not collapse the two emergency operations into one button. Their behavior is different and must be made explicit before parity can be claimed.
 
-The shared view labels each controller's emergency scope and summarizes review decisions without sending evidence text to the browser. Its local review queue shows bounded candidate IDs and outcomes. Recording an assessment requires inspecting the underlying evidence, an exact confirmation, and the native controller's own checks. BabyTracker's review patch is installed on MulattoTechBox; its overall requirement acceptance remains unassessed. Remote review assessment is disabled because the hub does not display the underlying evidence remotely. The reproducible native change is in [the BabyTracker patch](native-patches/babytracker-review-and-bootstrap.patch).
+The shared view labels each controller's emergency scope and summarizes review decisions without sending evidence text to the browser. Its local review queue shows bounded candidate IDs and outcomes. Recording an assessment requires inspecting the underlying evidence, an exact confirmation, and the native controller's own checks. BabyTracker's review patch is installed on MulattoTechBox; its overall requirement acceptance remains unassessed. Remote review assessment is disabled because the hub does not display the underlying evidence remotely. The reproducible native change is in [the maintained BabyTracker controller](packages/babytracker-controller).
 
-MJobs' native restore manifest can contain sessions from other projects. The current saved manifest includes BabyTracker. The controller derives a MJobs-only preview with 31 targets from the unchanged 37-target roster. Its scoped restore binds that subset to the global snapshot hash, checks membership and identity on every tick, and rejects a changed snapshot before dispatch. The hub uses the verified subset and exact revision for guarded MJobs Start. The live web Start was previewed and canceled because it would restore 31 sessions and enable Sustained dispatch; no MJobs Start was submitted. A reviewed cross-project restore must use the native controller.
+MJobs' native restore manifest can contain sessions from other projects. The controller derives a MJobs-only preview and binds it to the unchanged global snapshot hash. Its bounded mode selects the sole eligible MJobs primary, keeps automatic dispatch off, and checks the exact manifest before native restoration. The reproducible source changes are in [the bounded Start patch](native-patches/mjobs-bounded-start.patch). Two live one-session web Start requests were accepted but failed before agent resume; the second left Protected Startup uncertain. Recheck correctly refused to clear it, and no MJobs agent was dispatched. [The pre-commit proof patch](native-patches/mjobs-precommit-proof.patch) records the prior durable restore fingerprint for future bounded starts and permits read-only reconciliation only after an exact rejection, an unchanged ledger, and fresh absence of all MJobs runtimes. The native source and tests are installed and loaded. The existing uncertain run predates that fingerprint and remains blocked. A reviewed cross-project restore must use the native controller.
 
 Graceful stop can cause idle sessions to exit and sends a wind-down instruction to active sessions. Its button asks for confirmation. The Limits panel saves each project's native settings only while that project is paused. It requires an exact confirmation, rejects changed values since preview, and reads the controller back after saving. The profiles have different fields because the controllers enforce different work budgets.
 
 ## Next integration steps
 
-1. Move both controllers into reviewed packages in this repository, preserving their distinct state directories and migration paths.
+1. Controller packages are consolidated here; keep deployments bound to their verified manifest and preserve separate runtime state.
 2. Define a shared controller interface with project scoped dispatch, budgets, review snapshots and receipts. Require a real work event before dispatch, and make document reviews finite.
 3. Replace the advanced controller links with a single control view only after matching lifecycle behavior and cross project safety tests pass.
 4. Add a migration tool that imports configuration without copying runtime transcripts or private data into Git.
