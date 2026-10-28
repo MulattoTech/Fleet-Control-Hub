@@ -5,7 +5,7 @@
   "description": "One local entry point for MJobs and BabyTracker status, progress, and guarded controls",
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test"
+    "test": "node --test test/hub.test.js"
   },
   "engines": {
     "node": ">=22"

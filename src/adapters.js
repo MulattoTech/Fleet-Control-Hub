@@ -59,23 +59,21 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
       const [startup,quota]=await Promise.all([read(id,'/api/startup'),read(id,'/api/quota')]);
       const reasons=[];
       let projectPreview=null;try{projectPreview=await read(id,'/api/startup/mjobs-preview')}catch{}
-      if(projectPreview?.projectId!=='mjobs-luna'||projectPreview?.scopedStartSupported!==true)reasons.push('MJobs-only roster can be previewed, but native project-scoped restore is not yet supported');
-      const primaryIds=startup.preview?.primaryIds;
-      const projectIds=startup.preview?.projectIds;
-      const manifestRevision=startup.preview?.manifestRevision;
-      if(!Array.isArray(projectIds)||projectIds.length!==1||projectIds[0]!=='mjobs-luna')reasons.push('Saved restore roster includes another project or project scope is unavailable');
-      if(typeof manifestRevision!=='string'||!/^[a-f0-9]{64}$/.test(manifestRevision))reasons.push('Native Startup does not expose an atomic manifest revision');
-      if(!Array.isArray(primaryIds)||primaryIds.length!==1||typeof primaryIds[0]!=='string'||!primaryIds[0].startsWith('mjobs-luna-'))reasons.push('Saved restore roster is not proven MJobs-only; use native Startup for reviewed cross-project restore');
-      if(!Number.isSafeInteger(startup.preview?.targetCount)||startup.preview.targetCount<1)reasons.push('No valid saved roster is available');
+      if(projectPreview?.projectId!=='mjobs-luna'||projectPreview?.scopedStartSupported!==true)reasons.push('Native MJobs-only restore is unavailable');
+      const primaryIds=projectPreview?.primaryIds;
+      const manifestRevision=projectPreview?.manifestRevision;
+      if(typeof manifestRevision!=='string'||!/^[a-f0-9]{64}$/.test(manifestRevision))reasons.push('MJobs-only manifest revision is unavailable');
+      if(!Array.isArray(primaryIds)||primaryIds.length!==1||typeof primaryIds[0]!=='string'||!primaryIds[0].startsWith('mjobs-luna-'))reasons.push('MJobs-only primary identity is not proven');
+      if(!Number.isSafeInteger(projectPreview?.targetCount)||projectPreview.targetCount<1)reasons.push('No valid MJobs-only roster is available');
       if(startup.run?.active===true)reasons.push('Protected Startup is already active');
       if(startup.run?.reconciliationRequired===true)reasons.push('Protected Startup requires reconciliation');
       if(startup.run?.phase==='uncertain')reasons.push('Last Protected Startup is uncertain');
       if(quota.fresh!==true)reasons.push('Codex quota sample is stale');
       if(quota.policy?.blocked===true)reasons.push('Codex quota policy blocks new work');
-      return {id,confirmation:'START MJobs',targetCount:int(startup.preview?.targetCount),derivedTargetCount:int(projectPreview?.targetCount),manifestRevision:typeof manifestRevision==='string'?manifestRevision:null,phase:safeMode(startup.run?.phase),active:startup.run?.active===true,
+      return {id,confirmation:'START MJobs',targetCount:int(projectPreview?.targetCount),globalTargetCount:int(startup.preview?.targetCount),manifestRevision:typeof manifestRevision==='string'?manifestRevision:null,phase:safeMode(startup.run?.phase),active:startup.run?.active===true,
         quotaFresh:quota.fresh===true,quotaRemaining:Number.isFinite(quota.policy?.remainingPercent)?quota.policy.remainingPercent:null,
         blocked:reasons.length>0,blockedReasons:reasons,
-        note:'Protected Startup restores the saved MJobs roster and then enables Sustained dispatch. It can consume Codex allowance.'};
+        note:'Protected Startup restores only the verified MJobs roster and then enables Sustained dispatch. It can consume Codex allowance.'};
     }
     const state=await read(id,'/api/state');
     if(state.projectId!=='babytracker')throw Error('BabyTracker identity changed');
