@@ -95,6 +95,36 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
       blocked:reasons.length>0,blockedReasons:reasons,
       note:'BabyTracker Start opens a bounded run and may provision one Codex session. No initial task is sent automatically.'};
   }
+  async function boundedStartPreview(id) {
+    if(id!=='mjobs')throw Error('One-session Startup is available only for MJobs');
+    const [native,state,master,startup,quota]=await Promise.all([
+      read(id,'/api/startup/mjobs-bounded-preview'),read(id,'/api/state'),read(id,'/api/master'),read(id,'/api/startup'),read(id,'/api/quota')]);
+    const reasons=[];
+    if(native.projectId!=='mjobs-luna'||native.boundedStartSupported!==true||native.dispatchAfter!==false||native.targetCount!==1||
+       typeof native.primaryId!=='string'||!/^mjobs-luna-[0-9]+$/.test(native.primaryId)||
+       typeof native.manifestRevision!=='string'||!/^[a-f0-9]{64}$/.test(native.manifestRevision))reasons.push('Native one-session binding is unavailable');
+    if(state.projectId!=='mjobs-luna'||!Array.isArray(state.sessions)||state.sessions.some(s=>s.status!=='exited'||s.activity!=='exited'))reasons.push('All MJobs sessions must be exited before this test');
+    if(master.dispatch?.sustainedEnabled!==false||master.dispatch?.turboEnabled!==false)reasons.push('MJobs dispatch must be paused');
+    if(master.drain?.enabled===true||master.emergency?.latched===true)reasons.push('MJobs stop or emergency is active');
+    if(startup.run?.active===true||startup.run?.reconciliationRequired===true||startup.run?.phase==='uncertain')reasons.push('Protected Startup is active or needs reconciliation');
+    if(quota.fresh!==true||quota.policy?.blocked===true||!Number.isFinite(quota.policy?.remainingPercent)||quota.policy.remainingPercent<=15)reasons.push('Fresh Codex quota above the start threshold is required');
+    return {id,mode:'one-session',confirmation:'START ONE MJobs',targetCount:1,primaryId:native.primaryId,manifestRevision:native.manifestRevision,
+      quotaFresh:quota.fresh===true,quotaRemaining:Number.isFinite(quota.policy?.remainingPercent)?quota.policy.remainingPercent:null,
+      blocked:reasons.length>0,blockedReasons:reasons,
+      note:'Restore only the saved MJobs primary. Automatic dispatch stays off. This can briefly use Codex quota; stop the session when finished.'};
+  }
+  async function boundedStart(id,confirmation,requestId,manifestRevision,primaryId){
+    const preview=await boundedStartPreview(id);
+    if(confirmation!==preview.confirmation)throw Error('Exact one-session confirmation required');
+    if(preview.blocked||!preview.quotaFresh)throw Error('Current controller or quota state blocks one-session Startup');
+    if(typeof requestId!=='string'||!/^[A-Za-z0-9._:-]{8,128}$/.test(requestId)||manifestRevision!==preview.manifestRevision||primaryId!==preview.primaryId)
+      throw Error('Stable request ID and unchanged one-session binding required');
+    const origin=urls[id],headers={'content-type':'application/json','origin':origin,'host':new URL(origin).host,'x-ao-fleet':'1'};
+    const body={confirm:'STARTUP',requestId,openUi:false,startWorkAfter:false,expectedProjectId:'mjobs-luna',expectedManifestRevision:manifestRevision,boundedPrimaryId:primaryId};
+    const response=await fetcher(origin+'/api/startup',{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(10000)});
+    const result=await response.json();if(!response.ok||result?.error||result?.ok===false)throw Error(String(result?.error||result?.note||'Controller refused one-session Startup').slice(0,200));
+    return {ok:true,id,note:'One-session Protected Startup requested. Dispatch remains off; verify the primary before graceful stop.'};
+  }
   async function control(id,action) {
     if (!['mjobs','babytracker'].includes(id)) throw Error('Unknown fleet');
     if (!['pause','graceful-stop'].includes(action)) throw Error('Unknown control action');
@@ -192,6 +222,6 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
     const result=await response.json();if(!response.ok||result?.error||result?.ok===false)throw Error(String(result?.error||'Controller refused review assessment').slice(0,200));
     return {ok:true,id,decision,note:'Assessment acknowledged by '+id+' controller. Refresh candidates to verify the durable receipt.'};
   }
-  return {status,startPreview,start,control,limits,saveLimits,reviewCandidates,assessReview,pause:id=>control(id,'pause'),urls};
+  return {status,startPreview,start,boundedStartPreview,boundedStart,control,limits,saveLimits,reviewCandidates,assessReview,pause:id=>control(id,'pause'),urls};
 }
 module.exports={DEFAULT_ENDPOINTS,loopbackEndpoint,summarizeMJobs,summarizeBaby,createAdapters};

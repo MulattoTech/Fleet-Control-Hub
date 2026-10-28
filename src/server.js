@@ -26,12 +26,13 @@ function makeServer({adapters=createAdapters(),port=Number(process.env.FLEET_HUB
         if(url.pathname==='/api/session')return json(200,{token});
         if(url.pathname==='/api/status')return json(200,{observedAt:new Date().toISOString(),fleets:await Promise.all(['mjobs','babytracker'].map(adapters.status))});
         if(url.pathname==='/api/start-preview'&&['mjobs','babytracker'].includes(url.searchParams.get('id')))return json(200,await adapters.startPreview(url.searchParams.get('id')));
+          if(url.pathname==='/api/bounded-start-preview'&&url.searchParams.get('id')==='mjobs')return json(200,await adapters.boundedStartPreview('mjobs'));
         if(url.pathname==='/api/limits'&&['mjobs','babytracker'].includes(url.searchParams.get('id')))return json(200,await adapters.limits(url.searchParams.get('id')));
         if(url.pathname==='/api/review-candidates'&&['mjobs','babytracker'].includes(url.searchParams.get('id')))return json(200,await adapters.reviewCandidates(url.searchParams.get('id'),Number(url.searchParams.get('offset')||0)));
         const file=files[url.pathname];if(!file)return json(404,{error:'Not found'});
         res.writeHead(200,{'Content-Type':file[1]});return res.end(fs.readFileSync(path.join(root,file[0])));
       }
-      if(req.method!=='POST'||!['/api/pause','/api/control','/api/start','/api/limits','/api/review-assessment'].includes(url.pathname))return json(405,{error:'Method not allowed'});
+        if(req.method!=='POST'||!['/api/pause','/api/control','/api/start','/api/bounded-start','/api/limits','/api/review-assessment'].includes(url.pathname))return json(405,{error:'Method not allowed'});
       if(![...allowed.map(x=>'http://'+x),...(remoteRequest?['https://'+remote.hostname]:[])].includes(req.headers.origin))return json(403,{error:'Same origin required'});
       const candidate=String(req.headers['x-fleet-hub']||'');
       if(candidate.length!==token.length||!timingSafeEqual(Buffer.from(candidate),Buffer.from(token)))return json(403,{error:'Invalid action token'});
@@ -42,6 +43,10 @@ function makeServer({adapters=createAdapters(),port=Number(process.env.FLEET_HUB
         if(!input||!['mjobs','babytracker'].includes(input.id)||typeof input.confirmation!=='string'||Object.keys(input).some(k=>!['id','confirmation','requestId','manifestRevision'].includes(k)))return json(400,{error:'Invalid start request'});
         return json(202,await adapters.start(input.id,input.confirmation,input.requestId,input.manifestRevision));
       }
+        if(url.pathname==='/api/bounded-start'){
+          if(!input||input.id!=='mjobs'||typeof input.confirmation!=='string'||Object.keys(input).some(k=>!['id','confirmation','requestId','manifestRevision','primaryId'].includes(k)))return json(400,{error:'Invalid one-session start request'});
+          return json(202,await adapters.boundedStart(input.id,input.confirmation,input.requestId,input.manifestRevision,input.primaryId));
+        }
       if(url.pathname==='/api/limits'){
         if(!input||!['mjobs','babytracker'].includes(input.id)||typeof input.profile!=='string'||typeof input.confirmation!=='string'||Object.keys(input).some(k=>!['id','profile','values','expected','confirmation'].includes(k)))return json(400,{error:'Invalid limits request'});
         return json(200,await adapters.saveLimits(input.id,input.profile,input.values,input.expected,input.confirmation));

@@ -1,0 +1,358 @@
+diff --git a/startup-adapter.js b/startup-adapter.js
+index 11d61ff..251773f 100644
+--- a/startup-adapter.js
++++ b/startup-adapter.js
+@@ -56,7 +56,7 @@ class StartupAdapter {
+   }
+   return s;
+  }
+- manifest(projectId=null){
++ manifest(projectId=null,boundedPrimaryId=null){
+   const original=this.master.restore.getSnapshot();
+   if(!Array.isArray(original.sessions)||!original.sessions.length)throw Error('No preserved fleet manifest is available');
+   const ids=new Set();
+@@ -65,16 +65,24 @@ class StartupAdapter {
+    if(ids.has(s.id))throw Error('Duplicate session identity in the saved manifest');ids.add(s.id);
+   }
+   if(projectId!==null&&projectId!=='mjobs-luna')throw Error('Only the MJobs project preview is supported');
+-  const saved=projectId===null?original:{...original,sessions:original.sessions.filter(s=>s.projectId===projectId).map(s=>structuredClone(s))};
+-  const targets=this.master.restore.targets(saved);
++  let saved=projectId===null?original:{...original,sessions:original.sessions.filter(s=>s.projectId===projectId).map(s=>structuredClone(s))};
++  let targets=this.master.restore.targets(saved);
+   if(!targets.length)throw Error('No supported preserved sessions can be restored');
++  if(boundedPrimaryId!==null){
++   if(projectId!=='mjobs-luna'||typeof boundedPrimaryId!=='string'||!/^mjobs-luna-[0-9]+$/.test(boundedPrimaryId))throw Error('Bounded Startup requires one MJobs primary identity');
++   const primary=targets.filter(s=>s.kind==='orchestrator');
++   if(primary.length!==1||primary[0].id!==boundedPrimaryId)throw Error('Bounded Startup primary changed or is not unique');
++   saved={...saved,sessions:saved.sessions.filter(s=>s.id===boundedPrimaryId)};
++   targets=this.master.restore.targets(saved);
++   if(targets.length!==1||targets[0].id!==boundedPrimaryId||targets[0].projectId!=='mjobs-luna'||targets[0].kind!=='orchestrator')throw Error('Bounded Startup must contain only the saved MJobs primary');
++  }
+   for(const project of new Set(targets.map(x=>x.projectId))){
+    const roots=targets.filter(x=>x.projectId===project&&x.kind==='orchestrator');
+    if(roots.length!==1)throw Error('Exactly one preserved primary is required for project '+project);
+   }
+   const identities=targets.map(s=>({id:s.id,projectId:s.projectId,kind:s.kind,harness:s.harness,model:s.model,mode:s.mode,branch:s.branch||null,
+    ...(typeof s.createdAt==='string'?{createdAt:s.createdAt}:{})})).sort((a,b)=>a.id.localeCompare(b.id));
+-  const revision=createHash('sha256').update(JSON.stringify(identities)).digest('hex');
++  const revision=createHash('sha256').update(JSON.stringify(boundedPrimaryId===null?identities:{identities,boundedPrimaryId,sourceSessions:original.sessions})).digest('hex');
+   return {saved,targets,revision};
+  }
+  projectPreview(projectId){
+@@ -85,11 +93,20 @@ class StartupAdapter {
+    primaryIds:scoped.targets.filter(s=>s.kind==='orchestrator').map(s=>s.id),
+    scopedStartSupported:true};
+  }
++ boundedPreview(){
++  const full=this.manifest('mjobs-luna');
++  const primary=full.targets.filter(s=>s.kind==='orchestrator');
++  if(primary.length!==1)throw Error('Exactly one saved MJobs primary is required');
++  const bounded=this.manifest('mjobs-luna',primary[0].id);
++  return {projectId:'mjobs-luna',primaryId:primary[0].id,targetCount:1,manifestRevision:bounded.revision,dispatchAfter:false,boundedStartSupported:true};
++ }
++ scopeManifest(ctx){return this.manifest(ctx?.expectedProjectId||null,ctx?.boundedPrimaryId||null);}
+  assertProjectScope(ctx,manifest){
+   if(!ctx?.expectedProjectId)return;
+   if(ctx.expectedProjectId!=='mjobs-luna'||manifest.revision!==ctx.expectedManifestRevision||
+-    manifest.targets.length===0||manifest.targets.some(target=>target.projectId!==ctx.expectedProjectId))
+-   throw Error('Scoped Startup manifest changed or includes another project; no restore was submitted');
++    manifest.targets.length===0||manifest.targets.some(target=>target.projectId!==ctx.expectedProjectId)||
++    (ctx.boundedPrimaryId&&(ctx.startWorkAfter!==false||manifest.targets.length!==1||manifest.targets[0].id!==ctx.boundedPrimaryId||manifest.targets[0].kind!=='orchestrator')))
++   throw Error('Scoped Startup manifest changed, includes another project, or exceeds the bounded primary; no restore was submitted');
+  }
+  async bootstrap(ctx){
+   this.check(ctx);
+@@ -97,9 +114,10 @@ class StartupAdapter {
+    if(this.operationBusy())throw Error('Another agent or dispatch control operation is running');
+    if(this.master.drainState.enabled)throw Error('Graceful wind-down must finish before Startup');
+    if(this.master.restore.state.active||this.master.restore.running)throw Error('A fleet restore operation is already running');
+-   const {targets,revision}=this.manifest(ctx?.expectedProjectId||null);
++   const {saved,targets,revision}=this.scopeManifest(ctx);
+    this.assertProjectScope(ctx,{targets,revision});
+-   const approval=this.master.restore.branchApproval?.()||null;
++   // Validate reviewed branches against exactly the manifest this Startup will restore.
++   const approval=this.master.restore.branchApproval?.(saved,targets)||null;
+    const manifest={targetCount:targets.length,manifestRevision:revision,targetIds:targets.map(s=>s.id),primaryIds:targets.filter(s=>s.kind==='orchestrator').map(s=>s.id),
+     branchAdoptionsRevision:approval?.revision||null};
+    // Preserve these identities on an uncertain prior operation so the explicit
+@@ -161,17 +179,17 @@ class StartupAdapter {
+   this.safeForMutation(ctx,{requireGuard:true});
+   const previousNative=unresolvedNativeReason(this.master.restore.state);
+   if(previousNative)throw Error(previousNative);
+-  const {saved,targets,revision}=this.manifest(ctx?.expectedProjectId||null);
++  const {saved,targets,revision}=this.scopeManifest(ctx);
+   this.assertProjectScope(ctx,{targets,revision});
+   if(ctx?.bootstrap?.manifestRevision&&ctx.bootstrap.manifestRevision!==revision)throw Error('The preserved fleet changed after Startup validation; no restore was submitted');
+-  const branchAdoptionsRevision=this.master.restore.branchApproval?.()?.revision||null;
++  const branchAdoptionsRevision=this.master.restore.branchApproval?.(saved,targets)?.revision||null;
+   if(branchAdoptionsRevision!==(ctx.bootstrap?.branchAdoptionsRevision||null))throw Error('Reviewed workspace branch mapping changed after Startup validation');
+   // All asynchronous preview work has already finished. Recheck safety and
+   // start synchronously so Cancel/Emergency cannot interleave before submit.
+   if(this.master.restore.state.active||this.master.restore.running)throw Error('A restore operation is already running');
+   this.safeForMutation(ctx,{requireGuard:true});
+   this.master.disableAutomaticDispatch();
+-  return this.master.restore.start({autoDispatchAfter:false,manifest:saved,...(ctx?.expectedProjectId?{projectScope:ctx.expectedProjectId}:{}),fromEmergency:true,startupRunId:ctx.runId,branchAdoptionsRevision});
++  return this.master.restore.start({autoDispatchAfter:false,manifest:saved,...(ctx?.expectedProjectId?{projectScope:ctx.expectedProjectId}:{}),...(ctx?.boundedPrimaryId?{boundedPrimaryId:ctx.boundedPrimaryId}:{}),fromEmergency:true,startupRunId:ctx.runId,branchAdoptionsRevision});
+  }
+  restoreStatus(ctx){this.check(ctx);return this.master.restore.status();}
+  restorePause(ctx){this.check(ctx);return this.master.restore.pause();}
+@@ -241,7 +259,7 @@ class StartupAdapter {
+   const at=new Date(this.now()).toISOString();
+   let stage='manifest';
+   try{
+-   const {saved,targets,revision}=this.manifest(ctx?.expectedProjectId||null);
++   const {saved,targets,revision}=this.scopeManifest(ctx);
+    stage='native';
+    const restorationScope=createRestorationScope(saved,targets);
+    const counts=await this.master.restore.runtimeInspector([...new Set(targets.map(s=>s.projectId))],{restorationScope});
+@@ -274,7 +292,7 @@ class StartupAdapter {
+     if(live&&verifiedStopped(live,counts,this.now(),restorationScope))stoppedIds.push(target.id);
+    }
+    const postReviewRevision=postReviewIds.length?this.master.restore.postReview?.()?.revision||null:null;
+-   const stable=this.manifest(ctx?.expectedProjectId||null).revision===revision&&bindings()===beforeBindings&&(!postReviewIds.length||(postReviewRevisions.size===1&&postReviewRevisions.has(postReviewRevision)));
++   const stable=this.scopeManifest(ctx).revision===revision&&bindings()===beforeBindings&&(!postReviewIds.length||(postReviewRevisions.size===1&&postReviewRevisions.has(postReviewRevision)));
+    const runtimesReady=stable&&missing.length===0&&conflicts.length===0;
+    return {at:new Date(this.now()).toISOString(),manifestRevision:revision,targetIds:targets.map(s=>s.id),healthyIds:stable?targets.filter(s=>!missing.includes(s.id)).map(s=>s.id):[],daemonOnline:true,runtimesReady,total:targets.length,verified:stable?targets.length-missing.length:0,
+     runningExpectedAgents:stable?targets.filter(s=>Number.isInteger(counts.get(s.id))&&counts.get(s.id)>0).length:null,
+@@ -363,7 +381,7 @@ class StartupAdapter {
+   const unresolvedSubmittedIds=submittedIds.filter(id=>!healthyIds.has(id));
+   const operationInFlight=!!r.running||!!r.state.active||launchActive||unresolvedSubmittedIds.length>0;
+   const dispatchPaused=!this.master.sustain.config.enabled&&!this.master.turbo.config.enabled;
+-  const previous=ctx.previousRun||{},manifest=this.manifest(ctx?.expectedProjectId||null);
++  const previous=ctx.previousRun||{},manifest=this.scopeManifest(ctx);
+   const reviewedAdoptionsMatch=!current.branchAdoptionIds?.length||(previous.bootstrap?.branchAdoptionsRevision===current.branchAdoptionsRevision&&r.state.source?.startupRunId===previous.runId);
+   const postReviewsMatch=!current.postReviewIds?.length||(r.state.source?.startupRunId===previous.runId&&current.postReviewIds.every(id=>r.state.postRestoreReviewReceipts?.[id]?.reviewRevision===current.postReviewRevision));
+   const identitiesMatch=!!previous.bootstrap?.manifestRevision&&previous.bootstrap.manifestRevision===manifest.revision&&current.manifestRevision===manifest.revision&&reviewedAdoptionsMatch&&postReviewsMatch;
+@@ -405,7 +423,7 @@ class StartupAdapter {
+  }
+  async stableReadiness(ctx){
+   const result=await this.readiness(ctx,{force:true});this.check(ctx);
+-  this.assertProjectScope(ctx,this.manifest(ctx?.expectedProjectId||null));
++  this.assertProjectScope(ctx,this.scopeManifest(ctx));
+   if(!ctx?.runId||result.ready!==true||result.inspectionPending||result.stale){this.stableStartup=null;return result;}
+   const signature=JSON.stringify([result.manifestRevision,result.healthyIds?.slice().sort()]);
+   if(!this.stableStartup||this.stableStartup.runId!==ctx.runId||this.stableStartup.signature!==signature)this.stableStartup={runId:ctx.runId,signature,since:this.now()};
+@@ -415,7 +433,7 @@ class StartupAdapter {
+  async startDispatch(ctx){
+   if(ctx.startWorkAfter!==true)throw Error('Explicit start-work option is required');
+   this.safeForMutation(ctx,{requireGuard:true});
+-  const initial=this.manifest(ctx?.expectedProjectId||null);
++  const initial=this.scopeManifest(ctx);
+   this.assertProjectScope(ctx,initial);
+   if(initial.revision!==ctx.bootstrap?.manifestRevision)throw Error('Recovery targets changed before dispatch');
+   const readiness=await this.readRuntimes(ctx);
+@@ -427,7 +445,7 @@ class StartupAdapter {
+   }
+   if(this.master.restore.state.active||this.master.restore.running||unresolvedNativeReason(this.master.restore.state)||this.master.drainState.enabled)
+    throw Error('Recovery or wind-down is not settled');
+-  const current=this.manifest(ctx?.expectedProjectId||null);this.assertProjectScope(ctx,current);
++  const current=this.scopeManifest(ctx);this.assertProjectScope(ctx,current);
+   if(current.revision!==initial.revision||readiness.runtimesReady!==true||readiness.recoveryIdentitiesMatch!==true||readiness.conflicts?.length||
+    !exactIds(readiness.healthyIds,initial.targets.map(s=>s.id))||!this.guardAck(ctx))throw Error('Every preserved runtime and the exact stop guard must be verified before dispatch');
+   this.check(ctx);
+diff --git a/startup-control.js b/startup-control.js
+index 2e23e77..11fbe1a 100644
+--- a/startup-control.js
++++ b/startup-control.js
+@@ -64,7 +64,7 @@ class StartupController {
+   _log(event, details = {}) { try { this.audit('startup_' + event, details); } catch {} }
+   status() { return clone(this.state); }
+ 
+-  start({ confirm, requestId, openUi = false, startWorkAfter = false, expectedProjectId = null, expectedManifestRevision = null } = {}) {
++  start({ confirm, requestId, openUi = false, startWorkAfter = false, expectedProjectId = null, expectedManifestRevision = null, boundedPrimaryId = null } = {}) {
+     if (confirm !== 'STARTUP') throw new StartupError('CONFIRMATION_REQUIRED', 'Exact STARTUP confirmation is required');
+     if (typeof requestId !== 'string' || !/^[A-Za-z0-9._:-]{8,128}$/.test(requestId)) throw new StartupError('REQUEST_ID_REQUIRED', 'Provide a stable 8–128 character Startup request ID');
+     if (typeof startWorkAfter !== 'boolean') throw new StartupError('INVALID_OPTION', 'startWorkAfter must be boolean');
+@@ -74,6 +74,8 @@ class StartupController {
+     if ((expectedProjectId === null) !== (expectedManifestRevision === null) ||
+         (expectedProjectId !== null && (expectedProjectId !== 'mjobs-luna' || typeof expectedManifestRevision !== 'string' || !/^[a-f0-9]{64}$/.test(expectedManifestRevision))))
+       throw new StartupError('INVALID_SCOPE', 'Scoped Startup requires the MJobs project and exact manifest revision');
++    if(boundedPrimaryId!==null&&(expectedProjectId!=='mjobs-luna'||typeof boundedPrimaryId!=='string'||!/^mjobs-luna-[0-9]+$/.test(boundedPrimaryId)||startWorkAfter||openUi))
++      throw new StartupError('INVALID_BOUNDED_SCOPE','Bounded Startup requires one saved MJobs primary, dispatch off and no UI launch');
+     if (!this.task && !this.readError) this.state = this._load();
+     const previous = this.state.recentRequests.find(item => item.requestId === requestId);
+     if (this.task || this.reconcileTask || this.state.active || previous || this.state.requestId === requestId) {
+@@ -85,7 +87,7 @@ class StartupController {
+     this.state = {
+       ...this._initial(), runId, requestId, ownerId: this.ownerId, ownerPid: process.pid, phase: 'validating', active: true,
+       startedAt: this._iso(), deadlineAt: new Date(this.now() + this.timeouts.totalMs).toISOString(), finishedAt: null,
+-      options: { openUi, autoDispatchAfter: false, startWorkAfter, expectedProjectId, expectedManifestRevision }, policy: { ...POLICY },
++      options: { openUi, autoDispatchAfter: false, startWorkAfter, expectedProjectId, expectedManifestRevision, boundedPrimaryId }, policy: { ...POLICY },
+       recentRequests: [...this.state.recentRequests, { requestId, runId }].slice(-32),
+       dispatchHeld: false, latchReleased: false, initialEmergencyRevision: null,
+       guardReceipt: null, guardAcknowledged: false, restoreStartAttempted: false, restoreStarted: false, restoreReceipt: null,
+@@ -140,7 +142,7 @@ class StartupController {
+     this._persist(); this._log('phase', { runId: this.state.runId, phase });
+   }
+   _ctx(signal) {
+-    return { runId: this.state.runId, requestId: this.state.requestId, signal, policy: { ...POLICY,...this.state.policy }, expectedEmergencyRevision: this.state.initialEmergencyRevision, guardReceipt: clone(this.state.guardReceipt), bootstrap: clone(this.state.bootstrap), autoDispatchAfter: false, startWorkAfter: this.state.options?.startWorkAfter === true, expectedProjectId: this.state.options?.expectedProjectId || null, expectedManifestRevision: this.state.options?.expectedManifestRevision || null };
++    return { runId: this.state.runId, requestId: this.state.requestId, signal, policy: { ...POLICY,...this.state.policy }, expectedEmergencyRevision: this.state.initialEmergencyRevision, guardReceipt: clone(this.state.guardReceipt), bootstrap: clone(this.state.bootstrap), autoDispatchAfter: false, startWorkAfter: this.state.options?.startWorkAfter === true, expectedProjectId: this.state.options?.expectedProjectId || null, expectedManifestRevision: this.state.options?.expectedManifestRevision || null, boundedPrimaryId: this.state.options?.boundedPrimaryId || null };
+   }
+   _trackMutation(name, operation) {
+     const id = randomUUID();
+diff --git a/restore-fleet.js b/restore-fleet.js
+index db0e239..f60993d 100644
+--- a/restore-fleet.js
++++ b/restore-fleet.js
+@@ -124,7 +124,7 @@ class RestoreFleet {
+   catch(e){if(e.code==='ENOENT')return new Set();throw Error('Replacement ledger unreadable; restoration is blocked to prevent duplicate workers');}
+  }
+  targets(snapshot){const replaced=this.replacementIds();return targetsFromSnapshot(snapshot).filter(s=>!s.replacedBy&&!replaced.has(s.id));}
+- branchApproval(){const snapshot=this.getSnapshot();return readBranchAdoptions(this.root,snapshot,this.targets(snapshot),this.now(),value=>{this.branchAdoptionDiagnostic=value});}
++ branchApproval(snapshot=this.getSnapshot(),targets=this.targets(snapshot)){return readBranchAdoptions(this.root,snapshot,targets,this.now(),value=>{this.branchAdoptionDiagnostic=value});}
+  async runtimeTarget(target,session,count){
+   if(matchesRestoreTarget(target,session))return {matches:true,adoption:null};
+   if(!session||!this.runtimeHealth(session,count))return {matches:false,adoption:null};
+@@ -265,7 +265,13 @@ class RestoreFleet {
+    let bytes,global;
+    try{bytes=fs.readFileSync(this.snapshotPath);global=JSON.parse(bytes.toString('utf8').replace(/^\uFEFF/,''));}catch{return null}
+    if(digest(bytes)!==source.snapshotSha256||!Array.isArray(global.sessions))return null;
+-   snapshot={...global,sessions:global.sessions.filter(s=>s.projectId===source.projectScope).map(s=>structuredClone(s))};
++   const projectSessions=global.sessions.filter(s=>s.projectId===source.projectScope);
++   if(source.boundedPrimaryId){
++    const eligible=this.targets({...global,sessions:projectSessions});
++    if(!/^mjobs-luna-[0-9]+$/.test(source.boundedPrimaryId)||eligible.filter(s=>s.kind==='orchestrator').length!==1||
++       !eligible.some(s=>s.id===source.boundedPrimaryId&&s.kind==='orchestrator'))return null;
++   }
++   snapshot={...global,sessions:projectSessions.filter(s=>!source.boundedPrimaryId||s.id===source.boundedPrimaryId).map(s=>structuredClone(s))};
+   }else snapshot=this.getSnapshot();
+   const targets=this.targets(snapshot);
+   const exactIds=(left,right)=>Array.isArray(left)&&Array.isArray(right)&&left.length===right.length&&new Set(left).size===left.length&&new Set(right).size===right.length&&left.every(id=>typeof id==='string'&&right.includes(id));
+@@ -445,7 +451,7 @@ class RestoreFleet {
+    branchAdoptionDiagnostic:this.branchAdoptionDiagnostic||null
+   };
+  }
+- start({autoDispatchAfter=false,manifest=null,projectScope=null,fromEmergency=false,startupRunId=null,branchAdoptionsRevision=null}={}){
++ start({autoDispatchAfter=false,manifest=null,projectScope=null,boundedPrimaryId=null,fromEmergency=false,startupRunId=null,branchAdoptionsRevision=null}={}){
+   if(this.reviewCompleting)throw Error('Post-submission completion is still being verified');
+   if(this.state.active)return this.status();
+   if(this.running)throw Error('A previous restore tick is still running; no new restore was submitted');
+@@ -453,6 +459,7 @@ class RestoreFleet {
+   if(previousNative)throw Error(previousNative);
+   if(this.locked())throw Error('Emergency lockout must be explicitly released before restoring');
+   if(typeof autoDispatchAfter!=='boolean')throw Error('autoDispatchAfter must be boolean');
++  if(boundedPrimaryId!==null&&projectScope!=='mjobs-luna')throw Error('Bounded restore requires MJobs project scope');
+   const snap=manifest||this.getSnapshot();
+   let snapshotSha256=null;
+   if(projectScope!==null){
+@@ -460,7 +467,15 @@ class RestoreFleet {
+    let bytes,global;
+    try{bytes=fs.readFileSync(this.snapshotPath);global=JSON.parse(bytes.toString('utf8').replace(/^\uFEFF/,''));}catch{throw Error('Original preserved manifest is unavailable for scoped restore')}
+    if(!Array.isArray(global.sessions))throw Error('Original preserved manifest is invalid');
+-   const canonical={...global,sessions:global.sessions.filter(s=>s.projectId===projectScope).map(s=>structuredClone(s))};
++   const projectSessions=global.sessions.filter(s=>s.projectId===projectScope);
++   let canonical={...global,sessions:projectSessions.map(s=>structuredClone(s))};
++   if(boundedPrimaryId!==null){
++    const eligible=this.targets({...global,sessions:projectSessions});
++    if(autoDispatchAfter||typeof boundedPrimaryId!=='string'||!/^mjobs-luna-[0-9]+$/.test(boundedPrimaryId)||
++       eligible.filter(s=>s.kind==='orchestrator').length!==1||!eligible.some(s=>s.id===boundedPrimaryId&&s.kind==='orchestrator'))
++     throw Error('Bounded restore requires only the saved MJobs primary and dispatch off');
++    canonical={...global,sessions:projectSessions.filter(s=>s.id===boundedPrimaryId).map(s=>structuredClone(s))};
++   }
+    if(!isDeepStrictEqual(snap,canonical))throw Error('Scoped restore manifest no longer matches the original preserved snapshot');
+    snapshotSha256=digest(bytes);
+   }
+@@ -494,7 +509,7 @@ class RestoreFleet {
+   this.dispatchOff();
+   this.state={...INITIAL_STATE,
+    active:true,phase:'preparing',startedAt:nowIso(),
+-   source:{snapshotAt:snap.at,...(projectScope?{projectScope,snapshotSha256}:{}),targets:targets.map(x=>({id:x.id,projectId:x.projectId,kind:x.kind,harness:x.harness,model:x.model,mode:x.mode,branch:x.branch??null,
++   source:{snapshotAt:snap.at,...(projectScope?{projectScope,snapshotSha256,...(boundedPrimaryId?{boundedPrimaryId}:{})}:{}),targets:targets.map(x=>({id:x.id,projectId:x.projectId,kind:x.kind,harness:x.harness,model:x.model,mode:x.mode,branch:x.branch??null,
+     ...(typeof x.createdAt==='string'?{createdAt:x.createdAt}:{}),displayName:x.displayName})),
+     ...(startupRunId?{startupRunId}:{}),...(approval?{branchAdoptions:{revision:approval.revision,snapshotSha256:approval.snapshotSha256},carriedBranchReceipts:carriedHashes}:{}),
+     ...(Object.keys(carriedPostHashes).length?{carriedPostRestoreReviews:carriedPostHashes}:{})},
+diff --git a/server.js b/server.js
+index 6771978..5dfdc45 100644
+--- a/server.js
++++ b/server.js
+@@ -444,6 +444,9 @@ async function main(req,res){
+  if(req.method==='GET'&&req.url==='/api/startup/mjobs-preview'){
+   try{return json(res,200,startupAdapter.projectPreview('mjobs-luna'));}catch(e){return json(res,409,{error:String(e.message).slice(0,200)});}
+  }
++ if(req.method==='GET'&&req.url==='/api/startup/mjobs-bounded-preview'){
++  try{return json(res,200,startupAdapter.boundedPreview());}catch(e){return json(res,409,{error:String(e.message).slice(0,200)});}
++ }
+  if(req.method==='GET'&&req.url==='/api/startup'){
+   const readiness=await startupAdapter.readiness();
+   let preview;try{const {targets,revision}=startupAdapter.manifest();preview={targetCount:targets.length,manifestRevision:revision,projectIds:[...new Set(targets.map(s=>s.projectId))],primaryIds:targets.filter(s=>s.kind==='orchestrator').map(s=>s.id)};}catch(e){preview={targetCount:0,reason:e.message};}
+diff --git a/test-startup-adapter.js b/test-startup-adapter.js
+index f2148b5..d108ada 100644
+--- a/test-startup-adapter.js
++++ b/test-startup-adapter.js
+@@ -159,6 +159,38 @@ test('MJobs project preview derives an isolated roster without changing BabyTrac
+   assert.deepEqual(f.state.effects,[]);
+ });
+ 
++test('bounded Startup derives one primary and binds the unchanged global snapshot',async t=>{
++  const f=fixture(t);
++  for(const session of f.state.saved.sessions)session.projectId='mjobs-luna';
++  f.state.saved.sessions[0].id='mjobs-luna-40';
++  f.state.saved.sessions.push({id:'babytracker-1',projectId:'babytracker',kind:'orchestrator',harness:'codex',activity:'idle'});
++  const approvalReads=[];
++  f.master.restore.branchApproval=(snapshot,targets)=>{
++    approvalReads.push(targets.map(s=>s.id));
++    assert.deepEqual(snapshot.sessions.map(s=>s.id),['mjobs-luna-40']);
++    return null;
++  };
++  const before=clone(f.state.saved),adapter=f.make(),preview=adapter.boundedPreview();
++  assert.equal(preview.targetCount,1);
++  assert.equal(preview.primaryId,'mjobs-luna-40');
++  assert.equal(preview.dispatchAfter,false);
++  assert.deepEqual(f.state.saved,before);
++  const ctx=f.context({expectedProjectId:'mjobs-luna',expectedManifestRevision:preview.manifestRevision,boundedPrimaryId:preview.primaryId,startWorkAfter:false});
++  const bootstrap=await adapter.bootstrap(ctx);
++  assert.equal(bootstrap.targetCount,1);
++  assert.deepEqual(bootstrap.targetIds,['mjobs-luna-40']);
++  ctx.bootstrap=bootstrap;f.protect();ctx.guardReceipt={token:configRevision(f.state.config)};
++  await adapter.restoreStart(ctx);
++  const start=f.state.effects.find(x=>x.op==='restore.start');
++  assert.equal(start.options.boundedPrimaryId,'mjobs-luna-40');
++  assert.deepEqual(start.options.manifest.sessions.map(s=>s.id),['mjobs-luna-40']);
++  f.master.restore.state.active=false;
++  f.state.saved.sessions.at(-1).branch='ao/baby-changed';
++  await assert.rejects(adapter.restoreStart(ctx),/manifest changed/);
++  assert.equal(f.state.effects.filter(x=>x.op==='restore.start').length,1);
++  assert.deepEqual(approvalReads,[['mjobs-luna-40'],['mjobs-luna-40']]);
++});
++
+ test('scoped dispatch cannot enable before a matching restore binding exists',async t=>{
+   const f=fixture(t);for(const session of f.state.saved.sessions)session.projectId='mjobs-luna';
+   const adapter=f.make(),revision=adapter.manifest('mjobs-luna').revision;
+diff --git a/test-scoped-restore.js b/test-scoped-restore.js
+index 851b833..f14100a 100644
+--- a/test-scoped-restore.js
++++ b/test-scoped-restore.js
+@@ -46,6 +46,33 @@ test('scoped restore binds only MJobs targets to unchanged global snapshot',t=>{
+   assert.deepEqual(f.effects,['hold']);
+ });
+ 
++test('bounded restore accepts only the saved eligible MJobs primary with dispatch off',t=>{
++  const f=fixture(t);
++  f.snapshot.sessions.push({...f.snapshot.sessions[0],id:'mjobs-luna-1',activity:'exited'});
++  fs.writeFileSync(f.snapshotPath,JSON.stringify(f.snapshot));
++  const bounded={...f.snapshot,sessions:[structuredClone(f.snapshot.sessions[0])]};
++  assert.throws(()=>f.restore.start({manifest:bounded,projectScope:'mjobs-luna',boundedPrimaryId:'mjobs-luna-40',startupRunId:'run-1',autoDispatchAfter:true}),/dispatch off/);
++  assert.throws(()=>f.restore.start({manifest:f.scoped,projectScope:'mjobs-luna',boundedPrimaryId:'mjobs-luna-40',startupRunId:'run-1'}),/no longer matches/);
++  assert.deepEqual(f.effects,[]);
++  const result=f.restore.start({manifest:bounded,projectScope:'mjobs-luna',boundedPrimaryId:'mjobs-luna-40',startupRunId:'run-1'});
++  assert.equal(result.total,1);
++  assert.deepEqual(f.restore.state.desiredIds,['mjobs-luna-40']);
++  assert.equal(f.restore.state.source.boundedPrimaryId,'mjobs-luna-40');
++  assert.deepEqual(f.restore.restorationScope().targets.map(s=>s.id),['mjobs-luna-40']);
++  f.restore.pause();
++  assert.deepEqual(f.effects,['hold']);
++});
++
++test('bounded restore loses binding if BabyTracker snapshot changes',async t=>{
++  const f=fixture(t),bounded={...f.snapshot,sessions:[structuredClone(f.snapshot.sessions[0])]};
++  f.restore.start({manifest:bounded,projectScope:'mjobs-luna',boundedPrimaryId:'mjobs-luna-40',startupRunId:'run-1'});
++  f.snapshot.sessions[2].branch='ao/baby-changed';
++  fs.writeFileSync(f.snapshotPath,JSON.stringify(f.snapshot));
++  assert.equal(f.restore.restorationScope(),null);
++  assert.match((await f.restore.tick()).error,/lost its original manifest binding/);
++  assert.deepEqual(f.effects,['hold']);
++});
++
+ test('changing even a BabyTracker entry invalidates an active scoped restore before agent action',async t=>{
+   const f=fixture(t);
+   f.restore.start({manifest:f.scoped,projectScope:'mjobs-luna',startupRunId:'run-1'});

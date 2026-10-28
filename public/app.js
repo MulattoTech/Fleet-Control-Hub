@@ -65,11 +65,12 @@ function render(fleets){const holder=$('fleets');holder.replaceChildren();let ac
     const metrics=el('div','metrics');metrics.append(metric('Sessions',fleet.total),metric('Working',fleet.working),metric('Available',fleet.idle),metric('Needs attention',fleet.attention));
     const actions=el('div','fleet-actions');const open=el('a','action','Full controls');open.href=fleet.controlUrl;open.rel='noopener';
     const start=el('button','start','Start fleet');start.type='button';start.disabled=!fleet.online||pendingActions.has(fleet.id+':start');start.addEventListener('click',()=>startFleet(fleet.id,fleet.name,start));
+    const one=el('button','','Start one session');one.type='button';one.disabled=!fleet.online||pendingActions.has(fleet.id+':one-session');one.addEventListener('click',()=>startOneMJobs(one));
     const pause=el('button','','Pause dispatch');pause.type='button';pause.disabled=!fleet.online||pendingActions.has(fleet.id+':pause');pause.addEventListener('click',()=>controlFleet(fleet.id,fleet.name,'pause',pause));
     const stop=el('button','stop','Graceful stop');stop.type='button';stop.disabled=!fleet.online||pendingActions.has(fleet.id+':graceful-stop');stop.addEventListener('click',()=>controlFleet(fleet.id,fleet.name,'graceful-stop',stop));
     const reviews=el('button','','Review queue');reviews.type='button';reviews.disabled=!fleet.online;reviews.addEventListener('click',()=>{if(openReviews.has(fleet.id)){openReviews.delete(fleet.id);reviewPanel.replaceChildren();}else{openReviews.set(fleet.id,0);loadReviewQueue(fleet.id,reviewPanel,0);}});
     const limits=el('button','','Limits');limits.type='button';limits.disabled=!fleet.online;limits.addEventListener('click',()=>{if(openLimits.has(fleet.id)){openLimits.delete(fleet.id);limitPanel.replaceChildren();}else loadLimits(fleet.id,limitPanel);});
-    actions.append(start,pause,stop,limits,reviews);if(['127.0.0.1','localhost'].includes(location.hostname))actions.append(open);
+    actions.append(start);if(fleet.id==='mjobs')actions.append(one);actions.append(pause,stop,limits,reviews);if(['127.0.0.1','localhost'].includes(location.hostname))actions.append(open);
     const detail=el('div','detail');detail.append(el('strong','','Controls: '),document.createTextNode(safetyText(fleet.safety)),el('br'),el('strong','','Progress: '),document.createTextNode(progressText(fleet)+(fleet.detail?'  •  '+fleet.detail:'')));
     const reviewPanel=el('section','review-panel');reviewPanel.setAttribute('aria-label',fleet.name+' review candidates');
     const limitPanel=el('section','limit-panel');limitPanel.setAttribute('aria-label',fleet.name+' limits');
@@ -120,6 +121,14 @@ async function startFleet(id,name,button){const key=id+':start';if(pendingAction
   if(id==='mjobs')sessionStorage.removeItem('mjobsStartRequestId');
   showActionMessage(result.note);
 }catch(e){showActionMessage('Start outcome was not confirmed. Inspect the selected controller before retrying: '+e.message);}finally{pendingActions.delete(key);await refresh();}}
+async function startOneMJobs(button){const key='mjobs:one-session';if(pendingActions.has(key))return;pendingActions.add(key);button.disabled=true;try{
+  const previewResponse=await fetch('/api/bounded-start-preview?id=mjobs',{cache:'no-store'});const preview=await previewResponse.json();if(!previewResponse.ok)throw Error(preview.error||'One-session preview unavailable');
+  if(preview.blocked){showActionMessage('One-session MJobs Start is blocked: '+preview.blockedReasons.join('; '));return;}
+  if(!await confirmAction(preview.note+'\nSaved primary: '+preview.primaryId+'. Codex quota remaining: '+(preview.quotaRemaining??'unknown')+'%.\nType '+preview.confirmation+' to proceed.',preview.confirmation))return;
+  const requestId=sessionStorage.getItem('mjobsBoundedStartRequestId')||crypto.randomUUID();sessionStorage.setItem('mjobsBoundedStartRequestId',requestId);
+  const response=await postAction('/api/bounded-start',{id:'mjobs',confirmation:preview.confirmation,requestId,manifestRevision:preview.manifestRevision,primaryId:preview.primaryId});
+  const result=await response.json();if(!response.ok)throw Error(result.error||'One-session Start was refused');sessionStorage.removeItem('mjobsBoundedStartRequestId');showActionMessage(result.note);
+}catch(e){showActionMessage('One-session Start outcome was not confirmed. Inspect MJobs before retrying: '+e.message);}finally{pendingActions.delete(key);await refresh();}}
 if(!['127.0.0.1','localhost'].includes(location.hostname)){
   document.querySelectorAll('nav a[href^="http://127.0.0.1:"]').forEach(a=>a.remove());
   document.querySelector('.rail-bottom').replaceChildren(document.createTextNode('Protected remote control'),document.createElement('br'),el('span','',location.hostname));

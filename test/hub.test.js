@@ -95,6 +95,36 @@ test('bounded MJobs web Start, Pause and Stop flow is project scoped in an isola
     assert.deepEqual(operations,['mjobs:start','mjobs:pause','mjobs:graceful-stop']);
   }finally{await new Promise(resolve=>server.close(resolve));}
 });
+test('one-session MJobs start binds the exact saved primary and keeps dispatch off',async()=>{
+  const calls=[];let babyChanged=false;
+  const fetcher=async(url,options={})=>{calls.push({url,options});
+    if(options.method==='POST')return {ok:true,json:async()=>({ok:true})};
+    if(url.endsWith('/api/startup/mjobs-bounded-preview'))return {ok:true,json:async()=>({projectId:'mjobs-luna',boundedStartSupported:true,dispatchAfter:false,targetCount:1,primaryId:'mjobs-luna-40',manifestRevision:(babyChanged?'b':'a').repeat(64)})};
+    if(url.endsWith('/api/state'))return {ok:true,json:async()=>({projectId:'mjobs-luna',sessions:[{status:'exited',activity:'exited'}]})};
+    if(url.endsWith('/api/master'))return {ok:true,json:async()=>({dispatch:{sustainedEnabled:false,turboEnabled:false},emergency:{latched:false},drain:{enabled:false}})};
+    if(url.endsWith('/api/startup'))return {ok:true,json:async()=>({run:{phase:'idle',active:false}})};
+    if(url.endsWith('/api/quota'))return {ok:true,json:async()=>({fresh:true,policy:{blocked:false,remainingPercent:37}})};
+    throw Error('Unexpected read: '+url);
+  };
+  const api=createAdapters({fetcher}),preview=await api.boundedStartPreview('mjobs');
+  assert.equal(preview.blocked,false);assert.equal(preview.targetCount,1);
+  await assert.rejects(api.boundedStart('mjobs','START ONE MJobs','fixture-123',preview.manifestRevision,'mjobs-luna-5'),/binding/);
+  babyChanged=true;await assert.rejects(api.boundedStart('mjobs','START ONE MJobs','fixture-123',preview.manifestRevision,preview.primaryId),/binding/);
+  babyChanged=false;await api.boundedStart('mjobs','START ONE MJobs','fixture-123',preview.manifestRevision,preview.primaryId);
+  const posts=calls.filter(c=>c.options.method==='POST');assert.equal(posts.length,1);
+  assert.deepEqual(JSON.parse(posts[0].options.body),{confirm:'STARTUP',requestId:'fixture-123',openUi:false,startWorkAfter:false,expectedProjectId:'mjobs-luna',expectedManifestRevision:'a'.repeat(64),boundedPrimaryId:'mjobs-luna-40'});
+});
+test('one-session HTTP write requires same origin and action token',async()=>{
+  const calls=[];const server=makeServer({port:4327,adapters:{boundedStartPreview:async()=>({targetCount:1}),boundedStart:async(...args)=>{calls.push(args);return {ok:true}}}});
+  await new Promise(resolve=>server.listen(4327,'127.0.0.1',resolve));
+  try{const base='http://127.0.0.1:4327',body=JSON.stringify({id:'mjobs',confirmation:'START ONE MJobs',requestId:'fixture-123',manifestRevision:'a'.repeat(64),primaryId:'mjobs-luna-40'});
+    assert.equal((await fetch(base+'/api/bounded-start-preview?id=mjobs')).status,200);
+    const token=(await (await fetch(base+'/api/session')).json()).token;
+    const send=(origin,actionToken)=>fetch(base+'/api/bounded-start',{method:'POST',headers:{origin,'content-type':'application/json','x-fleet-hub':actionToken},body});
+    assert.equal((await send(base,'bad')).status,403);assert.equal((await send('http://evil.example',token)).status,403);assert.equal(calls.length,0);
+    assert.equal((await send(base,token)).status,202);assert.deepEqual(calls[0],['mjobs','START ONE MJobs','fixture-123','a'.repeat(64),'mjobs-luna-40']);
+  }finally{await new Promise(resolve=>server.close(resolve));}
+});
 test('status reads normalize both fleets and never mutate',async()=>{
   const {calls,fetcher}=fixture();const api=createAdapters({fetcher});
   assert.equal((await api.status('mjobs')).total,1);assert.equal((await api.status('babytracker')).review,'NOT_ASSESSED');
