@@ -31,7 +31,10 @@ async function startFleet(id,name,button){button.disabled=true;try{
   const message=preview.note+'\nSaved or current sessions: '+count(preview.targetCount)+'. Codex quota remaining: '+(preview.quotaRemaining??'unknown')+'%.\nType '+preview.confirmation+' to request Start.';
   if(prompt(message)!==preview.confirmation)return;
   if(!token){const r=await fetch('/api/session');if(!r.ok)throw Error('Action session unavailable');token=(await r.json()).token;}
-  const r=await fetch('/api/start',{method:'POST',headers:{'content-type':'application/json','x-fleet-hub':token},body:JSON.stringify({id,confirmation:preview.confirmation})});const result=await r.json();if(!r.ok)throw Error(result.error||'Start was refused');
+  const requestId=id==='mjobs'?(sessionStorage.getItem('mjobsStartRequestId')||crypto.randomUUID()):undefined;
+  if(id==='mjobs')sessionStorage.setItem('mjobsStartRequestId',requestId);
+  const r=await fetch('/api/start',{method:'POST',headers:{'content-type':'application/json','x-fleet-hub':token},body:JSON.stringify({id,confirmation:preview.confirmation,requestId,manifestRevision:id==='mjobs'?preview.manifestRevision:undefined})});const result=await r.json();if(!r.ok)throw Error(result.error||'Start was refused');
+  if(id==='mjobs')sessionStorage.removeItem('mjobsStartRequestId');
   $('notice').textContent=result.note;await refresh();
 }catch(e){$('notice').textContent='Start outcome was not confirmed. Inspect the selected controller before retrying: '+e.message;}finally{button.disabled=false;}}
 if(!['127.0.0.1','localhost'].includes(location.hostname))document.querySelectorAll('nav a[href^="http://127.0.0.1:"]').forEach(a=>a.remove());

@@ -8,3 +8,4 @@ backups/
 screenshots/
 *.db
 *.sqlite*
+scope-staging/

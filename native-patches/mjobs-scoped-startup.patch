@@ -1,0 +1,170 @@
+diff --git a/startup-control.js b/startup-control.js
+index fb2d6f4..2e23e77 100644
+--- a/startup-control.js
++++ b/startup-control.js
+@@ -64,13 +64,16 @@ class StartupController {
+   _log(event, details = {}) { try { this.audit('startup_' + event, details); } catch {} }
+   status() { return clone(this.state); }
+ 
+-  start({ confirm, requestId, openUi = false, startWorkAfter = false } = {}) {
++  start({ confirm, requestId, openUi = false, startWorkAfter = false, expectedProjectId = null, expectedManifestRevision = null } = {}) {
+     if (confirm !== 'STARTUP') throw new StartupError('CONFIRMATION_REQUIRED', 'Exact STARTUP confirmation is required');
+     if (typeof requestId !== 'string' || !/^[A-Za-z0-9._:-]{8,128}$/.test(requestId)) throw new StartupError('REQUEST_ID_REQUIRED', 'Provide a stable 8–128 character Startup request ID');
+     if (typeof startWorkAfter !== 'boolean') throw new StartupError('INVALID_OPTION', 'startWorkAfter must be boolean');
+     if (startWorkAfter && typeof this.deps.startDispatch !== 'function') throw new StartupError('DISPATCH_UNAVAILABLE', 'Protected start-work integration is unavailable');
+     if (typeof openUi !== 'boolean') throw new StartupError('INVALID_OPTION', 'openUi must be boolean');
+     if (openUi && typeof this.deps.openUi !== 'function') throw new StartupError('UI_UNAVAILABLE', 'The Orchestrator desktop opener is unavailable');
++    if ((expectedProjectId === null) !== (expectedManifestRevision === null) ||
++        (expectedProjectId !== null && (expectedProjectId !== 'mjobs-luna' || typeof expectedManifestRevision !== 'string' || !/^[a-f0-9]{64}$/.test(expectedManifestRevision))))
++      throw new StartupError('INVALID_SCOPE', 'Scoped Startup requires the MJobs project and exact manifest revision');
+     if (!this.task && !this.readError) this.state = this._load();
+     const previous = this.state.recentRequests.find(item => item.requestId === requestId);
+     if (this.task || this.reconcileTask || this.state.active || previous || this.state.requestId === requestId) {
+@@ -82,7 +85,7 @@ class StartupController {
+     this.state = {
+       ...this._initial(), runId, requestId, ownerId: this.ownerId, ownerPid: process.pid, phase: 'validating', active: true,
+       startedAt: this._iso(), deadlineAt: new Date(this.now() + this.timeouts.totalMs).toISOString(), finishedAt: null,
+-      options: { openUi, autoDispatchAfter: false, startWorkAfter }, policy: { ...POLICY },
++      options: { openUi, autoDispatchAfter: false, startWorkAfter, expectedProjectId, expectedManifestRevision }, policy: { ...POLICY },
+       recentRequests: [...this.state.recentRequests, { requestId, runId }].slice(-32),
+       dispatchHeld: false, latchReleased: false, initialEmergencyRevision: null,
+       guardReceipt: null, guardAcknowledged: false, restoreStartAttempted: false, restoreStarted: false, restoreReceipt: null,
+@@ -137,7 +140,7 @@ class StartupController {
+     this._persist(); this._log('phase', { runId: this.state.runId, phase });
+   }
+   _ctx(signal) {
+-    return { runId: this.state.runId, requestId: this.state.requestId, signal, policy: { ...POLICY,...this.state.policy }, expectedEmergencyRevision: this.state.initialEmergencyRevision, guardReceipt: clone(this.state.guardReceipt), bootstrap: clone(this.state.bootstrap), autoDispatchAfter: false, startWorkAfter: this.state.options?.startWorkAfter === true };
++    return { runId: this.state.runId, requestId: this.state.requestId, signal, policy: { ...POLICY,...this.state.policy }, expectedEmergencyRevision: this.state.initialEmergencyRevision, guardReceipt: clone(this.state.guardReceipt), bootstrap: clone(this.state.bootstrap), autoDispatchAfter: false, startWorkAfter: this.state.options?.startWorkAfter === true, expectedProjectId: this.state.options?.expectedProjectId || null, expectedManifestRevision: this.state.options?.expectedManifestRevision || null };
+   }
+   _trackMutation(name, operation) {
+     const id = randomUUID();
+diff --git a/startup-adapter.js b/startup-adapter.js
+index 3ff94ce..02d9b44 100644
+--- a/startup-adapter.js
++++ b/startup-adapter.js
+@@ -75,6 +75,12 @@ class StartupAdapter {
+   const revision=createHash('sha256').update(JSON.stringify(identities)).digest('hex');
+   return {saved,targets,revision};
+  }
++ assertProjectScope(ctx,manifest){
++  if(!ctx?.expectedProjectId)return;
++  if(ctx.expectedProjectId!=='mjobs-luna'||manifest.revision!==ctx.expectedManifestRevision||
++    manifest.targets.length===0||manifest.targets.some(target=>target.projectId!==ctx.expectedProjectId))
++   throw Error('Scoped Startup manifest changed or includes another project; no restore was submitted');
++ }
+  async bootstrap(ctx){
+   this.check(ctx);
+   try{
+@@ -82,6 +88,7 @@ class StartupAdapter {
+    if(this.master.drainState.enabled)throw Error('Graceful wind-down must finish before Startup');
+    if(this.master.restore.state.active||this.master.restore.running)throw Error('A fleet restore operation is already running');
+    const {targets,revision}=this.manifest();
++   this.assertProjectScope(ctx,{targets,revision});
+    const approval=this.master.restore.branchApproval?.()||null;
+    const manifest={targetCount:targets.length,manifestRevision:revision,targetIds:targets.map(s=>s.id),primaryIds:targets.filter(s=>s.kind==='orchestrator').map(s=>s.id),
+     branchAdoptionsRevision:approval?.revision||null};
+@@ -144,7 +151,8 @@ class StartupAdapter {
+   this.safeForMutation(ctx,{requireGuard:true});
+   const previousNative=unresolvedNativeReason(this.master.restore.state);
+   if(previousNative)throw Error(previousNative);
+-  const {saved,revision}=this.manifest();
++  const {saved,targets,revision}=this.manifest();
++  this.assertProjectScope(ctx,{targets,revision});
+   if(ctx?.bootstrap?.manifestRevision&&ctx.bootstrap.manifestRevision!==revision)throw Error('The preserved fleet changed after Startup validation; no restore was submitted');
+   const branchAdoptionsRevision=this.master.restore.branchApproval?.()?.revision||null;
+   if(branchAdoptionsRevision!==(ctx.bootstrap?.branchAdoptionsRevision||null))throw Error('Reviewed workspace branch mapping changed after Startup validation');
+@@ -386,6 +394,7 @@ class StartupAdapter {
+  }
+  async stableReadiness(ctx){
+   const result=await this.readiness(ctx,{force:true});this.check(ctx);
++  this.assertProjectScope(ctx,this.manifest());
+   if(!ctx?.runId||result.ready!==true||result.inspectionPending||result.stale){this.stableStartup=null;return result;}
+   const signature=JSON.stringify([result.manifestRevision,result.healthyIds?.slice().sort()]);
+   if(!this.stableStartup||this.stableStartup.runId!==ctx.runId||this.stableStartup.signature!==signature)this.stableStartup={runId:ctx.runId,signature,since:this.now()};
+@@ -396,12 +405,14 @@ class StartupAdapter {
+   if(ctx.startWorkAfter!==true)throw Error('Explicit start-work option is required');
+   this.safeForMutation(ctx,{requireGuard:true});
+   const initial=this.manifest();
++  this.assertProjectScope(ctx,initial);
+   if(initial.revision!==ctx.bootstrap?.manifestRevision)throw Error('Recovery targets changed before dispatch');
+   const readiness=await this.readRuntimes();
+   this.safeForMutation(ctx,{requireGuard:true});
+   if(this.master.restore.state.active||this.master.restore.running||unresolvedNativeReason(this.master.restore.state)||this.master.drainState.enabled)
+    throw Error('Recovery or wind-down is not settled');
+-  if(this.manifest().revision!==initial.revision||readiness.runtimesReady!==true||readiness.recoveryIdentitiesMatch!==true||readiness.conflicts?.length||
++  const current=this.manifest();this.assertProjectScope(ctx,current);
++  if(current.revision!==initial.revision||readiness.runtimesReady!==true||readiness.recoveryIdentitiesMatch!==true||readiness.conflicts?.length||
+    !exactIds(readiness.healthyIds,initial.targets.map(s=>s.id))||!this.guardAck(ctx))throw Error('Every preserved runtime and the exact stop guard must be verified before dispatch');
+   this.check(ctx);
+   const result=this.master.sustain.enable(true);
+diff --git a/server.js b/server.js
+index 340da7a..201022f 100644
+--- a/server.js
++++ b/server.js
+@@ -443,7 +443,7 @@ async function main(req,res){
+  if(master?.drainState.enabled&&req.method==='POST'&&req.url!=='/api/agent-plan'&&!req.url.startsWith('/api/master/')&&!req.url.startsWith('/api/startup'))return json(res,423,{error:'Graceful shutdown is draining sessions. New work is disabled'});
+  if(req.method==='GET'&&req.url==='/api/startup'){
+   const readiness=await startupAdapter.readiness();
+-  let preview;try{const {targets}=startupAdapter.manifest();preview={targetCount:targets.length,primaryIds:targets.filter(s=>s.kind==='orchestrator').map(s=>s.id)};}catch(e){preview={targetCount:0,reason:e.message};}
++  let preview;try{const {targets,revision}=startupAdapter.manifest();preview={targetCount:targets.length,manifestRevision:revision,projectIds:[...new Set(targets.map(s=>s.projectId))],primaryIds:targets.filter(s=>s.kind==='orchestrator').map(s=>s.id)};}catch(e){preview={targetCount:0,reason:e.message};}
+   return json(res,200,{run:startup.status(),readiness,preview,launcher:orchestratorLauncher.status()});
+  }
+  if(req.method==='POST'&&['/api/startup','/api/startup/cancel','/api/startup/reconcile','/api/orchestrator/open'].includes(req.url)){
+diff --git a/test-startup.js b/test-startup.js
+index 23251b0..021eeb1 100644
+--- a/test-startup.js
++++ b/test-startup.js
+@@ -57,6 +57,23 @@ test('exact confirmation and stable request identity are required', t => {
+   assert.deepEqual(f.events, []);
+ });
+ 
++test('scoped Startup validates project and revision and carries them into the bootstrap context', async t => {
++  const f=fixture(t), controller=f.make(), revision='a'.repeat(64);
++  assert.throws(()=>controller.start(request('scope-bad-01',{expectedProjectId:'babytracker',expectedManifestRevision:revision})),/MJobs project/);
++  assert.throws(()=>controller.start(request('scope-bad-02',{expectedProjectId:'mjobs-luna'})),/exact manifest revision/);
++  f.deps.bootstrap=async ctx=>{
++    assert.equal(ctx.expectedProjectId,'mjobs-luna');
++    assert.equal(ctx.expectedManifestRevision,revision);
++    return {ok:false,targetCount:0,reason:'Manifest changed'};
++  };
++  controller.start(request('scope-valid-01',{expectedProjectId:'mjobs-luna',expectedManifestRevision:revision}));
++  const result=await controller.waitForIdle();
++  assert.equal(result.phase,'failed');
++  assert.equal(result.options.expectedProjectId,'mjobs-luna');
++  assert.equal(result.options.expectedManifestRevision,revision);
++  assert.deepEqual(f.events,[]);
++});
++
+ test('duplicate requests and concurrent clicks never start a second restore', async t => {
+   const f = fixture(t), gate = deferred(), reached = deferred();
+   f.deps.watchdogDisarmed = async () => { reached.resolve(); return gate.promise; };
+diff --git a/test-startup-adapter.js b/test-startup-adapter.js
+index cf9335f..44a5fe3 100644
+--- a/test-startup-adapter.js
++++ b/test-startup-adapter.js
+@@ -119,6 +119,25 @@ test('bootstrap is read-only and validates the preserved mixed-provider manifest
+   assert.equal(f.state.reads.filter(x => x === 'verify-codex').length, 1);
+ });
+ 
++test('scoped Startup rejects a cross-project or changed manifest before restore submission',async t=>{
++  const f=fixture(t);
++  for(const session of f.state.saved.sessions)session.projectId='mjobs-luna';
++  const adapter=f.make(),revision=adapter.manifest().revision;
++  const scoped=f.context({expectedProjectId:'mjobs-luna',expectedManifestRevision:revision,bootstrap:{manifestRevision:revision,branchAdoptionsRevision:null}});
++  f.state.saved.sessions.push({id:'babytracker-1',projectId:'babytracker',kind:'orchestrator',harness:'codex',activity:'idle'});
++  const preview=await adapter.bootstrap(scoped);
++  assert.equal(preview.ok,false);assert.match(preview.reason,/includes another project/);
++  assert.deepEqual(f.state.effects,[]);
++  f.protect();
++  scoped.guardReceipt={token:configRevision(f.state.config)};
++  await assert.rejects(adapter.restoreStart(scoped),/includes another project/);
++  assert.equal(f.state.effects.some(x=>x.op==='restore.start'),false);
++  f.state.saved.sessions.pop();
++  f.state.saved.sessions[1].id='mjobs-changed-worker';
++  await assert.rejects(adapter.restoreStart(scoped),/manifest changed/);
++  assert.equal(f.state.effects.some(x=>x.op==='restore.start'),false);
++});
++
+ test('real Startup controller preserves the reviewed branch revision through the real adapter restore start',async t=>{
+   const f=fixture(t);f.protect();const approval='a'.repeat(64);
+   f.master.restore.branchApproval=()=>({revision:approval});

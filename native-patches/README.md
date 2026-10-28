@@ -1,0 +1,7 @@
+# MJobs scoped Startup source patch
+
+`mjobs-scoped-startup.patch` records the reviewed changes to the installed `C:\Tools\AO-Fleet-Control` controller. It adds an optional `expectedProjectId=mjobs-luna` and 64-character `expectedManifestRevision` pair to Protected Startup. The adapter checks that every target belongs to MJobs and that the manifest revision is unchanged before bootstrap, immediately before native restore and before enabling dispatch. The read-only Startup preview reports `projectIds` and `manifestRevision`.
+
+The patch was applied to the local controller source on 2026-10-28, then the controller was reloaded only after verifying no working or idle sessions, no enabled automatic dispatch and no active Startup. The live preview shows both `babytracker` and `mjobs-luna`; therefore the hub still refuses MJobs Start. The patch includes native regression tests. The installed `test-startup.js` and `test-startup-adapter.js` suite passed 396/396 on MulattoTechBox. No Start request was submitted.
+
+This patch contains source changes only. It contains no saved manifest, runtime state, credentials or transcripts. Apply it to the matching baseline controller source with `git apply --check` first; review version drift before using it elsewhere. The local controller remains the runtime authority until its source is migrated into a reviewed package in this repository.

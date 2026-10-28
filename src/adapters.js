@@ -58,8 +58,11 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
     if(id==='mjobs'){
       const [startup,quota]=await Promise.all([read(id,'/api/startup'),read(id,'/api/quota')]);
       const reasons=[];
-      reasons.push('Native MJobs Startup is machine-wide and cannot atomically restrict restore to this project');
       const primaryIds=startup.preview?.primaryIds;
+      const projectIds=startup.preview?.projectIds;
+      const manifestRevision=startup.preview?.manifestRevision;
+      if(!Array.isArray(projectIds)||projectIds.length!==1||projectIds[0]!=='mjobs-luna')reasons.push('Saved restore roster includes another project or project scope is unavailable');
+      if(typeof manifestRevision!=='string'||!/^[a-f0-9]{64}$/.test(manifestRevision))reasons.push('Native Startup does not expose an atomic manifest revision');
       if(!Array.isArray(primaryIds)||primaryIds.length!==1||typeof primaryIds[0]!=='string'||!primaryIds[0].startsWith('mjobs-luna-'))reasons.push('Saved restore roster is not proven MJobs-only; use native Startup for reviewed cross-project restore');
       if(!Number.isSafeInteger(startup.preview?.targetCount)||startup.preview.targetCount<1)reasons.push('No valid saved roster is available');
       if(startup.run?.active===true)reasons.push('Protected Startup is already active');
@@ -67,7 +70,7 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
       if(startup.run?.phase==='uncertain')reasons.push('Last Protected Startup is uncertain');
       if(quota.fresh!==true)reasons.push('Codex quota sample is stale');
       if(quota.policy?.blocked===true)reasons.push('Codex quota policy blocks new work');
-      return {id,confirmation:'START MJobs',targetCount:int(startup.preview?.targetCount),phase:safeMode(startup.run?.phase),active:startup.run?.active===true,
+      return {id,confirmation:'START MJobs',targetCount:int(startup.preview?.targetCount),manifestRevision:typeof manifestRevision==='string'?manifestRevision:null,phase:safeMode(startup.run?.phase),active:startup.run?.active===true,
         quotaFresh:quota.fresh===true,quotaRemaining:Number.isFinite(quota.policy?.remainingPercent)?quota.policy.remainingPercent:null,
         blocked:reasons.length>0,blockedReasons:reasons,
         note:'Protected Startup restores the saved MJobs roster and then enables Sustained dispatch. It can consume Codex allowance.'};
@@ -99,16 +102,21 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
     if(!response.ok || result?.error || result?.ok===false) throw Error(String(result?.error||result?.note||'Controller refused action').slice(0,200));
     return {ok:true,id,note:(action==='pause'?'Pause':'Graceful stop')+' acknowledged by '+id+' controller. Check controller status for completion.'};
   }
-  async function start(id,confirmation){
-    if(id==='mjobs')throw Error('MJobs scoped Start is unavailable until native Startup enforces project scope');
+  async function start(id,confirmation,requestId,manifestRevision){
     const preview=await startPreview(id);
     if(confirmation!==preview.confirmation)throw Error('Exact start confirmation required');
     if(preview.blocked||!preview.quotaFresh)throw Error('Current controller or quota state blocks start');
     const origin=urls[id];const headers={'content-type':'application/json','origin':origin,'host':new URL(origin).host};
-    const session=await read(id,'/api/session');if(typeof session.token!=='string'||session.token.length<32)throw Error('BabyTracker action token unavailable');headers['x-babytracker-fleet']=session.token;
-    const response=await fetcher(origin+'/api/action',{method:'POST',headers,body:JSON.stringify({action:'start'}),signal:AbortSignal.timeout(10000)});
+    let route,body;
+    if(id==='mjobs'){
+      if(typeof requestId!=='string'||!/^[A-Za-z0-9._:-]{8,128}$/.test(requestId)||manifestRevision!==preview.manifestRevision)throw Error('Stable request ID and unchanged manifest revision required');
+      route='/api/startup';body={confirm:'STARTUP',requestId,openUi:false,startWorkAfter:true,expectedProjectId:'mjobs-luna',expectedManifestRevision:manifestRevision};headers['x-ao-fleet']='1';
+    }else{
+      route='/api/action';body={action:'start'};const session=await read(id,'/api/session');if(typeof session.token!=='string'||session.token.length<32)throw Error('BabyTracker action token unavailable');headers['x-babytracker-fleet']=session.token;
+    }
+    const response=await fetcher(origin+route,{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(10000)});
     const result=await response.json();if(!response.ok||result?.error||result?.ok===false)throw Error(String(result?.error||result?.note||'Controller refused start').slice(0,200));
-    return {ok:true,id,note:'BabyTracker bounded Start acknowledged. Refresh status to verify.'};
+    return {ok:true,id,note:id==='mjobs'?'Scoped Protected Startup requested. Verify each stage before treating dispatch as enabled.':'BabyTracker bounded Start acknowledged. Refresh status to verify.'};
   }
   return {status,startPreview,start,control,pause:id=>control(id,'pause'),urls};
 }
