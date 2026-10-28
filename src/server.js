@@ -18,7 +18,7 @@ function makeServer({adapters=createAdapters(),port=Number(process.env.FLEET_HUB
     const allowed=['127.0.0.1:'+port,'localhost:'+port];
     function json(code,data){res.writeHead(code,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(data));}
     const remoteRequest=!!remote&&host===remote.hostname;
-    if((!allowed.includes(host)&&!remoteRequest)||req.headers['sec-fetch-site']==='cross-site')return json(403,{error:'Origin unavailable'});
+    if((!allowed.includes(host)&&!remoteRequest)||(req.method!=='GET'&&req.headers['sec-fetch-site']==='cross-site'))return json(403,{error:'Origin unavailable'});
     if(remoteRequest){try{if(!verifyRemote)throw Error('Remote verification unavailable');await verifyRemote(req.headers['cf-access-jwt-assertion']);}catch{return json(403,{error:'Verified owner Access session required'});}}
     const url=new URL(req.url,'http://'+host);
     try {

@@ -214,7 +214,10 @@ test('remote origin requires complete Access configuration and verified owner as
     assert.equal(await request({host:'fleet.m-techlabs.com'}),403);
     assert.equal(await request({host:'fleet.m-techlabs.com','cf-access-jwt-assertion':'wrong'}),403);
     assert.equal(await request({host:'fleet.m-techlabs.com','cf-access-jwt-assertion':'verified'}),200);
+    assert.equal(await request({host:'fleet.m-techlabs.com','cf-access-jwt-assertion':'verified','sec-fetch-site':'cross-site'}),200);
     const token=(await (await fetch('http://127.0.0.1:4323/api/session')).json()).token;
+    const crossSiteAction=await new Promise((resolve,reject)=>{const req=http.request({hostname:'127.0.0.1',port:4323,path:'/api/pause',method:'POST',headers:{host:'fleet.m-techlabs.com',origin:'https://fleet.m-techlabs.com','cf-access-jwt-assertion':'verified','sec-fetch-site':'cross-site','x-fleet-hub':token,'content-type':'application/json'}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode));});req.on('error',reject);req.end(JSON.stringify({id:'mjobs'}));});
+    assert.equal(crossSiteAction,403);
     const status=await new Promise((resolve,reject)=>{const req=http.request({hostname:'127.0.0.1',port:4323,path:'/api/review-assessment',method:'POST',headers:{host:'fleet.m-techlabs.com',origin:'https://fleet.m-techlabs.com','cf-access-jwt-assertion':'verified','x-fleet-hub':token,'content-type':'application/json'}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode));});req.on('error',reject);req.end(JSON.stringify({id:'mjobs',candidateId:'x',decision:'accepted',confirmation:'ASSESS MJobs',evidenceReviewed:true}));});
     assert.equal(status,403);
   }finally{await new Promise(resolve=>server.close(resolve));}

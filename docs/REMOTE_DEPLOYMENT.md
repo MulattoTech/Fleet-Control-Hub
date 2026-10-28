@@ -16,13 +16,15 @@ The owner approved a dedicated remote route on 28 October 2026. The deployment o
 - `http://127.0.0.1:4320/api/status` returned 200 from the task-launched hub.
 - A direct loopback request with `Host: fleet.m-techlabs.com` and no Access JWT returned 403.
 - An unauthenticated request to `https://fleet.m-techlabs.com/api/status` returned 302 to Cloudflare Access sign-in.
-- A signed-in end-to-end test is **still unverified**. The browser's Cloudflare identity-provider authorization failed once; a retry ended in a redirect loop. Until a successful owner sign-in and status fetch are observed, remote control usability is unconfirmed. No fleet Start, Pause or Stop was submitted for this test.
+- The owner signed in through Cloudflare Access and the remote dashboard loaded both fleets' live status. The Access app uses a `SameSite=Lax` authorization cookie to complete the identity-provider redirect, while retaining its owner-only policy and HttpOnly cookie.
+- Missing and invalid Access JWTs were rejected at the origin with 403. An unauthenticated action request was also rejected with 403. The source tests cover signed owner assertions, same-origin action tokens and rejection of cross-site POST requests.
+- No live fleet Start, Pause or Stop was submitted for this test.
 
 The route's authentication has two layers: Cloudflare Access at the edge and the hub's own signature/claim check at the origin. Action endpoints additionally require a same-origin request and a session action token. Start flows use a fresh preview and exact confirmation, and native controllers enforce their own scope. Review assessment remains local-only because the remote view does not provide underlying review evidence.
 
 ## Operations
 
-If MulattoTechBox is logged out or restarted, log in as the owner to launch both tasks. Check that the two tasks are running and open `https://fleet.m-techlabs.com` in an owner-signed-in browser. Resolve any Cloudflare identity-provider redirect loop before relying on remote commands. Keep the local tunnel token file private; rotate it through Cloudflare and replace the local file if exposed. Do not copy it into Git or an issue.
+If MulattoTechBox is logged out or restarted, log in as the owner to launch both tasks. Check that the two tasks are running and open `https://fleet.m-techlabs.com` in an owner-signed-in browser. Keep the local tunnel token file private; rotate it through Cloudflare and replace the local file if exposed. Do not copy it into Git or an issue.
 
 The existing M-TechLabs Docker tunnel was left unchanged; that container cannot reach the hub's loopback listener. No native controller port is published through Cloudflare. The public repository is source code, while the protected remote control interface is hosted through Cloudflare Access.
 
