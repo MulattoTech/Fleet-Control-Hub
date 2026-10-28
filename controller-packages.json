@@ -45,8 +45,8 @@
       "test/review-lifecycle.test.js": "971a1baf7cfc607274e71ebafb92fd0bd760d37c948967ccd0b12514d7226f35",
       "vendor/mjobs/dispatch-ledger.js": "21f9711dbed61f5731d7fbd53a71bee1491c7638741412c95c6c299368930af0",
       "vendor/mjobs/find-work.js": "0d24f7b714723627a9d29d4c541e25111ea4ec1a6eb874cd118be3a58dd56f45",
-      "vendor/mjobs/LICENSE": "1ac50a5abd5cff5331d59928d83369b66b0099a88f0111dc2175526b3c666dec",
-      "vendor/mjobs/NOTICE": "8c564d16b2e49af6af292bc49eb3601a73d2574205fb195171b7304fd7b0d854",
+      "vendor/mjobs/LICENSE": "8173d5c29b4f956d532781d2b86e4e30f83e6b7878dce18c919451d6ba707c90",
+      "vendor/mjobs/NOTICE": "feefd704c8c5871eecd27889eabfbd35dbdf71b8922b9f9ac846b12178114f2f",
       "vendor/mjobs/provider-catalog.js": "9807e42d710f94751e5c8b0bad28da97b874a8c199d2068596e59fedf45fe5e7",
       "vendor/mjobs/THIRD_PARTY_NOTICES.md": "8e04816371f115a0124150297cd958981950275ad51adf5ecd87f90097a595b2"
     },
