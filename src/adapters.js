@@ -82,6 +82,7 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
     if(state.mode==='draining')reasons.push('Graceful stop is still draining sessions');
     if(state.mode==='emergency')reasons.push('Emergency state is active');
     if(state.mode==='running')reasons.push('Fleet is already running');
+    if(['pending','uncertain'].includes(state.bootstrap?.status))reasons.push('Codex bootstrap needs native reconciliation');
     if(state.quota?.fresh!==true)reasons.push('Codex quota sample is stale');
     if(!Number.isFinite(state.quota?.remainingPercent)||state.quota.remainingPercent<=Number(state.quotaPolicy?.minimumAllowedPercent||15))reasons.push('Codex quota is below or unavailable at the start threshold');
     return {id,confirmation:'START BabyTracker',targetCount:int(state.summary?.total),phase:safeMode(state.mode),active:state.mode==='running',

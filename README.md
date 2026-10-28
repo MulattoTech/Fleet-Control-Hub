@@ -23,20 +23,20 @@ The MulattoTechBox installation has a dedicated Cloudflare Access route at <http
 | Feature | MJobs | BabyTracker | Hub |
 | --- | --- | --- | --- |
 | Live activity and session counts | Native | Native | Unified view |
-| Review/acceptance evidence | MJobs review queue | Explicit `NOT_ASSESSED` until evidence | Shows reported state |
+| Review/acceptance evidence | MJobs review queue | Verified per-task review receipts; overall requirement acceptance remains `NOT_ASSESSED` | Shows reported state |
 | Pause new dispatch | Native | Native | Scoped button |
 | Graceful stop | Native drain | Native drain | Scoped button |
 | Start fleet | Protected Startup uses a saved restore manifest and now accepts an exact project/revision binding | Bounded Start | Fresh preview and exact confirmation; MJobs requires a MJobs-only roster and atomic revision check |
 | Start/restore/dispatch | Native | Native | Open full controls |
 | Emergency stop | Machine wide Codex/AO control | Project scoped AO sessions | Open full controls |
 | Runtime state and backups | Local MJobs state | Separate BabyTracker state | None |
-| Review assessment | Native review decisions | Staged GitHub-backed task receipts | One local assessment interface, capability gated |
+| Review assessment | Native review decisions | Installed GitHub-backed task receipts | One local assessment interface, capability gated |
 
 MJobs' emergency stop can affect Codex and AO on the machine. The hub deliberately does not collapse the two emergency operations into one button. Their behavior is different and must be made explicit before parity can be claimed.
 
-The shared view labels each controller's emergency scope and summarizes review decisions without sending evidence text to the browser. Its local review queue shows bounded candidate IDs and outcomes. Recording an assessment requires inspecting the underlying evidence, an exact confirmation, and the native controller's own checks. BabyTracker assessment remains unavailable until its staged native review patch is installed; its decision counts remain unknown meanwhile. Remote review assessment is disabled because the hub does not display the underlying evidence remotely.
+The shared view labels each controller's emergency scope and summarizes review decisions without sending evidence text to the browser. Its local review queue shows bounded candidate IDs and outcomes. Recording an assessment requires inspecting the underlying evidence, an exact confirmation, and the native controller's own checks. BabyTracker's review patch is installed on MulattoTechBox; its overall requirement acceptance remains unassessed. Remote review assessment is disabled because the hub does not display the underlying evidence remotely. The reproducible native change is in [the BabyTracker patch](native-patches/babytracker-review-and-bootstrap.patch).
 
-MJobs' native restore manifest can contain sessions from other projects. The current saved manifest includes BabyTracker. The controller derives a MJobs-only preview with 31 targets from the unchanged 37-target roster. Its scoped restore binds that subset to the global snapshot hash, checks membership and identity on every tick, and rejects a changed snapshot before dispatch. The hub uses the verified subset and exact revision for guarded MJobs Start. No live Start was submitted during this work. A reviewed cross-project restore must use the native controller.
+MJobs' native restore manifest can contain sessions from other projects. The current saved manifest includes BabyTracker. The controller derives a MJobs-only preview with 31 targets from the unchanged 37-target roster. Its scoped restore binds that subset to the global snapshot hash, checks membership and identity on every tick, and rejects a changed snapshot before dispatch. The hub uses the verified subset and exact revision for guarded MJobs Start. The live web Start was previewed and canceled because it would restore 31 sessions and enable Sustained dispatch; no MJobs Start was submitted. A reviewed cross-project restore must use the native controller.
 
 Graceful stop can cause idle sessions to exit and sends a wind-down instruction to active sessions. Its button asks for confirmation.
 

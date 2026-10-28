@@ -36,11 +36,12 @@ test('Start preview names controller states that block dispatch',async()=>{
   const {fetcher}=fixture();
   const api=createAdapters({fetcher:async(url,options)=>{
     if(url.endsWith('/api/startup'))return {ok:true,json:async()=>({run:{phase:'uncertain',active:false},preview:{targetCount:3,projectIds:['mjobs-luna'],primaryIds:['mjobs-luna-40'],manifestRevision:'a'.repeat(64)}})};
-    if(url.includes(':4319')&&url.endsWith('/api/state'))return {ok:true,json:async()=>({projectId:'babytracker',mode:'draining',quota:{fresh:true,remainingPercent:46},summary:{total:1},sessions:[],tasks:[]})};
+    if(url.includes(':4319')&&url.endsWith('/api/state'))return {ok:true,json:async()=>({projectId:'babytracker',mode:'draining',bootstrap:{status:'uncertain'},quota:{fresh:true,remainingPercent:46},summary:{total:1},sessions:[],tasks:[]})};
     return fetcher(url,options);
   }});
   assert.match((await api.startPreview('mjobs')).blockedReasons.join(' '),/Last Protected Startup is uncertain/);
   assert.match((await api.startPreview('babytracker')).blockedReasons.join(' '),/draining sessions/);
+  assert.match((await api.startPreview('babytracker')).blockedReasons.join(' '),/bootstrap needs native reconciliation/);
 });
 test('MJobs scoped Start rejects an unproven derived roster',async()=>{
   const {calls,fetcher}=fixture();
