@@ -1,6 +1,6 @@
 # Fleet Control Hub
 
-A single local entry point for the **MJobs** and **BabyTracker** fleet controllers. The hub displays both fleets' live session counts, work state and progress evidence. It offers scoped **Pause dispatch** and **Graceful stop** controls for each fleet and links to their existing advanced controls.
+A single local entry point for the **MJobs** and **BabyTracker** fleet controllers. The hub displays both fleets' live session counts, work state and progress evidence. It offers guarded **Start fleet**, **Pause dispatch** and **Graceful stop** controls for each fleet and links to their existing advanced controls when opened locally.
 
 This is a clean public source repository. It contains no runtime state, logs, tokens, baby records, worktrees or backups. The controllers continue to own their state and authorization. The hub does not start workers on launch or status refresh. Its MJobs progress adapter reads only counts from local review and draft ledgers; it never returns task content to the browser.
 
@@ -26,6 +26,7 @@ Remote Access support is staged but **disabled by default**. It requires a dedic
 | Review/acceptance evidence | MJobs review queue | Explicit `NOT_ASSESSED` until evidence | Shows reported state |
 | Pause new dispatch | Native | Native | Scoped button |
 | Graceful stop | Native drain | Native drain | Scoped button |
+| Start fleet | Protected Startup with stable request ID | Bounded Start | Fresh preview and exact confirmation |
 | Start/restore/dispatch | Native | Native | Open full controls |
 | Emergency stop | Machine wide Codex/AO control | Project scoped AO sessions | Open full controls |
 | Runtime state and backups | Local MJobs state | Separate BabyTracker state | None |

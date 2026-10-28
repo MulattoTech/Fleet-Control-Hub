@@ -30,4 +30,11 @@ function babyProgress(raw){
     inFlight:tasks.filter(t=>['queued','submitted','submitting','awaiting_reconciliation'].includes(t.status)).length,
     accepted:tasks.filter(t=>t.status==='accepted').length,unassessed:tasks.filter(t=>t.acceptance==='NOT_ASSESSED').length}};
 }
-module.exports={readMJobsProgress,babyProgress};
+function mjobsLifecycle(raw){
+  if(!raw||!Array.isArray(raw.workItems))return {available:false};
+  const items=raw.workItems;
+  return {available:true,approved:items.filter(x=>x.state==='approved').length,
+    leased:items.filter(x=>x.state==='leased').length,completed:items.filter(x=>x.state==='completed').length,
+    reviewReady:Number.isSafeInteger(raw.artifactReviews?.ready)?raw.artifactReviews.ready:null};
+}
+module.exports={readMJobsProgress,babyProgress,mjobsLifecycle};

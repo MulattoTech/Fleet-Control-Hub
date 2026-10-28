@@ -3,7 +3,7 @@ const DEFAULT_ENDPOINTS = Object.freeze({
   mjobs: 'http://127.0.0.1:8787',
   babytracker: 'http://127.0.0.1:4319'
 });
-const {readMJobsProgress,babyProgress}=require('./progress');
+const {readMJobsProgress,babyProgress,mjobsLifecycle}=require('./progress');
 
 function loopbackEndpoint(value) {
   const url = new URL(value);
@@ -43,10 +43,26 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
   }
   async function status(id) {
     try {
-      if(id==='mjobs') {const raw=await read(id,'/api/state'); let master=null;try{master=await read(id,'/api/master')}catch{};return {...summarizeMJobs(raw,master),controlUrl:urls[id],progress:progressReader()};}
+      if(id==='mjobs') {const raw=await read(id,'/api/state'); let master=null,sustain=null;try{master=await read(id,'/api/master')}catch{};try{sustain=await read(id,'/api/sustain')}catch{};return {...summarizeMJobs(raw,master),controlUrl:urls[id],progress:{...progressReader(),lifecycle:mjobsLifecycle(sustain)}};}
       if(id==='babytracker') {const raw=await read(id,'/api/state');return {...summarizeBaby(raw),controlUrl:urls[id],progress:babyProgress(raw)};}
       throw Error('Unknown fleet');
     } catch(e) {return {id,name:id==='mjobs'?'MJobs':'BabyTracker',online:false,mode:'unavailable',total:null,working:null,idle:null,pending:null,attention:null,review:'unavailable',controlUrl:urls[id],detail:String(e.message).slice(0,130)};}
+  }
+  async function startPreview(id) {
+    if(!['mjobs','babytracker'].includes(id))throw Error('Unknown fleet');
+    if(id==='mjobs'){
+      const [startup,quota]=await Promise.all([read(id,'/api/startup'),read(id,'/api/quota')]);
+      return {id,confirmation:'START MJobs',targetCount:int(startup.preview?.targetCount),phase:safeMode(startup.run?.phase),active:startup.run?.active===true,
+        quotaFresh:quota.fresh===true,quotaRemaining:Number.isFinite(quota.policy?.remainingPercent)?quota.policy.remainingPercent:null,
+        blocked:quota.policy?.blocked===true||startup.run?.active===true||startup.run?.reconciliationRequired===true||['failed','uncertain'].includes(startup.run?.phase),
+        note:'Protected Startup restores the saved MJobs roster and then enables Sustained dispatch. It can consume Codex allowance.'};
+    }
+    const state=await read(id,'/api/state');
+    if(state.projectId!=='babytracker')throw Error('BabyTracker identity changed');
+    return {id,confirmation:'START BabyTracker',targetCount:int(state.summary?.total),phase:safeMode(state.mode),active:state.mode==='running',
+      quotaFresh:state.quota?.fresh===true,quotaRemaining:Number.isFinite(state.quota?.remainingPercent)?state.quota.remainingPercent:null,
+      blocked:['draining','emergency','running'].includes(state.mode)||state.quota?.fresh!==true||Number(state.quota?.remainingPercent)<Number(state.quotaPolicy?.minimumAllowedPercent||15),
+      note:'BabyTracker Start opens a bounded run and may provision one Codex session. No initial task is sent automatically.'};
   }
   async function control(id,action) {
     if (!['mjobs','babytracker'].includes(id)) throw Error('Unknown fleet');
@@ -61,6 +77,22 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
     if(!response.ok || result?.error || result?.ok===false) throw Error(String(result?.error||result?.note||'Controller refused action').slice(0,200));
     return {ok:true,id,note:(action==='pause'?'Pause':'Graceful stop')+' acknowledged by '+id+' controller. Check controller status for completion.'};
   }
-  return {status,control,pause:id=>control(id,'pause'),urls};
+  async function start(id,confirmation,requestId){
+    const preview=await startPreview(id);
+    if(confirmation!==preview.confirmation)throw Error('Exact start confirmation required');
+    if(preview.blocked||!preview.quotaFresh)throw Error('Current controller or quota state blocks start');
+    const origin=urls[id];const headers={'content-type':'application/json','origin':origin,'host':new URL(origin).host};
+    let route,body;
+    if(id==='mjobs'){
+      if(!Number.isInteger(preview.targetCount)||preview.targetCount<1||typeof requestId!=='string'||!/^[A-Za-z0-9._:-]{8,128}$/.test(requestId))throw Error('Valid roster and stable request ID required');
+      route='/api/startup';body={confirm:'STARTUP',requestId,openUi:false,startWorkAfter:true};headers['x-ao-fleet']='1';
+    }else{
+      route='/api/action';body={action:'start'};const session=await read(id,'/api/session');if(typeof session.token!=='string'||session.token.length<32)throw Error('BabyTracker action token unavailable');headers['x-babytracker-fleet']=session.token;
+    }
+    const response=await fetcher(origin+route,{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(10000)});
+    const result=await response.json();if(!response.ok||result?.error||result?.ok===false)throw Error(String(result?.error||result?.note||'Controller refused start').slice(0,200));
+    return {ok:true,id,note:id==='mjobs'?'Protected Startup requested. Follow its stages and verify dispatch before treating the fleet as running.':'BabyTracker bounded Start acknowledged. Refresh status to verify.'};
+  }
+  return {status,startPreview,start,control,pause:id=>control(id,'pause'),urls};
 }
 module.exports={DEFAULT_ENDPOINTS,loopbackEndpoint,summarizeMJobs,summarizeBaby,createAdapters};
