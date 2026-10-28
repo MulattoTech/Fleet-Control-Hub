@@ -28,7 +28,8 @@ test('only fixed loopback controller origins are allowed',()=>{
 test('status reads normalize both fleets and never mutate',async()=>{
   const {calls,fetcher}=fixture();const api=createAdapters({fetcher});
   assert.equal((await api.status('mjobs')).total,1);assert.equal((await api.status('babytracker')).review,'NOT_ASSESSED');
-  assert.deepEqual((await api.status('mjobs')).safety,{dispatchEnabled:false,emergency:false,gracefulStop:true,codexQuotaFresh:true,codexRemaining:46});
+  assert.deepEqual((await api.status('mjobs')).safety,{dispatchEnabled:false,emergency:false,emergencyScope:'machine',gracefulStop:true,codexQuotaFresh:true,codexRemaining:46});
+  assert.equal((await api.status('babytracker')).safety.emergencyScope,'project');
   assert.ok(calls.every(x=>!x.options.method||x.options.method==='GET'));
 });
 test('Start preview names controller states that block dispatch',async()=>{
@@ -110,8 +111,8 @@ test('progress summaries contain counts only and preserve unknown evidence',()=>
   try{
     fs.writeFileSync(path.join(dir,'artifact-review-state.json'),JSON.stringify({version:1,tasks:{a:{state:'review_ready',acceptance:'unassessed'},b:{state:'uncertain'}}}));
     fs.writeFileSync(path.join(dir,'productive-work-state.json'),JSON.stringify({version:1,tasks:{c:{state:'artifact_ready',acceptance:'unreviewed'}}}));
-    assert.deepEqual(readMJobsProgress(dir),{available:true,reviews:{total:2,ready:1,inFlight:1,unassessed:1},drafts:{total:1,ready:1,inFlight:0,unreviewed:1}});
-    assert.deepEqual(babyProgress({tasks:[{title:'private',status:'proposed',acceptance:'NOT_ASSESSED'}]}),{available:true,tasks:{total:1,proposed:1,inFlight:0,accepted:0,unassessed:1},pipeline:{available:true,proposed:1,approved:null,active:0,completed:0,accepted:0,blocked:0,unassessed:1}});
+    assert.deepEqual(readMJobsProgress(dir),{available:true,reviews:{total:2,ready:1,inFlight:1,unassessed:1},reviewDecisions:{available:true,awaitingAssessment:1,accepted:0,revisionRequested:0,rejected:0},drafts:{total:1,ready:1,inFlight:0,unreviewed:1}});
+    assert.deepEqual(babyProgress({tasks:[{title:'private',status:'proposed',acceptance:'NOT_ASSESSED'}]}),{available:true,tasks:{total:1,proposed:1,inFlight:0,accepted:0,unassessed:1},reviewDecisions:{available:true,awaitingAssessment:1,accepted:null,revisionRequested:null,rejected:null},pipeline:{available:true,proposed:1,approved:null,active:0,completed:0,accepted:0,blocked:0,unassessed:1}});
     assert.deepEqual(mjobsLifecycle({workItems:[{issue:7,state:'approved'},{issue:9,state:'completed'}],artifactReviews:{ready:1}}),{available:true,approved:1,leased:0,completed:1,reviewReady:1});
     assert.deepEqual(readMJobsProgress(path.join(dir,'missing')),{available:false});
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
@@ -125,6 +126,18 @@ test('shared work stages count native states without claiming unsupported parity
   assert.deepEqual(mjobs,{available:true,proposed:null,approved:1,active:2,completed:1,accepted:null,blocked:null,unassessed:null});
   assert.deepEqual(baby,{available:true,proposed:1,approved:null,active:1,completed:1,accepted:1,blocked:1,unassessed:4});
   assert.equal(JSON.stringify({mjobs,baby}).includes('private'),false);
+});
+test('review receipts are summarized without evidence text or unsupported decisions',()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'fleet-review-test-'));
+  try{
+    fs.writeFileSync(path.join(dir,'artifact-review-state.json'),JSON.stringify({version:1,tasks:{a:{state:'review_ready',acceptance:'accepted',finding:'private review text'},b:{state:'review_ready',acceptance:'revision_requested'},c:{state:'review_ready',acceptance:'rejected'}}}));
+    fs.writeFileSync(path.join(dir,'productive-work-state.json'),JSON.stringify({version:1,tasks:{}}));
+    const mjobs=readMJobsProgress(dir).reviewDecisions;
+    const baby=babyProgress({tasks:[{acceptance:'NOT_ASSESSED',title:'private family text'},{acceptance:'ACCEPTED',title:'private family text'}]}).reviewDecisions;
+    assert.deepEqual(mjobs,{available:true,awaitingAssessment:0,accepted:1,revisionRequested:1,rejected:1});
+    assert.deepEqual(baby,{available:true,awaitingAssessment:1,accepted:null,revisionRequested:null,rejected:null});
+    assert.equal(JSON.stringify({mjobs,baby}).includes('private'),false);
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
 test('local hub rejects cross-origin actions and needs an action token',async()=>{
   const {fetcher}=fixture();const server=makeServer({adapters:createAdapters({fetcher}),port:4322});

@@ -19,6 +19,7 @@ function readMJobsProgress(root=process.env.MJOBS_CONTROL_ROOT||DEFAULT_MJOBS_RO
     const drafts=readLedger(root,'productive-work-state.json');
     return {available:true,
       reviews:{total:reviews.length,ready:tally(reviews,['review_ready']),inFlight:tally(reviews,['reserved','submitted','uncertain']),unassessed:reviews.filter(t=>t.acceptance==='unassessed').length},
+      reviewDecisions:{available:true,awaitingAssessment:count(reviews,'acceptance',['unassessed']),accepted:count(reviews,'acceptance',['accepted']),revisionRequested:count(reviews,'acceptance',['revision_requested']),rejected:count(reviews,'acceptance',['rejected'])},
       drafts:{total:drafts.length,ready:tally(drafts,['artifact_ready']),inFlight:tally(drafts,['reserved','submitted','uncertain']),unreviewed:drafts.filter(t=>t.acceptance==='unreviewed').length}
     };
   }catch{return {available:false};}
@@ -29,6 +30,7 @@ function babyProgress(raw){
   return {available:true,tasks:{total:tasks.length,proposed:tasks.filter(t=>t.status==='proposed').length,
     inFlight:tasks.filter(t=>['queued','submitted','submitting','awaiting_reconciliation'].includes(t.status)).length,
     accepted:tasks.filter(t=>t.status==='accepted').length,unassessed:tasks.filter(t=>t.acceptance==='NOT_ASSESSED').length},
+    reviewDecisions:{available:true,awaitingAssessment:count(tasks,'acceptance',['NOT_ASSESSED']),accepted:null,revisionRequested:null,rejected:null},
     pipeline:{available:true,proposed:count(tasks,'status',['proposed']),approved:null,active:count(tasks,'status',['submitting','submitted','awaiting_reconciliation']),
       completed:count(tasks,'status',['completed']),accepted:count(tasks,'status',['accepted']),blocked:count(tasks,'status',['blocked']),
       unassessed:count(tasks,'acceptance',['NOT_ASSESSED'])}};

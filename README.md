@@ -33,6 +33,8 @@ Remote Access support is staged but **disabled by default**. It requires a dedic
 
 MJobs' emergency stop can affect Codex and AO on the machine. The hub deliberately does not collapse the two emergency operations into one button. Their behavior is different and must be made explicit before parity can be claimed.
 
+The shared view labels each controller's emergency scope and summarizes review decisions without sending evidence text to the browser. MJobs has explicit accepted, revision requested and rejected review receipts. BabyTracker currently reports unassessed tasks but lacks equivalent review decision receipts, so those decision counts remain unknown.
+
 MJobs' native restore manifest can contain sessions from other projects. The current saved manifest includes BabyTracker. The controller derives a MJobs-only preview with 31 targets from the unchanged 37-target roster. Its scoped restore binds that subset to the global snapshot hash, checks membership and identity on every tick, and rejects a changed snapshot before dispatch. The hub uses the verified subset and exact revision for guarded MJobs Start. No live Start was submitted during this work. A reviewed cross-project restore must use the native controller.
 
 Graceful stop can cause idle sessions to exit and sends a wind-down instruction to active sessions. Its button asks for confirmation.

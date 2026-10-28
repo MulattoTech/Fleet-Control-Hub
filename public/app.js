@@ -19,12 +19,13 @@ function render(fleets){const holder=$('fleets');holder.replaceChildren();let ac
   $('totals').replaceChildren(el('b','',active),el('span','','tracked sessions across both fleets'));
 }
 async function refresh(){const button=$('refresh');button.disabled=true;try{const r=await fetch('/api/status',{cache:'no-store'});if(!r.ok)throw Error('Hub returned '+r.status);const data=await r.json();render(data.fleets);$('notice').textContent='Observed '+new Date(data.observedAt).toLocaleTimeString()+'. Status reads do not dispatch work.';}catch(e){$('notice').textContent='Status unavailable: '+e.message;}finally{button.disabled=false;}}
-function safetyText(s){if(!s)return 'Unavailable';return (s.emergency?'Emergency latched':s.gracefulStop?'Graceful stop in progress':s.dispatchEnabled?'Dispatch enabled':'Dispatch paused')+'; Codex remaining '+(s.codexQuotaFresh&&s.codexRemaining!=null?s.codexRemaining+'%':'unavailable');}
+function safetyText(s){if(!s)return 'Unavailable';const scope=s.emergencyScope==='machine'?'machine-wide Codex/AO':s.emergencyScope==='project'?'project sessions':'unknown';return (s.emergency?'Emergency latched':s.gracefulStop?'Graceful stop in progress':s.dispatchEnabled?'Dispatch enabled':'Dispatch paused')+'; Codex remaining '+(s.codexQuotaFresh&&s.codexRemaining!=null?s.codexRemaining+'%':'unavailable')+'; emergency scope: '+scope;}
 function progressText(fleet){const p=fleet.progress;if(!p?.pipeline?.available)return 'Work stage unavailable';
   const fields=[['proposed','proposed'],['approved','approved'],['active','active'],['completed','completed'],['accepted','accepted'],['blocked','blocked'],['unassessed','unassessed']];
   const stages=fields.filter(([key])=>Number.isInteger(p.pipeline[key])).map(([key,label])=>p.pipeline[key]+' '+label).join(', ');
-  if(fleet.id==='mjobs'&&p.available)return stages+'; '+p.reviews.ready+' review results ready, '+p.drafts.ready+' drafts ready and '+p.drafts.unreviewed+' unreviewed';
-  return stages;}
+  const review=p.reviewDecisions?.available?' Reviews: '+p.reviewDecisions.awaitingAssessment+' awaiting assessment'+(Number.isInteger(p.reviewDecisions.accepted)?', '+p.reviewDecisions.accepted+' accepted':'')+(Number.isInteger(p.reviewDecisions.revisionRequested)?', '+p.reviewDecisions.revisionRequested+' revision requested':'')+(Number.isInteger(p.reviewDecisions.rejected)?', '+p.reviewDecisions.rejected+' rejected':'')+'.':'';
+  if(fleet.id==='mjobs'&&p.available)return stages+'; '+p.reviews.ready+' review results ready, '+p.drafts.ready+' drafts ready and '+p.drafts.unreviewed+' unreviewed.'+review;
+  return stages+'.'+review;}
 async function controlFleet(id,name,action,button){const prompt=action==='pause'?'Pause new dispatch for '+name+'? Existing turns may finish.':'Gracefully stop '+name+'? Idle sessions may exit and active sessions will receive a wind-down instruction.';if(!confirm(prompt))return;button.disabled=true;try{
   if(!token){const r=await fetch('/api/session');if(!r.ok)throw Error('Action session unavailable');token=(await r.json()).token;}
   const r=await fetch('/api/control',{method:'POST',headers:{'content-type':'application/json','x-fleet-hub':token},body:JSON.stringify({id,action})});const data=await r.json();if(!r.ok)throw Error(data.error||'Control failed');$('notice').textContent=data.note;await refresh();

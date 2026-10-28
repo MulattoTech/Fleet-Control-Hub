@@ -5,9 +5,9 @@
 | Project binding | Native saved manifest spans projects; MJobs scoped restore derives and verifies a MJobs-only subset | `babytracker` verified against application checkout | Fixed adapters; guarded MJobs-only Start preview |
 | Automatic dispatch | Sustain and Turbo modes | Bounded Turbo and explicit queue | Never starts dispatch |
 | Work eligibility | MJobs productive catalog and review selection | Durable task queue and dependency checks | No scheduling |
-| Review lifecycle | MJobs independent documentation review loop | Acceptance remains unassessed without imported evidence | Displays current report |
+| Review lifecycle | MJobs independent documentation review loop with finite decisions | Acceptance remains unassessed without imported evidence | Displays decision counts where native receipts exist; unsupported decisions stay unknown |
 | Quota | Global Codex monitor and emergency latch | Reads shared Codex quota snapshot; AGY separate | No spending decisions |
-| Emergency | Machine wide process stop | Project scoped AO termination | No emergency proxy |
+| Emergency | Machine wide process stop | Project scoped AO termination | Explicit scope label; no emergency proxy |
 | Progress | PR/CI, document review state, and lifecycle approval/active/completion counts | Task queue, session activity, acceptance placeholder | Shared work-stage counts; unsupported stages remain unknown |
 | Control safety | Sustained/Turbo, emergency latch, drain, and fresh quota | Running/emergency/draining mode and fresh shared quota | Shared safety summary and blocked Start reasons |
 
@@ -30,7 +30,7 @@ The hub is a first shared interface, not a completed merge of both controllers. 
 
 The current hub implements a shared work-stage read model and shared Start, pause and drain controls. BabyTracker Start is guarded but its live draining state blocks it. MJobs native source has atomic scope/revision checks and a MJobs-only derived restore manifest. The hub uses the derived revision for guarded Start. No live Start was submitted during this work. Shared stage counts do not imply equivalent native workflow or assessment semantics.
 
-The MJobs root-fix controller has approval, assessment and completion endpoints. The hub reads its lifecycle counts but does not yet expose those actions. Ready drafts and review results remain unassessed evidence until the controller records acceptance. The BabyTracker acceptance field remains `NOT_ASSESSED` until its own evidence is evaluated.
+The MJobs root-fix controller has approval, assessment and completion endpoints. The hub reads decision counts from its review ledger but does not yet expose those actions. Ready drafts and review results remain unassessed evidence until the controller records acceptance. BabyTracker's reported `NOT_ASSESSED` tasks are visible, while accepted, revision-requested and rejected review decision counts remain unknown because there is no equivalent native receipt contract. The hub labels MJobs emergency scope as machine-wide and BabyTracker as project-scoped; it does not proxy either emergency action.
 
 At this check, MJobs dispatch was paused and its prior Protected Startup was `failed` from `QUOTA_LOW` at 03:10 UTC, even though a later quota sample was fresh at 45%. Native Startup marks this failure as not needing reconciliation: it occurred before dispatch hold, restore, or any pending action. The current global MJobs restore manifest has 37 targets and includes `babytracker-1` as a primary. The derived MJobs-only preview has 31 targets and one primary (`mjobs-luna-40`); it does not modify the preserved source manifest. Both the source file and its local backup have SHA-256 `512F1102FDED60083393F9D3D097720742013211ED7882C9C9034BAFF807A1D4`. BabyTracker was `draining` with one session still reported working; the hub blocks Start until its drain completes. The hub does not terminate either controller's sessions to clear these states.
 

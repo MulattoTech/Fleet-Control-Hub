@@ -23,7 +23,7 @@ function summarizeMJobs(raw, master) {
     review:'Review state is managed in MJobs', controlUrl:DEFAULT_ENDPOINTS.mjobs,
     detail:raw.offline ? 'Preserved state; live AO feed unavailable' : null };
 }
-function mjobsSafety(master,quota){return {dispatchEnabled:master?.dispatch?.sustainedEnabled===true||master?.dispatch?.turboEnabled===true,
+function mjobsSafety(master,quota){return {dispatchEnabled:master?.dispatch?.sustainedEnabled===true||master?.dispatch?.turboEnabled===true,emergencyScope:'machine',
   emergency:master?.emergency?.latched===true,gracefulStop:master?.drain?.enabled===true,
   codexQuotaFresh:quota?.fresh===true,codexRemaining:Number.isFinite(quota?.policy?.remainingPercent)?quota.policy.remainingPercent:null};}
 function summarizeBaby(raw) {
@@ -35,7 +35,7 @@ function summarizeBaby(raw) {
     attention:int(raw.summary?.blocked), review:safeMode(raw.acceptance?.status || 'NOT_ASSESSED'),
     controlUrl:DEFAULT_ENDPOINTS.babytracker, detail:raw.runtime?.online === false ? 'AO feed unavailable' : null };
 }
-function babySafety(raw){return {dispatchEnabled:raw.mode==='running',emergency:raw.mode==='emergency',gracefulStop:raw.mode==='draining',
+function babySafety(raw){return {dispatchEnabled:raw.mode==='running',emergency:raw.mode==='emergency',emergencyScope:'project',gracefulStop:raw.mode==='draining',
   codexQuotaFresh:raw.quota?.fresh===true,codexRemaining:Number.isFinite(raw.quota?.remainingPercent)?raw.quota.remainingPercent:null};}
 
 function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressReader=readMJobsProgress }={}) {
