@@ -23,6 +23,9 @@ function summarizeMJobs(raw, master) {
     review:'Review state is managed in MJobs', controlUrl:DEFAULT_ENDPOINTS.mjobs,
     detail:raw.offline ? 'Preserved state; live AO feed unavailable' : null };
 }
+function mjobsSafety(master,quota){return {dispatchEnabled:master?.dispatch?.sustainedEnabled===true||master?.dispatch?.turboEnabled===true,
+  emergency:master?.emergency?.latched===true,gracefulStop:master?.drain?.enabled===true,
+  codexQuotaFresh:quota?.fresh===true,codexRemaining:Number.isFinite(quota?.policy?.remainingPercent)?quota.policy.remainingPercent:null};}
 function summarizeBaby(raw) {
   if (raw?.projectId !== 'babytracker' || !Array.isArray(raw.sessions)) throw Error('BabyTracker identity or session feed changed');
   const tasks = Array.isArray(raw.tasks) ? raw.tasks : [];
@@ -32,6 +35,8 @@ function summarizeBaby(raw) {
     attention:int(raw.summary?.blocked), review:safeMode(raw.acceptance?.status || 'NOT_ASSESSED'),
     controlUrl:DEFAULT_ENDPOINTS.babytracker, detail:raw.runtime?.online === false ? 'AO feed unavailable' : null };
 }
+function babySafety(raw){return {dispatchEnabled:raw.mode==='running',emergency:raw.mode==='emergency',gracefulStop:raw.mode==='draining',
+  codexQuotaFresh:raw.quota?.fresh===true,codexRemaining:Number.isFinite(raw.quota?.remainingPercent)?raw.quota.remainingPercent:null};}
 
 function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressReader=readMJobsProgress }={}) {
   const urls = Object.fromEntries(Object.entries(endpoints).map(([id,url])=>[id,loopbackEndpoint(url)]));
@@ -43,8 +48,8 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
   }
   async function status(id) {
     try {
-      if(id==='mjobs') {const raw=await read(id,'/api/state'); let master=null,sustain=null;try{master=await read(id,'/api/master')}catch{};try{sustain=await read(id,'/api/sustain')}catch{};return {...summarizeMJobs(raw,master),controlUrl:urls[id],progress:{...progressReader(),lifecycle:mjobsLifecycle(sustain)}};}
-      if(id==='babytracker') {const raw=await read(id,'/api/state');return {...summarizeBaby(raw),controlUrl:urls[id],progress:babyProgress(raw)};}
+      if(id==='mjobs') {const raw=await read(id,'/api/state'); let master=null,sustain=null,quota=null;try{master=await read(id,'/api/master')}catch{};try{sustain=await read(id,'/api/sustain')}catch{};try{quota=await read(id,'/api/quota')}catch{};return {...summarizeMJobs(raw,master),controlUrl:urls[id],safety:mjobsSafety(master,quota),progress:{...progressReader(),lifecycle:mjobsLifecycle(sustain)}};}
+      if(id==='babytracker') {const raw=await read(id,'/api/state');return {...summarizeBaby(raw),controlUrl:urls[id],safety:babySafety(raw),progress:babyProgress(raw)};}
       throw Error('Unknown fleet');
     } catch(e) {return {id,name:id==='mjobs'?'MJobs':'BabyTracker',online:false,mode:'unavailable',total:null,working:null,idle:null,pending:null,attention:null,review:'unavailable',controlUrl:urls[id],detail:String(e.message).slice(0,130)};}
   }
@@ -52,16 +57,28 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
     if(!['mjobs','babytracker'].includes(id))throw Error('Unknown fleet');
     if(id==='mjobs'){
       const [startup,quota]=await Promise.all([read(id,'/api/startup'),read(id,'/api/quota')]);
+      const reasons=[];
+      if(startup.run?.active===true)reasons.push('Protected Startup is already active');
+      if(startup.run?.reconciliationRequired===true)reasons.push('Protected Startup requires reconciliation');
+      if(['failed','uncertain'].includes(startup.run?.phase))reasons.push('Last Protected Startup is '+safeMode(startup.run.phase));
+      if(quota.fresh!==true)reasons.push('Codex quota sample is stale');
+      if(quota.policy?.blocked===true)reasons.push('Codex quota policy blocks new work');
       return {id,confirmation:'START MJobs',targetCount:int(startup.preview?.targetCount),phase:safeMode(startup.run?.phase),active:startup.run?.active===true,
         quotaFresh:quota.fresh===true,quotaRemaining:Number.isFinite(quota.policy?.remainingPercent)?quota.policy.remainingPercent:null,
-        blocked:quota.policy?.blocked===true||startup.run?.active===true||startup.run?.reconciliationRequired===true||['failed','uncertain'].includes(startup.run?.phase),
+        blocked:reasons.length>0,blockedReasons:reasons,
         note:'Protected Startup restores the saved MJobs roster and then enables Sustained dispatch. It can consume Codex allowance.'};
     }
     const state=await read(id,'/api/state');
     if(state.projectId!=='babytracker')throw Error('BabyTracker identity changed');
+    const reasons=[];
+    if(state.mode==='draining')reasons.push('Graceful stop is still draining sessions');
+    if(state.mode==='emergency')reasons.push('Emergency state is active');
+    if(state.mode==='running')reasons.push('Fleet is already running');
+    if(state.quota?.fresh!==true)reasons.push('Codex quota sample is stale');
+    if(Number(state.quota?.remainingPercent)<Number(state.quotaPolicy?.minimumAllowedPercent||15))reasons.push('Codex quota is below the start threshold');
     return {id,confirmation:'START BabyTracker',targetCount:int(state.summary?.total),phase:safeMode(state.mode),active:state.mode==='running',
       quotaFresh:state.quota?.fresh===true,quotaRemaining:Number.isFinite(state.quota?.remainingPercent)?state.quota.remainingPercent:null,
-      blocked:['draining','emergency','running'].includes(state.mode)||state.quota?.fresh!==true||Number(state.quota?.remainingPercent)<Number(state.quotaPolicy?.minimumAllowedPercent||15),
+      blocked:reasons.length>0,blockedReasons:reasons,
       note:'BabyTracker Start opens a bounded run and may provision one Codex session. No initial task is sent automatically.'};
   }
   async function control(id,action) {

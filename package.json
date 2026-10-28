@@ -2,7 +2,7 @@
   "name": "fleet-control-hub",
   "version": "0.1.0",
   "private": true,
-  "description": "One local entry point for MJobs and BabyTracker fleet status and scoped pause controls",
+  "description": "One local entry point for MJobs and BabyTracker status, progress, and guarded controls",
   "scripts": {
     "start": "node src/server.js",
     "test": "node --test"

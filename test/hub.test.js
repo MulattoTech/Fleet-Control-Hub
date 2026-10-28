@@ -10,7 +10,7 @@ const http=require('node:http');
 
 function fixture(){const calls=[];const fetcher=async(url,options={})=>{calls.push({url,options});
   if(url.endsWith('/api/state')&&url.includes(':8787'))return {ok:true,json:async()=>({projectId:'mjobs-luna',sessions:[{id:'a'}],summary:{total:1,working:0,idle:1,idlePending:0,ciAttention:0}})};
-  if(url.endsWith('/api/master'))return {ok:true,json:async()=>({dispatch:{sustainedEnabled:false,turboEnabled:false}})};
+  if(url.endsWith('/api/master'))return {ok:true,json:async()=>({dispatch:{sustainedEnabled:false,turboEnabled:false},emergency:{latched:false},drain:{enabled:true}})};
   if(url.endsWith('/api/sustain'))return {ok:true,json:async()=>({workItems:[{state:'approved'},{state:'leased'}],artifactReviews:{ready:1}})};
   if(url.endsWith('/api/startup'))return {ok:true,json:async()=>({run:{phase:'idle',active:false},preview:{targetCount:2}})};
   if(url.endsWith('/api/quota'))return {ok:true,json:async()=>({fresh:true,policy:{blocked:false,remainingPercent:46}})};
@@ -27,7 +27,18 @@ test('only fixed loopback controller origins are allowed',()=>{
 test('status reads normalize both fleets and never mutate',async()=>{
   const {calls,fetcher}=fixture();const api=createAdapters({fetcher});
   assert.equal((await api.status('mjobs')).total,1);assert.equal((await api.status('babytracker')).review,'NOT_ASSESSED');
+  assert.deepEqual((await api.status('mjobs')).safety,{dispatchEnabled:false,emergency:false,gracefulStop:true,codexQuotaFresh:true,codexRemaining:46});
   assert.ok(calls.every(x=>!x.options.method||x.options.method==='GET'));
+});
+test('Start preview names controller states that block dispatch',async()=>{
+  const {fetcher}=fixture();
+  const api=createAdapters({fetcher:async(url,options)=>{
+    if(url.endsWith('/api/startup'))return {ok:true,json:async()=>({run:{phase:'failed',active:false},preview:{targetCount:3}})};
+    if(url.includes(':4319')&&url.endsWith('/api/state'))return {ok:true,json:async()=>({projectId:'babytracker',mode:'draining',quota:{fresh:true,remainingPercent:46},summary:{total:1},sessions:[],tasks:[]})};
+    return fetcher(url,options);
+  }});
+  assert.match((await api.startPreview('mjobs')).blockedReasons.join(' '),/Last Protected Startup is failed/);
+  assert.match((await api.startPreview('babytracker')).blockedReasons.join(' '),/draining sessions/);
 });
 test('pause targets only the selected controller',async()=>{
   const {calls,fetcher}=fixture();const api=createAdapters({fetcher});
