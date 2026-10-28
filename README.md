@@ -33,7 +33,7 @@ Remote Access support is staged but **disabled by default**. It requires a dedic
 
 MJobs' emergency stop can affect Codex and AO on the machine. The hub deliberately does not collapse the two emergency operations into one button. Their behavior is different and must be made explicit before parity can be claimed.
 
-MJobs' native restore manifest can contain sessions from other projects. The current saved manifest includes BabyTracker, so the hub refuses MJobs Start. The native controller source now accepts a project and manifest revision and rechecks them before any restore; the hub uses that contract only when the live controller reports exactly one MJobs project and a valid revision. A reviewed cross-project restore must use the native controller.
+MJobs' native restore manifest can contain sessions from other projects. The current saved manifest includes BabyTracker. The controller can now derive a read-only MJobs-only preview with 31 targets without changing the original 37-target restore roster. It explicitly reports that project-scoped restore is unsupported, so the hub still refuses MJobs Start. Native Startup has a project/revision guard for future use; the restore engine must also accept a project-specific manifest before Start can be enabled. A reviewed cross-project restore must use the native controller.
 
 Graceful stop can cause idle sessions to exit and sends a wind-down instruction to active sessions. Its button asks for confirmation.
 

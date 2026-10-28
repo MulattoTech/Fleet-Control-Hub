@@ -27,7 +27,7 @@ async function controlFleet(id,name,action,button){const prompt=action==='pause'
 }catch(e){$('notice').textContent='Action outcome was not confirmed. Check the selected controller before retrying: '+e.message;button.disabled=false;}}
 async function startFleet(id,name,button){button.disabled=true;try{
   const previewResponse=await fetch('/api/start-preview?id='+encodeURIComponent(id),{cache:'no-store'});const preview=await previewResponse.json();if(!previewResponse.ok)throw Error(preview.error||'Start preview unavailable');
-  if(preview.blocked||!preview.quotaFresh){$('notice').textContent=name+' cannot start: '+(preview.blockedReasons?.join('; ')||'current controller or quota state blocks Start')+'. Inspect the selected controller before retrying.';return;}
+  if(preview.blocked||!preview.quotaFresh){$('notice').textContent=(id==='mjobs'&&Number.isInteger(preview.derivedTargetCount)?'MJobs-only saved roster: '+preview.derivedTargetCount+' targets. ':'')+name+' cannot start: '+(preview.blockedReasons?.join('; ')||'current controller or quota state blocks Start')+'. Inspect the selected controller before retrying.';return;}
   const message=preview.note+'\nSaved or current sessions: '+count(preview.targetCount)+'. Codex quota remaining: '+(preview.quotaRemaining??'unknown')+'%.\nType '+preview.confirmation+' to request Start.';
   if(prompt(message)!==preview.confirmation)return;
   if(!token){const r=await fetch('/api/session');if(!r.ok)throw Error('Action session unavailable');token=(await r.json()).token;}

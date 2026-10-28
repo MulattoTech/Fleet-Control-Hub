@@ -58,6 +58,8 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
     if(id==='mjobs'){
       const [startup,quota]=await Promise.all([read(id,'/api/startup'),read(id,'/api/quota')]);
       const reasons=[];
+      let projectPreview=null;try{projectPreview=await read(id,'/api/startup/mjobs-preview')}catch{}
+      if(projectPreview?.projectId!=='mjobs-luna'||projectPreview?.scopedStartSupported!==true)reasons.push('MJobs-only roster can be previewed, but native project-scoped restore is not yet supported');
       const primaryIds=startup.preview?.primaryIds;
       const projectIds=startup.preview?.projectIds;
       const manifestRevision=startup.preview?.manifestRevision;
@@ -70,7 +72,7 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
       if(startup.run?.phase==='uncertain')reasons.push('Last Protected Startup is uncertain');
       if(quota.fresh!==true)reasons.push('Codex quota sample is stale');
       if(quota.policy?.blocked===true)reasons.push('Codex quota policy blocks new work');
-      return {id,confirmation:'START MJobs',targetCount:int(startup.preview?.targetCount),manifestRevision:typeof manifestRevision==='string'?manifestRevision:null,phase:safeMode(startup.run?.phase),active:startup.run?.active===true,
+      return {id,confirmation:'START MJobs',targetCount:int(startup.preview?.targetCount),derivedTargetCount:int(projectPreview?.targetCount),manifestRevision:typeof manifestRevision==='string'?manifestRevision:null,phase:safeMode(startup.run?.phase),active:startup.run?.active===true,
         quotaFresh:quota.fresh===true,quotaRemaining:Number.isFinite(quota.policy?.remainingPercent)?quota.policy.remainingPercent:null,
         blocked:reasons.length>0,blockedReasons:reasons,
         note:'Protected Startup restores the saved MJobs roster and then enables Sustained dispatch. It can consume Codex allowance.'};

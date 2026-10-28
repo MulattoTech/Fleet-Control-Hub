@@ -13,6 +13,7 @@ function fixture(){const calls=[];const fetcher=async(url,options={})=>{calls.pu
   if(url.endsWith('/api/master'))return {ok:true,json:async()=>({dispatch:{sustainedEnabled:false,turboEnabled:false},emergency:{latched:false},drain:{enabled:true}})};
   if(url.endsWith('/api/sustain'))return {ok:true,json:async()=>({workItems:[{state:'approved'},{state:'leased'}],artifactReviews:{ready:1}})};
   if(url.endsWith('/api/startup'))return {ok:true,json:async()=>({run:{phase:'idle',active:false},preview:{targetCount:2,projectIds:['mjobs-luna'],primaryIds:['mjobs-luna-40'],manifestRevision:'a'.repeat(64)}})};
+  if(url.endsWith('/api/startup/mjobs-preview'))return {ok:true,json:async()=>({projectId:'mjobs-luna',targetCount:2,scopedStartSupported:true})};
   if(url.endsWith('/api/quota'))return {ok:true,json:async()=>({fresh:true,policy:{blocked:false,remainingPercent:46}})};
   if(url.endsWith('/api/state')&&url.includes(':4319'))return {ok:true,json:async()=>({projectId:'babytracker',sessions:[{id:'b'}],runtime:{online:true},mode:'paused',tasks:[],summary:{total:1,working:0,available:1,blocked:0},acceptance:{status:'NOT_ASSESSED'},quota:{fresh:true,remainingPercent:46},quotaPolicy:{minimumAllowedPercent:15}})};
   if(url.endsWith('/api/session'))return {ok:true,json:async()=>({token:'x'.repeat(64)})};
@@ -49,6 +50,17 @@ test('MJobs scoped Start never restores a cross-project roster',async()=>{
   assert.equal(preview.blocked,true);
   assert.match(preview.blockedReasons.join(' '),/not proven MJobs-only/);
   await assert.rejects(api.start('mjobs','START MJobs','stable-123'));
+  assert.equal(calls.filter(x=>x.options.method==='POST').length,0);
+});
+test('MJobs-only preview is visible but cannot start while native scoped restore is unsupported',async()=>{
+  const {calls,fetcher}=fixture();
+  const api=createAdapters({fetcher:async(url,options)=>url.endsWith('/api/startup/mjobs-preview')
+    ?{ok:true,json:async()=>({projectId:'mjobs-luna',targetCount:31,scopedStartSupported:false})}
+    :fetcher(url,options)});
+  const preview=await api.startPreview('mjobs');
+  assert.equal(preview.derivedTargetCount,31);
+  assert.equal(preview.blocked,true);
+  await assert.rejects(api.start('mjobs','START MJobs','stable-123','a'.repeat(64)));
   assert.equal(calls.filter(x=>x.options.method==='POST').length,0);
 });
 test('pause targets only the selected controller',async()=>{

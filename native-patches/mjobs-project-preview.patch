@@ -1,0 +1,81 @@
+diff --git a/startup-adapter.js b/startup-adapter.js
+index 02d9b44..6d0be0c 100644
+--- a/startup-adapter.js
++++ b/startup-adapter.js
+@@ -56,14 +56,16 @@ class StartupAdapter {
+   }
+   return s;
+  }
+- manifest(){
+-  const saved=this.master.restore.getSnapshot();
+-  if(!Array.isArray(saved.sessions)||!saved.sessions.length)throw Error('No preserved fleet manifest is available');
++ manifest(projectId=null){
++  const original=this.master.restore.getSnapshot();
++  if(!Array.isArray(original.sessions)||!original.sessions.length)throw Error('No preserved fleet manifest is available');
+   const ids=new Set();
+-  for(const s of saved.sessions){
++  for(const s of original.sessions){
+    if(typeof s.id!=='string'||!/^[a-z0-9-]{3,90}$/.test(s.id)||typeof s.projectId!=='string'||!/^[a-z0-9-]{3,90}$/.test(s.projectId))throw Error('Saved session identity is invalid');
+    if(ids.has(s.id))throw Error('Duplicate session identity in the saved manifest');ids.add(s.id);
+   }
++  if(projectId!==null&&projectId!=='mjobs-luna')throw Error('Only the MJobs project preview is supported');
++  const saved=projectId===null?original:{...original,sessions:original.sessions.filter(s=>s.projectId===projectId).map(s=>structuredClone(s))};
+   const targets=this.master.restore.targets(saved);
+   if(!targets.length)throw Error('No supported preserved sessions can be restored');
+   for(const project of new Set(targets.map(x=>x.projectId))){
+@@ -75,6 +77,14 @@ class StartupAdapter {
+   const revision=createHash('sha256').update(JSON.stringify(identities)).digest('hex');
+   return {saved,targets,revision};
+  }
++ projectPreview(projectId){
++  const global=this.manifest();
++  const scoped=this.manifest(projectId);
++  return {projectId,sourceManifestRevision:global.revision,manifestRevision:scoped.revision,
++   preservedCount:scoped.saved.sessions.length,targetCount:scoped.targets.length,
++   primaryIds:scoped.targets.filter(s=>s.kind==='orchestrator').map(s=>s.id),
++   scopedStartSupported:false};
++ }
+  assertProjectScope(ctx,manifest){
+   if(!ctx?.expectedProjectId)return;
+   if(ctx.expectedProjectId!=='mjobs-luna'||manifest.revision!==ctx.expectedManifestRevision||
+diff --git a/server.js b/server.js
+index 201022f..6771978 100644
+--- a/server.js
++++ b/server.js
+@@ -441,6 +441,9 @@ async function main(req,res){
+  if(!['127.0.0.1:'+port,'localhost:'+port].includes(req.headers.host||''))return json(res,403,{error:'Local host only'});
+  if(master?.locked()&&req.method==='POST'&&!['/api/master/emergency','/api/master/rearm','/api/master/restore','/api/master/pause','/api/agent-plan','/api/startup','/api/startup/cancel','/api/startup/reconcile'].includes(req.url))return json(res,423,{error:'Emergency shutdown lockout is active; use protected Startup after the allowance reset'});
+  if(master?.drainState.enabled&&req.method==='POST'&&req.url!=='/api/agent-plan'&&!req.url.startsWith('/api/master/')&&!req.url.startsWith('/api/startup'))return json(res,423,{error:'Graceful shutdown is draining sessions. New work is disabled'});
++ if(req.method==='GET'&&req.url==='/api/startup/mjobs-preview'){
++  try{return json(res,200,startupAdapter.projectPreview('mjobs-luna'));}catch(e){return json(res,409,{error:String(e.message).slice(0,200)});}
++ }
+  if(req.method==='GET'&&req.url==='/api/startup'){
+   const readiness=await startupAdapter.readiness();
+   let preview;try{const {targets,revision}=startupAdapter.manifest();preview={targetCount:targets.length,manifestRevision:revision,projectIds:[...new Set(targets.map(s=>s.projectId))],primaryIds:targets.filter(s=>s.kind==='orchestrator').map(s=>s.id)};}catch(e){preview={targetCount:0,reason:e.message};}
+diff --git a/test-startup-adapter.js b/test-startup-adapter.js
+index 44a5fe3..b5b6cce 100644
+--- a/test-startup-adapter.js
++++ b/test-startup-adapter.js
+@@ -138,6 +138,22 @@ test('scoped Startup rejects a cross-project or changed manifest before restore
+   assert.equal(f.state.effects.some(x=>x.op==='restore.start'),false);
+ });
+ 
++test('MJobs project preview derives an isolated roster without changing BabyTracker entries',t=>{
++  const f=fixture(t);
++  for(const session of f.state.saved.sessions)session.projectId='mjobs-luna';
++  f.state.saved.sessions.push({id:'babytracker-1',projectId:'babytracker',kind:'orchestrator',harness:'codex',activity:'idle'});
++  const before=clone(f.state.saved),adapter=f.make();
++  const preview=adapter.projectPreview('mjobs-luna');
++  assert.equal(preview.preservedCount,3);
++  assert.equal(preview.targetCount,3);
++  assert.deepEqual(preview.primaryIds,['mjobs-primary']);
++  assert.equal(preview.scopedStartSupported,false);
++  assert.match(preview.manifestRevision,/^[a-f0-9]{64}$/);
++  assert.notEqual(preview.manifestRevision,preview.sourceManifestRevision);
++  assert.deepEqual(f.state.saved,before);
++  assert.deepEqual(f.state.effects,[]);
++});
++
+ test('real Startup controller preserves the reviewed branch revision through the real adapter restore start',async t=>{
+   const f=fixture(t);f.protect();const approval='a'.repeat(64);
+   f.master.restore.branchApproval=()=>({revision:approval});
