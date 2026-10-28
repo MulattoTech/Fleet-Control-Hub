@@ -74,6 +74,27 @@ test('limits HTTP write requires same origin and action token',async()=>{
     assert.deepEqual(calls[0],['babytracker','run',{concurrency:1},{concurrency:1},'SAVE babytracker run']);
   }finally{await new Promise(resolve=>server.close(resolve));}
 });
+
+test('bounded MJobs web Start, Pause and Stop flow is project scoped in an isolated controller fixture',async()=>{
+  const operations=[];let mode='paused';let active=false;
+  const adapters={
+    startPreview:async id=>{assert.equal(id,'mjobs');return {id,targetCount:1,confirmation:'START MJobs',manifestRevision:'a'.repeat(64),blocked:false,quotaFresh:true};},
+    start:async(id,confirmation,requestId,revision)=>{assert.equal(id,'mjobs');assert.equal(confirmation,'START MJobs');assert.equal(requestId,'fixture-start-1');assert.equal(revision,'a'.repeat(64));if(active)throw Error('Already active');active=true;mode='running';operations.push('mjobs:start');return {ok:true,note:'fixture start'};},
+    control:async(id,action)=>{assert.equal(id,'mjobs');operations.push('mjobs:'+action);if(action==='pause')mode='paused';if(action==='graceful-stop'){active=false;mode='drained';}return {ok:true,note:'fixture '+action};},
+    status:async id=>({id,mode,working:active?1:0,total:id==='mjobs'?1:0})
+  };
+  const server=makeServer({port:4326,adapters});await new Promise(resolve=>server.listen(4326,'127.0.0.1',resolve));
+  try{const base='http://127.0.0.1:4326',token=(await (await fetch(base+'/api/session')).json()).token;
+    const post=(path,body)=>fetch(base+path,{method:'POST',headers:{origin:base,'content-type':'application/json','x-fleet-hub':token},body:JSON.stringify(body)});
+    const preview=await (await fetch(base+'/api/start-preview?id=mjobs')).json();assert.equal(preview.targetCount,1);
+    assert.equal((await post('/api/start',{id:'mjobs',confirmation:preview.confirmation,requestId:'fixture-start-1',manifestRevision:preview.manifestRevision})).status,202);
+    assert.equal((await (await fetch(base+'/api/status')).json()).fleets[0].working,1);
+    assert.equal((await post('/api/control',{id:'mjobs',action:'pause'})).status,200);
+    assert.equal((await post('/api/control',{id:'mjobs',action:'graceful-stop'})).status,200);
+    assert.equal((await (await fetch(base+'/api/status')).json()).fleets[0].working,0);
+    assert.deepEqual(operations,['mjobs:start','mjobs:pause','mjobs:graceful-stop']);
+  }finally{await new Promise(resolve=>server.close(resolve));}
+});
 test('status reads normalize both fleets and never mutate',async()=>{
   const {calls,fetcher}=fixture();const api=createAdapters({fetcher});
   assert.equal((await api.status('mjobs')).total,1);assert.equal((await api.status('babytracker')).review,'NOT_ASSESSED');
