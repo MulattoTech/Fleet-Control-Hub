@@ -37,8 +37,8 @@ function makeServer({adapters=createAdapters(),port=Number(process.env.FLEET_HUB
       let bytes=0,parts=[];for await(const part of req){bytes+=part.length;if(bytes>1024)return json(413,{error:'Request too large'});parts.push(part);}
       const input=JSON.parse(Buffer.concat(parts).toString('utf8'));
       if(url.pathname==='/api/start'){
-        if(!input||!['mjobs','babytracker'].includes(input.id)||typeof input.confirmation!=='string'||Object.keys(input).some(k=>!['id','confirmation','requestId'].includes(k)))return json(400,{error:'Invalid start request'});
-        return json(202,await adapters.start(input.id,input.confirmation,input.requestId));
+        if(!input||!['mjobs','babytracker'].includes(input.id)||typeof input.confirmation!=='string'||Object.keys(input).some(k=>!['id','confirmation'].includes(k)))return json(400,{error:'Invalid start request'});
+        return json(202,await adapters.start(input.id,input.confirmation));
       }
       const action=url.pathname==='/api/pause'?'pause':input?.action;
       if(!input||!['mjobs','babytracker'].includes(input.id)||!['pause','graceful-stop'].includes(action)||Object.keys(input).some(k=>!['id','action'].includes(k)))return json(400,{error:'Choose one known fleet and control action'});

@@ -12,7 +12,7 @@ function fixture(){const calls=[];const fetcher=async(url,options={})=>{calls.pu
   if(url.endsWith('/api/state')&&url.includes(':8787'))return {ok:true,json:async()=>({projectId:'mjobs-luna',sessions:[{id:'a'}],summary:{total:1,working:0,idle:1,idlePending:0,ciAttention:0}})};
   if(url.endsWith('/api/master'))return {ok:true,json:async()=>({dispatch:{sustainedEnabled:false,turboEnabled:false},emergency:{latched:false},drain:{enabled:true}})};
   if(url.endsWith('/api/sustain'))return {ok:true,json:async()=>({workItems:[{state:'approved'},{state:'leased'}],artifactReviews:{ready:1}})};
-  if(url.endsWith('/api/startup'))return {ok:true,json:async()=>({run:{phase:'idle',active:false},preview:{targetCount:2}})};
+  if(url.endsWith('/api/startup'))return {ok:true,json:async()=>({run:{phase:'idle',active:false},preview:{targetCount:2,primaryIds:['mjobs-luna-40']}})};
   if(url.endsWith('/api/quota'))return {ok:true,json:async()=>({fresh:true,policy:{blocked:false,remainingPercent:46}})};
   if(url.endsWith('/api/state')&&url.includes(':4319'))return {ok:true,json:async()=>({projectId:'babytracker',sessions:[{id:'b'}],runtime:{online:true},mode:'paused',tasks:[],summary:{total:1,working:0,available:1,blocked:0},acceptance:{status:'NOT_ASSESSED'},quota:{fresh:true,remainingPercent:46},quotaPolicy:{minimumAllowedPercent:15}})};
   if(url.endsWith('/api/session'))return {ok:true,json:async()=>({token:'x'.repeat(64)})};
@@ -33,12 +33,23 @@ test('status reads normalize both fleets and never mutate',async()=>{
 test('Start preview names controller states that block dispatch',async()=>{
   const {fetcher}=fixture();
   const api=createAdapters({fetcher:async(url,options)=>{
-    if(url.endsWith('/api/startup'))return {ok:true,json:async()=>({run:{phase:'failed',active:false},preview:{targetCount:3}})};
+    if(url.endsWith('/api/startup'))return {ok:true,json:async()=>({run:{phase:'uncertain',active:false},preview:{targetCount:3,primaryIds:['mjobs-luna-40']}})};
     if(url.includes(':4319')&&url.endsWith('/api/state'))return {ok:true,json:async()=>({projectId:'babytracker',mode:'draining',quota:{fresh:true,remainingPercent:46},summary:{total:1},sessions:[],tasks:[]})};
     return fetcher(url,options);
   }});
-  assert.match((await api.startPreview('mjobs')).blockedReasons.join(' '),/Last Protected Startup is failed/);
+  assert.match((await api.startPreview('mjobs')).blockedReasons.join(' '),/Last Protected Startup is uncertain/);
   assert.match((await api.startPreview('babytracker')).blockedReasons.join(' '),/draining sessions/);
+});
+test('MJobs scoped Start never restores a cross-project roster',async()=>{
+  const {calls,fetcher}=fixture();
+  const api=createAdapters({fetcher:async(url,options)=>url.endsWith('/api/startup')
+    ?{ok:true,json:async()=>({run:{phase:'failed',active:false,reconciliationRequired:false},preview:{targetCount:37,primaryIds:['babytracker-1','mjobs-luna-40']}})}
+    :fetcher(url,options)});
+  const preview=await api.startPreview('mjobs');
+  assert.equal(preview.blocked,true);
+  assert.match(preview.blockedReasons.join(' '),/not proven MJobs-only/);
+  await assert.rejects(api.start('mjobs','START MJobs','stable-123'));
+  assert.equal(calls.filter(x=>x.options.method==='POST').length,0);
 });
 test('pause targets only the selected controller',async()=>{
   const {calls,fetcher}=fixture();const api=createAdapters({fetcher});
@@ -54,14 +65,15 @@ test('pause targets only the selected controller',async()=>{
   await api.control('babytracker','graceful-stop');assert.equal(JSON.parse(calls.at(-1).options.body).action,'drain');
   await assert.rejects(api.control('babytracker','start'));
 });
-test('start requires fresh preview, exact phrase and stable MJobs request ID',async()=>{
+test('Start keeps MJobs machine-wide restore unavailable and guards BabyTracker',async()=>{
   const {calls,fetcher}=fixture();const api=createAdapters({fetcher,progressReader:()=>({available:false})});
   assert.equal((await api.startPreview('mjobs')).targetCount,2);
   await assert.rejects(api.start('mjobs','wrong','stable-123'));
   assert.equal(calls.filter(x=>x.options.method==='POST').length,0);
-  await api.start('mjobs','START MJobs','stable-123');
-  assert.equal(calls.at(-1).url,'http://127.0.0.1:8787/api/startup');
-  assert.deepEqual(JSON.parse(calls.at(-1).options.body),{confirm:'STARTUP',requestId:'stable-123',openUi:false,startWorkAfter:true});
+  await assert.rejects(api.start('mjobs','START MJobs','stable-123'),/project scope/);
+  assert.equal(calls.filter(x=>x.options.method==='POST').length,0);
+  await assert.rejects(api.start('babytracker','wrong'));
+  assert.equal(calls.filter(x=>x.options.method==='POST').length,0);
   await api.start('babytracker','START BabyTracker');
   assert.equal(JSON.parse(calls.at(-1).options.body).action,'start');
 });

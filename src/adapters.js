@@ -58,9 +58,13 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
     if(id==='mjobs'){
       const [startup,quota]=await Promise.all([read(id,'/api/startup'),read(id,'/api/quota')]);
       const reasons=[];
+      reasons.push('Native MJobs Startup is machine-wide and cannot atomically restrict restore to this project');
+      const primaryIds=startup.preview?.primaryIds;
+      if(!Array.isArray(primaryIds)||primaryIds.length!==1||typeof primaryIds[0]!=='string'||!primaryIds[0].startsWith('mjobs-luna-'))reasons.push('Saved restore roster is not proven MJobs-only; use native Startup for reviewed cross-project restore');
+      if(!Number.isSafeInteger(startup.preview?.targetCount)||startup.preview.targetCount<1)reasons.push('No valid saved roster is available');
       if(startup.run?.active===true)reasons.push('Protected Startup is already active');
       if(startup.run?.reconciliationRequired===true)reasons.push('Protected Startup requires reconciliation');
-      if(['failed','uncertain'].includes(startup.run?.phase))reasons.push('Last Protected Startup is '+safeMode(startup.run.phase));
+      if(startup.run?.phase==='uncertain')reasons.push('Last Protected Startup is uncertain');
       if(quota.fresh!==true)reasons.push('Codex quota sample is stale');
       if(quota.policy?.blocked===true)reasons.push('Codex quota policy blocks new work');
       return {id,confirmation:'START MJobs',targetCount:int(startup.preview?.targetCount),phase:safeMode(startup.run?.phase),active:startup.run?.active===true,
@@ -71,11 +75,12 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
     const state=await read(id,'/api/state');
     if(state.projectId!=='babytracker')throw Error('BabyTracker identity changed');
     const reasons=[];
+    if(!['paused','running','draining','emergency'].includes(state.mode))reasons.push('Controller mode is not recognized as safe to start');
     if(state.mode==='draining')reasons.push('Graceful stop is still draining sessions');
     if(state.mode==='emergency')reasons.push('Emergency state is active');
     if(state.mode==='running')reasons.push('Fleet is already running');
     if(state.quota?.fresh!==true)reasons.push('Codex quota sample is stale');
-    if(Number(state.quota?.remainingPercent)<Number(state.quotaPolicy?.minimumAllowedPercent||15))reasons.push('Codex quota is below the start threshold');
+    if(!Number.isFinite(state.quota?.remainingPercent)||state.quota.remainingPercent<=Number(state.quotaPolicy?.minimumAllowedPercent||15))reasons.push('Codex quota is below or unavailable at the start threshold');
     return {id,confirmation:'START BabyTracker',targetCount:int(state.summary?.total),phase:safeMode(state.mode),active:state.mode==='running',
       quotaFresh:state.quota?.fresh===true,quotaRemaining:Number.isFinite(state.quota?.remainingPercent)?state.quota.remainingPercent:null,
       blocked:reasons.length>0,blockedReasons:reasons,
@@ -94,21 +99,16 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
     if(!response.ok || result?.error || result?.ok===false) throw Error(String(result?.error||result?.note||'Controller refused action').slice(0,200));
     return {ok:true,id,note:(action==='pause'?'Pause':'Graceful stop')+' acknowledged by '+id+' controller. Check controller status for completion.'};
   }
-  async function start(id,confirmation,requestId){
+  async function start(id,confirmation){
+    if(id==='mjobs')throw Error('MJobs scoped Start is unavailable until native Startup enforces project scope');
     const preview=await startPreview(id);
     if(confirmation!==preview.confirmation)throw Error('Exact start confirmation required');
     if(preview.blocked||!preview.quotaFresh)throw Error('Current controller or quota state blocks start');
     const origin=urls[id];const headers={'content-type':'application/json','origin':origin,'host':new URL(origin).host};
-    let route,body;
-    if(id==='mjobs'){
-      if(!Number.isInteger(preview.targetCount)||preview.targetCount<1||typeof requestId!=='string'||!/^[A-Za-z0-9._:-]{8,128}$/.test(requestId))throw Error('Valid roster and stable request ID required');
-      route='/api/startup';body={confirm:'STARTUP',requestId,openUi:false,startWorkAfter:true};headers['x-ao-fleet']='1';
-    }else{
-      route='/api/action';body={action:'start'};const session=await read(id,'/api/session');if(typeof session.token!=='string'||session.token.length<32)throw Error('BabyTracker action token unavailable');headers['x-babytracker-fleet']=session.token;
-    }
-    const response=await fetcher(origin+route,{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(10000)});
+    const session=await read(id,'/api/session');if(typeof session.token!=='string'||session.token.length<32)throw Error('BabyTracker action token unavailable');headers['x-babytracker-fleet']=session.token;
+    const response=await fetcher(origin+'/api/action',{method:'POST',headers,body:JSON.stringify({action:'start'}),signal:AbortSignal.timeout(10000)});
     const result=await response.json();if(!response.ok||result?.error||result?.ok===false)throw Error(String(result?.error||result?.note||'Controller refused start').slice(0,200));
-    return {ok:true,id,note:id==='mjobs'?'Protected Startup requested. Follow its stages and verify dispatch before treating the fleet as running.':'BabyTracker bounded Start acknowledged. Refresh status to verify.'};
+    return {ok:true,id,note:'BabyTracker bounded Start acknowledged. Refresh status to verify.'};
   }
   return {status,startPreview,start,control,pause:id=>control(id,'pause'),urls};
 }

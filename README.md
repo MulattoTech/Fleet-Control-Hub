@@ -1,6 +1,6 @@
 # Fleet Control Hub
 
-A single local entry point for the **MJobs** and **BabyTracker** fleet controllers. The hub displays both fleets' live session counts, work state and progress evidence. It offers guarded **Start fleet**, **Pause dispatch** and **Graceful stop** controls for each fleet and links to their existing advanced controls when opened locally.
+A single local entry point for the **MJobs** and **BabyTracker** fleet controllers. The hub displays both fleets' live session counts, work state and progress evidence. It offers **Pause dispatch** and **Graceful stop** for each fleet, guarded **Start fleet** for BabyTracker, and links to existing advanced controls when opened locally.
 
 This is a clean public source repository. It contains no runtime state, logs, tokens, baby records, worktrees or backups. The controllers continue to own their state and authorization. The hub does not start workers on launch or status refresh. Its MJobs progress adapter reads only counts from local review and draft ledgers; it never returns task content to the browser.
 
@@ -26,12 +26,14 @@ Remote Access support is staged but **disabled by default**. It requires a dedic
 | Review/acceptance evidence | MJobs review queue | Explicit `NOT_ASSESSED` until evidence | Shows reported state |
 | Pause new dispatch | Native | Native | Scoped button |
 | Graceful stop | Native drain | Native drain | Scoped button |
-| Start fleet | Protected Startup with stable request ID | Bounded Start | Fresh preview and exact confirmation |
+| Start fleet | Protected Startup uses a machine-wide saved restore manifest | Bounded Start | MJobs unavailable pending atomic project scope; BabyTracker fresh preview and exact confirmation |
 | Start/restore/dispatch | Native | Native | Open full controls |
 | Emergency stop | Machine wide Codex/AO control | Project scoped AO sessions | Open full controls |
 | Runtime state and backups | Local MJobs state | Separate BabyTracker state | None |
 
 MJobs' emergency stop can affect Codex and AO on the machine. The hub deliberately does not collapse the two emergency operations into one button. Their behavior is different and must be made explicit before parity can be claimed.
+
+MJobs' native restore manifest can contain sessions from other projects. The current saved manifest includes BabyTracker. The hub refuses MJobs Start because native Startup cannot atomically enforce a MJobs-only restore, even if a preview appears clean. A reviewed cross-project restore must use the native controller. An atomic project-scoped native Startup contract is required before MJobs Start can be exposed through the hub.
 
 Graceful stop can cause idle sessions to exit and sends a wind-down instruction to active sessions. Its button asks for confirmation.
 

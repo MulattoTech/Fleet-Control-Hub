@@ -2,7 +2,7 @@
 
 | Capability | MJobs | BabyTracker | Current hub |
 | --- | --- | --- | --- |
-| Project binding | `mjobs-luna` | `babytracker` verified against application checkout | Read only adapters |
+| Project binding | MJobs dashboard is `mjobs-luna`, but native saved restore manifest can span projects | `babytracker` verified against application checkout | Fixed adapters; MJobs Start disabled until native atomic project scope exists |
 | Automatic dispatch | Sustain and Turbo modes | Bounded Turbo and explicit queue | Never starts dispatch |
 | Work eligibility | MJobs productive catalog and review selection | Durable task queue and dependency checks | No scheduling |
 | Review lifecycle | MJobs independent documentation review loop | Acceptance remains unassessed without imported evidence | Displays current report |
@@ -17,4 +17,4 @@ The hub is a first shared interface, not a completed merge of both controllers. 
 
 The MJobs root-fix controller has approval, assessment and completion endpoints. The hub reads its lifecycle counts but does not yet expose those actions. Ready drafts and review results remain unassessed evidence until the controller records acceptance. The BabyTracker acceptance field remains `NOT_ASSESSED` until its own evidence is evaluated.
 
-At this check, MJobs dispatch was paused and its prior Protected Startup was `failed` from `QUOTA_LOW` at 03:10 UTC, even though a later quota sample was fresh at 45%. The hub blocks a new Start while that failed phase remains, pending native controller reconciliation. BabyTracker was `draining` with one session still reported working; the hub blocks Start until its drain completes. These states are observed controller facts, not parity defects in the hub. The current hub intentionally does not terminate either controller's sessions to clear them.
+At this check, MJobs dispatch was paused and its prior Protected Startup was `failed` from `QUOTA_LOW` at 03:10 UTC, even though a later quota sample was fresh at 45%. Native Startup marks this failure as not needing reconciliation: it occurred before dispatch hold, restore, or any pending action. The current MJobs saved restore manifest has 37 targets and includes `babytracker-1` as a primary. The hub blocks MJobs Start because native Startup cannot enforce project scope atomically; a preview check alone would have a race. Native Startup remains the reviewed path for a cross-project restore. BabyTracker was `draining` with one session still reported working; the hub blocks Start until its drain completes. The hub does not terminate either controller's sessions to clear these states.
