@@ -2,7 +2,7 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const {createAdapters,loopbackEndpoint}=require('../src/adapters');
-const {readMJobsProgress,babyProgress,mjobsLifecycle,mjobsPipeline}=require('../src/progress');
+const {readMJobsProgress,babyProgress,mjobsLifecycle,mjobsPipeline,readMJobsReviewCandidates}=require('../src/progress');
 const {makeServer}=require('../src/server');
 const {configuredRemote}=require('../src/remote-auth');
 const fs=require('node:fs');const os=require('node:os');const path=require('node:path');
@@ -142,6 +142,41 @@ test('review receipts are summarized without evidence text or unsupported decisi
     assert.equal(JSON.stringify({mjobs,baby}).includes('private'),false);
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
+test('review candidates expose bounded IDs and outcomes without evidence or task text',()=>{
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'fleet-candidates-'));
+  try{
+    const key='artifact-review:v2:'+'a'.repeat(40)+':1';
+    fs.writeFileSync(path.join(dir,'artifact-review-state.json'),JSON.stringify({version:1,tasks:{[key]:{state:'review_ready',acceptance:'unassessed',outcome:'useful',sourcePath:'private/path',findings:'private findings'},other:{state:'review_ready',acceptance:'unassessed'}}}));
+    const candidates=readMJobsReviewCandidates({root:dir});
+    assert.deepEqual(candidates,{supported:true,total:1,offset:0,candidates:[{id:key,outcome:'useful'}]});
+    assert.equal(JSON.stringify(candidates).includes('private'),false);
+    assert.equal(readMJobsReviewCandidates({root:dir,offset:1}).candidates.length,0);
+  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('one assessment interface binds each controller and refuses BabyTracker before native capability',async()=>{
+  const {calls,fetcher}=fixture(),key='artifact-review:v2:'+'a'.repeat(40)+':1';
+  const reviewReader=({offset=0,limit=50}={})=>({supported:true,total:1,offset,candidates:[{id:key,outcome:'useful'}].slice(offset,offset+limit)});
+  const api=createAdapters({fetcher,reviewReader});
+  assert.equal((await api.reviewCandidates('mjobs')).candidates[0].id,key);
+  await assert.rejects(api.assessReview('mjobs',key,'accepted','wrong',true),/confirmation/);
+  await assert.rejects(api.assessReview('mjobs',key,'accepted','ASSESS MJobs',false),/confirmation/);
+  await assert.rejects(api.assessReview('mjobs','unknown','accepted','ASSESS MJobs',true),/unavailable/);
+  await assert.rejects(api.assessReview('babytracker','task-1','accepted','ASSESS BabyTracker',true,48,101),/unavailable/);
+  assert.equal(calls.filter(x=>x.options.method==='POST').length,0);
+  await api.assessReview('mjobs',key,'accepted','ASSESS MJobs',true);
+  assert.equal(calls.at(-1).url,'http://127.0.0.1:8787/api/sustain/assess-review');
+  assert.deepEqual(JSON.parse(calls.at(-1).options.body),{key,decision:'accepted'});
+  assert.equal(calls.at(-1).options.headers['x-ao-fleet'],'1');
+  const supported=createAdapters({reviewReader,fetcher:async(url,options)=>{
+    if(url.includes(':4319')&&url.endsWith('/api/state'))return {ok:true,json:async()=>({projectId:'babytracker',capabilities:{reviewAssessment:true},tasks:[{id:'a'.repeat(8)+'-aaaa-aaaa-aaaa-'+'a'.repeat(12),issue:47,status:'submitted',title:'private'}]})};
+    return fetcher(url,options);
+  }});
+  const id='a'.repeat(8)+'-aaaa-aaaa-aaaa-'+'a'.repeat(12);
+  assert.equal(JSON.stringify(await supported.reviewCandidates('babytracker')).includes('private'),false);
+  await supported.assessReview('babytracker',id,'revision_requested','ASSESS BabyTracker',true,48,101);
+  assert.equal(calls.at(-1).url,'http://127.0.0.1:4319/api/action');
+  assert.deepEqual(JSON.parse(calls.at(-1).options.body),{action:'assess-task',taskId:id,decision:'revision_requested',prNumber:48,reviewId:101,confirm:'ASSESS BabyTracker'});
+});
 test('local hub rejects cross-origin actions and needs an action token',async()=>{
   const {fetcher}=fixture();const server=makeServer({adapters:createAdapters({fetcher}),port:4322});
   await new Promise(resolve=>server.listen(4322,'127.0.0.1',resolve));
@@ -154,6 +189,21 @@ test('local hub rejects cross-origin actions and needs an action token',async()=
     const bad=await fetch(base+'/api/control',{method:'POST',headers:{origin:base,'content-type':'application/json','x-fleet-hub':token},body:'{"id":"mjobs","action":"start"}'});assert.equal(bad.status,400);
   }finally{await new Promise(resolve=>server.close(resolve));}
 });
+test('review HTTP route requires action token and exact assessment confirmation',async()=>{
+  const {calls,fetcher}=fixture(),key='artifact-review:v2:'+'a'.repeat(40)+':1';
+  const adapters=createAdapters({fetcher,reviewReader:({offset=0}={})=>({supported:true,total:1,offset,candidates:[{id:key,outcome:'useful'}]})});
+  const server=makeServer({adapters,port:4324});await new Promise(resolve=>server.listen(4324,'127.0.0.1',resolve));
+  try{const base='http://127.0.0.1:4324',candidate=await (await fetch(base+'/api/review-candidates?id=mjobs')).json();
+    assert.equal(candidate.candidates[0].id,key);
+    const body=JSON.stringify({id:'mjobs',candidateId:key,decision:'accepted',confirmation:'ASSESS MJobs',evidenceReviewed:true});
+    const denied=await fetch(base+'/api/review-assessment',{method:'POST',headers:{origin:base,'content-type':'application/json'},body});assert.equal(denied.status,403);
+    const token=(await (await fetch(base+'/api/session')).json()).token;
+    const wrong=await fetch(base+'/api/review-assessment',{method:'POST',headers:{origin:base,'content-type':'application/json','x-fleet-hub':token},body:JSON.stringify({id:'mjobs',candidateId:key,decision:'accepted',confirmation:'wrong',evidenceReviewed:true})});assert.equal(wrong.status,502);
+    assert.equal(calls.filter(x=>x.options.method==='POST').length,0);
+    const accepted=await fetch(base+'/api/review-assessment',{method:'POST',headers:{origin:base,'content-type':'application/json','x-fleet-hub':token},body});assert.equal(accepted.status,200);
+    assert.equal(calls.filter(x=>x.options.method==='POST').length,1);
+  }finally{await new Promise(resolve=>server.close(resolve));}
+});
 test('remote origin requires complete Access configuration and verified owner assertion',async()=>{
   assert.throws(()=>configuredRemote({FLEET_HUB_REMOTE_HOST:'fleet.m-techlabs.com'}));
   const remote={hostname:'fleet.m-techlabs.com',issuer:'https://example.cloudflareaccess.com',audience:'a'.repeat(64),ownerEmail:'owner@example.test'};
@@ -164,5 +214,8 @@ test('remote origin requires complete Access configuration and verified owner as
     assert.equal(await request({host:'fleet.m-techlabs.com'}),403);
     assert.equal(await request({host:'fleet.m-techlabs.com','cf-access-jwt-assertion':'wrong'}),403);
     assert.equal(await request({host:'fleet.m-techlabs.com','cf-access-jwt-assertion':'verified'}),200);
+    const token=(await (await fetch('http://127.0.0.1:4323/api/session')).json()).token;
+    const status=await new Promise((resolve,reject)=>{const req=http.request({hostname:'127.0.0.1',port:4323,path:'/api/review-assessment',method:'POST',headers:{host:'fleet.m-techlabs.com',origin:'https://fleet.m-techlabs.com','cf-access-jwt-assertion':'verified','x-fleet-hub':token,'content-type':'application/json'}},res=>{res.resume();res.on('end',()=>resolve(res.statusCode));});req.on('error',reject);req.end(JSON.stringify({id:'mjobs',candidateId:'x',decision:'accepted',confirmation:'ASSESS MJobs',evidenceReviewed:true}));});
+    assert.equal(status,403);
   }finally{await new Promise(resolve=>server.close(resolve));}
 });

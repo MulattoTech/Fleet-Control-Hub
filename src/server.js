@@ -26,10 +26,11 @@ function makeServer({adapters=createAdapters(),port=Number(process.env.FLEET_HUB
         if(url.pathname==='/api/session')return json(200,{token});
         if(url.pathname==='/api/status')return json(200,{observedAt:new Date().toISOString(),fleets:await Promise.all(['mjobs','babytracker'].map(adapters.status))});
         if(url.pathname==='/api/start-preview'&&['mjobs','babytracker'].includes(url.searchParams.get('id')))return json(200,await adapters.startPreview(url.searchParams.get('id')));
+        if(url.pathname==='/api/review-candidates'&&['mjobs','babytracker'].includes(url.searchParams.get('id')))return json(200,await adapters.reviewCandidates(url.searchParams.get('id'),Number(url.searchParams.get('offset')||0)));
         const file=files[url.pathname];if(!file)return json(404,{error:'Not found'});
         res.writeHead(200,{'Content-Type':file[1]});return res.end(fs.readFileSync(path.join(root,file[0])));
       }
-      if(req.method!=='POST'||!['/api/pause','/api/control','/api/start'].includes(url.pathname))return json(405,{error:'Method not allowed'});
+      if(req.method!=='POST'||!['/api/pause','/api/control','/api/start','/api/review-assessment'].includes(url.pathname))return json(405,{error:'Method not allowed'});
       if(![...allowed.map(x=>'http://'+x),...(remoteRequest?['https://'+remote.hostname]:[])].includes(req.headers.origin))return json(403,{error:'Same origin required'});
       const candidate=String(req.headers['x-fleet-hub']||'');
       if(candidate.length!==token.length||!timingSafeEqual(Buffer.from(candidate),Buffer.from(token)))return json(403,{error:'Invalid action token'});
@@ -39,6 +40,11 @@ function makeServer({adapters=createAdapters(),port=Number(process.env.FLEET_HUB
       if(url.pathname==='/api/start'){
         if(!input||!['mjobs','babytracker'].includes(input.id)||typeof input.confirmation!=='string'||Object.keys(input).some(k=>!['id','confirmation','requestId','manifestRevision'].includes(k)))return json(400,{error:'Invalid start request'});
         return json(202,await adapters.start(input.id,input.confirmation,input.requestId,input.manifestRevision));
+      }
+      if(url.pathname==='/api/review-assessment'){
+        if(remoteRequest)return json(403,{error:'Review assessment requires local evidence access'});
+        if(!input||!['mjobs','babytracker'].includes(input.id)||typeof input.candidateId!=='string'||!['accepted','revision_requested','rejected'].includes(input.decision)||typeof input.confirmation!=='string'||input.evidenceReviewed!==true||Object.keys(input).some(k=>!['id','candidateId','decision','confirmation','evidenceReviewed','prNumber','reviewId'].includes(k)))return json(400,{error:'Invalid review assessment request'});
+        return json(200,await adapters.assessReview(input.id,input.candidateId,input.decision,input.confirmation,input.evidenceReviewed,input.prNumber,input.reviewId));
       }
       const action=url.pathname==='/api/pause'?'pause':input?.action;
       if(!input||!['mjobs','babytracker'].includes(input.id)||!['pause','graceful-stop'].includes(action)||Object.keys(input).some(k=>!['id','action'].includes(k)))return json(400,{error:'Choose one known fleet and control action'});

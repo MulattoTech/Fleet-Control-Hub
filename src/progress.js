@@ -2,7 +2,7 @@
 const fs=require('node:fs');
 const path=require('node:path');
 const DEFAULT_MJOBS_ROOT='C:\\Tools\\AO-Fleet-Control';
-function readLedger(root,name){
+function loadLedger(root,name){
   const file=path.join(root,name);
   const stat=fs.lstatSync(file);
   if(!stat.isFile()||stat.isSymbolicLink()||stat.size>2_000_000)throw Error('Ledger unavailable');
@@ -10,8 +10,9 @@ function readLedger(root,name){
   if(ledger?.version!==1||!ledger.tasks||Array.isArray(ledger.tasks)||typeof ledger.tasks!=='object')throw Error('Ledger format changed');
   const tasks=Object.values(ledger.tasks);
   if(tasks.length>3000||tasks.some(t=>!t||typeof t!=='object'))throw Error('Ledger format changed');
-  return tasks;
+  return ledger.tasks;
 }
+function readLedger(root,name){return Object.values(loadLedger(root,name));}
 function tally(tasks,states){return tasks.filter(t=>states.includes(t.state)).length;}
 function readMJobsProgress(root=process.env.MJOBS_CONTROL_ROOT||DEFAULT_MJOBS_ROOT){
   try{
@@ -51,4 +52,10 @@ function mjobsPipeline(lifecycle,evidence){
   return {available:true,proposed:null,approved:lifecycle.approved,active:lifecycle.leased,completed:lifecycle.completed,
     accepted:null,blocked:null,unassessed:evidence?.available?evidence.reviews.unassessed:null};
 }
-module.exports={readMJobsProgress,babyProgress,mjobsLifecycle,mjobsPipeline};
+function readMJobsReviewCandidates({root=process.env.MJOBS_CONTROL_ROOT||DEFAULT_MJOBS_ROOT,offset=0,limit=50}={}){
+  if(!Number.isSafeInteger(offset)||offset<0||!Number.isSafeInteger(limit)||limit<1||limit>3000)throw Error('Invalid review page');
+  const rows=Object.entries(loadLedger(root,'artifact-review-state.json')).filter(([key,task])=>
+    /^artifact-review:v1:[a-f0-9]{64}$|^artifact-review:v2:[a-f0-9]{40}:[1-3]$/.test(key)&&task.state==='review_ready'&&task.acceptance==='unassessed');
+  return {supported:true,total:rows.length,offset,candidates:rows.slice(offset,offset+limit).map(([id,task])=>({id,outcome:['useful','needs_revision','duplicate','no_new_gap'].includes(task.outcome)?task.outcome:null}))};
+}
+module.exports={readMJobsProgress,babyProgress,mjobsLifecycle,mjobsPipeline,readMJobsReviewCandidates};

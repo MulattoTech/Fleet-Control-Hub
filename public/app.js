@@ -1,6 +1,7 @@
 'use strict';
 const $=id=>document.getElementById(id);
 let token=null;
+const openReviews=new Map();
 function el(tag,className,text){const node=document.createElement(tag);if(className)node.className=className;if(text!=null)node.textContent=String(text);return node;}
 function count(x){return Number.isInteger(x)?x:'—';}
 function metric(label,value){const node=el('div','metric');node.append(el('b','',count(value)),el('span','',label));return node;}
@@ -12,9 +13,13 @@ function render(fleets){const holder=$('fleets');holder.replaceChildren();let ac
     const actions=el('div','fleet-actions');const open=el('a','action','Full controls');open.href=fleet.controlUrl;open.rel='noopener';
     const start=el('button','start','Start fleet');start.type='button';start.disabled=!fleet.online;start.addEventListener('click',()=>startFleet(fleet.id,fleet.name,start));
     const pause=el('button','','Pause dispatch');pause.type='button';pause.disabled=!fleet.online;pause.addEventListener('click',()=>controlFleet(fleet.id,fleet.name,'pause',pause));
-    const stop=el('button','stop','Graceful stop');stop.type='button';stop.disabled=!fleet.online;stop.addEventListener('click',()=>controlFleet(fleet.id,fleet.name,'graceful-stop',stop));actions.append(start,pause,stop);if(['127.0.0.1','localhost'].includes(location.hostname))actions.append(open);
+    const stop=el('button','stop','Graceful stop');stop.type='button';stop.disabled=!fleet.online;stop.addEventListener('click',()=>controlFleet(fleet.id,fleet.name,'graceful-stop',stop));
+    const reviews=el('button','','Review queue');reviews.type='button';reviews.disabled=!fleet.online;reviews.addEventListener('click',()=>{if(openReviews.has(fleet.id)){openReviews.delete(fleet.id);reviewPanel.replaceChildren();}else{openReviews.set(fleet.id,0);loadReviewQueue(fleet.id,reviewPanel,0);}});
+    actions.append(start,pause,stop,reviews);if(['127.0.0.1','localhost'].includes(location.hostname))actions.append(open);
     const detail=el('div','detail');detail.append(el('strong','','Controls: '),document.createTextNode(safetyText(fleet.safety)),el('br'),el('strong','','Progress: '),document.createTextNode(progressText(fleet)+(fleet.detail?'  •  '+fleet.detail:'')));
-    row.append(title,metrics,actions,detail);holder.append(row);
+    const reviewPanel=el('section','review-panel');reviewPanel.setAttribute('aria-label',fleet.name+' review candidates');
+    row.append(title,metrics,actions,detail,reviewPanel);holder.append(row);
+    if(openReviews.has(fleet.id))loadReviewQueue(fleet.id,reviewPanel,openReviews.get(fleet.id));
   }
   $('totals').replaceChildren(el('b','',active),el('span','','tracked sessions across both fleets'));
 }
@@ -26,6 +31,24 @@ function progressText(fleet){const p=fleet.progress;if(!p?.pipeline?.available)r
   const review=p.reviewDecisions?.available?' Reviews: '+p.reviewDecisions.awaitingAssessment+' awaiting assessment'+(Number.isInteger(p.reviewDecisions.accepted)?', '+p.reviewDecisions.accepted+' accepted':'')+(Number.isInteger(p.reviewDecisions.revisionRequested)?', '+p.reviewDecisions.revisionRequested+' revision requested':'')+(Number.isInteger(p.reviewDecisions.rejected)?', '+p.reviewDecisions.rejected+' rejected':'')+'.':'';
   if(fleet.id==='mjobs'&&p.available)return stages+'; '+p.reviews.ready+' review results ready, '+p.drafts.ready+' drafts ready and '+p.drafts.unreviewed+' unreviewed.'+review;
   return stages+'.'+review;}
+async function loadReviewQueue(id,panel,offset){panel.replaceChildren(el('p','','Loading review candidates…'));try{
+  const r=await fetch('/api/review-candidates?id='+encodeURIComponent(id)+'&offset='+offset,{cache:'no-store'}),data=await r.json();if(!r.ok)throw Error(data.error||'Review queue unavailable');
+  panel.replaceChildren();if(!data.supported){panel.append(el('p','',data.reason||'Native review assessment unavailable'));return;}
+  panel.append(el('p','','Review candidates '+(data.total?offset+1:0)+'–'+Math.min(offset+data.candidates.length,data.total)+' of '+data.total+'. Inspect source evidence before recording a decision.'));
+  for(const candidate of data.candidates){const line=el('div','review-row');line.append(el('code','',id==='mjobs'?candidate.id:'Requirement #'+candidate.issue+' · '+candidate.id));if(candidate.outcome)line.append(el('span','',candidate.outcome));
+    if(['127.0.0.1','localhost'].includes(location.hostname)){const assess=el('button','','Assess');assess.type='button';assess.addEventListener('click',()=>assessCandidate(id,candidate,assess));line.append(assess);}panel.append(line);}
+  const paging=el('div','review-paging');if(offset>0){const previous=el('button','','Previous');previous.addEventListener('click',()=>{openReviews.set(id,Math.max(0,offset-50));loadReviewQueue(id,panel,openReviews.get(id));});paging.append(previous);}
+  if(offset+50<data.total){const next=el('button','','Next');next.addEventListener('click',()=>{openReviews.set(id,offset+50);loadReviewQueue(id,panel,openReviews.get(id));});paging.append(next);}panel.append(paging);
+}catch(e){panel.replaceChildren(el('p','','Review queue unavailable: '+e.message));}}
+async function assessCandidate(id,candidate,button){
+  const decision=prompt('Decision for '+(id==='mjobs'?candidate.id:'BabyTracker requirement #'+candidate.issue)+': accepted, revision_requested, or rejected. Review the underlying evidence first.');
+  if(!['accepted','revision_requested','rejected'].includes(decision))return;
+  let prNumber,reviewId;if(id==='babytracker'){const pr=prompt('Verified BabyTracker-App PR number (inspect its review and changed files in GitHub first):'),review=prompt('Independent GitHub review ID on that PR:');if(!/^[1-9]\d*$/.test(pr||'')||!/^[1-9]\d*$/.test(review||'')){ $('notice').textContent='Positive PR and review IDs are required.';return;}prNumber=Number(pr);reviewId=Number(review);}
+  if(!confirm('I inspected the underlying review evidence and current source revision for this exact candidate. Record '+decision+'?'))return;
+  const confirmation='ASSESS '+(id==='mjobs'?'MJobs':'BabyTracker');if(prompt('Type '+confirmation+' to record the decision:')!==confirmation)return;
+  button.disabled=true;try{if(!token){const r=await fetch('/api/session');if(!r.ok)throw Error('Action session unavailable');token=(await r.json()).token;}
+    const r=await fetch('/api/review-assessment',{method:'POST',headers:{'content-type':'application/json','x-fleet-hub':token},body:JSON.stringify({id,candidateId:candidate.id,decision,confirmation,evidenceReviewed:true,prNumber,reviewId})});const result=await r.json();if(!r.ok)throw Error(result.error||'Assessment refused');$('notice').textContent=result.note;await refresh();
+  }catch(e){$('notice').textContent='Assessment outcome was not confirmed. Check the native controller before retrying: '+e.message;button.disabled=false;}}
 async function controlFleet(id,name,action,button){const prompt=action==='pause'?'Pause new dispatch for '+name+'? Existing turns may finish.':'Gracefully stop '+name+'? Idle sessions may exit and active sessions will receive a wind-down instruction.';if(!confirm(prompt))return;button.disabled=true;try{
   if(!token){const r=await fetch('/api/session');if(!r.ok)throw Error('Action session unavailable');token=(await r.json()).token;}
   const r=await fetch('/api/control',{method:'POST',headers:{'content-type':'application/json','x-fleet-hub':token},body:JSON.stringify({id,action})});const data=await r.json();if(!r.ok)throw Error(data.error||'Control failed');$('notice').textContent=data.note;await refresh();

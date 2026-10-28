@@ -13,4 +13,6 @@ The hub includes guarded Start flows. It reads current quota and roster informat
 
 The M-TechLabs portal currently serves read-only mission status and explicitly avoids command proxies. A remote fleet route would materially expand control access. Creating the Access app, tunnel route, connector credential or portal link requires action-time confirmation. No such change is made by this repository.
 
+Review candidates can be read through the hub, but review assessment is restricted to the local hub origin. The hub deliberately omits the underlying MJobs review evidence, so a remote decision could not be verified in this interface.
+
 Cloudflare references: [Access application tokens](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/application-token/), [validate Access JWTs](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/validating-json/), and [Tunnel origin Access validation](https://developers.cloudflare.com/tunnel/reference/origin-parameters/#access-settings).

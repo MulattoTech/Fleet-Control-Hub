@@ -3,7 +3,7 @@ const DEFAULT_ENDPOINTS = Object.freeze({
   mjobs: 'http://127.0.0.1:8787',
   babytracker: 'http://127.0.0.1:4319'
 });
-const {readMJobsProgress,babyProgress,mjobsLifecycle,mjobsPipeline}=require('./progress');
+const {readMJobsProgress,babyProgress,mjobsLifecycle,mjobsPipeline,readMJobsReviewCandidates}=require('./progress');
 
 function loopbackEndpoint(value) {
   const url = new URL(value);
@@ -38,7 +38,7 @@ function summarizeBaby(raw) {
 function babySafety(raw){return {dispatchEnabled:raw.mode==='running',emergency:raw.mode==='emergency',emergencyScope:'project',gracefulStop:raw.mode==='draining',
   codexQuotaFresh:raw.quota?.fresh===true,codexRemaining:Number.isFinite(raw.quota?.remainingPercent)?raw.quota.remainingPercent:null};}
 
-function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressReader=readMJobsProgress }={}) {
+function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressReader=readMJobsProgress, reviewReader=readMJobsReviewCandidates }={}) {
   const urls = Object.fromEntries(Object.entries(endpoints).map(([id,url])=>[id,loopbackEndpoint(url)]));
   if (!urls.mjobs || !urls.babytracker) throw Error('Both controller origins are required');
   async function read(id,path) {
@@ -118,6 +118,34 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
     const result=await response.json();if(!response.ok||result?.error||result?.ok===false)throw Error(String(result?.error||result?.note||'Controller refused start').slice(0,200));
     return {ok:true,id,note:id==='mjobs'?'Scoped Protected Startup requested. Verify each stage before treating dispatch as enabled.':'BabyTracker bounded Start acknowledged. Refresh status to verify.'};
   }
-  return {status,startPreview,start,control,pause:id=>control(id,'pause'),urls};
+  async function reviewCandidates(id,offset=0,limit=50){
+    if(!Number.isSafeInteger(offset)||offset<0||offset>3000||!Number.isSafeInteger(limit)||limit<1||limit>3000)throw Error('Invalid review page');
+    if(id==='mjobs')return {id,...reviewReader({offset,limit})};
+    if(id!=='babytracker')throw Error('Unknown fleet');
+    const state=await read(id,'/api/state');
+    if(state.projectId!=='babytracker')throw Error('BabyTracker identity changed');
+    if(state.capabilities?.reviewAssessment!==true)return {id,supported:false,total:null,candidates:[],reason:'Native BabyTracker review assessment is not installed'};
+    if(!Array.isArray(state.tasks))throw Error('BabyTracker task feed unavailable');
+    const rows=state.tasks.filter(t=>t&&t.status==='submitted'&&typeof t.id==='string'&&/^[a-f0-9-]{36}$/.test(t.id));
+    return {id,supported:true,total:rows.length,offset,candidates:rows.slice(offset,offset+limit).map(t=>({id:t.id,issue:int(t.issue),reviewRevision:Array.isArray(t.reviewReceipts)?t.reviewReceipts.length:0}))};
+  }
+  async function assessReview(id,candidateId,decision,confirmation,evidenceReviewed,prNumber,reviewId){
+    if(!['accepted','revision_requested','rejected'].includes(decision)||confirmation!==('ASSESS '+(id==='mjobs'?'MJobs':id==='babytracker'?'BabyTracker':''))||evidenceReviewed!==true)throw Error('Exact assessment and evidence confirmation required');
+    const candidates=await reviewCandidates(id,0,3000);
+    if(!candidates.supported||!candidates.candidates.some(c=>c.id===candidateId))throw Error('Review candidate is unavailable');
+    const origin=urls[id],headers={'content-type':'application/json','origin':origin,'host':new URL(origin).host};
+    let route,body;
+    if(id==='mjobs'){
+      route='/api/sustain/assess-review';body={key:candidateId,decision};headers['x-ao-fleet']='1';
+    }else{
+      if(!Number.isSafeInteger(prNumber)||prNumber<1||!Number.isSafeInteger(reviewId)||reviewId<1)throw Error('Exact PR and review IDs required');
+      route='/api/action';body={action:'assess-task',taskId:candidateId,decision,prNumber,reviewId,confirm:'ASSESS BabyTracker'};
+      const session=await read(id,'/api/session');if(typeof session.token!=='string'||session.token.length<32)throw Error('BabyTracker action token unavailable');headers['x-babytracker-fleet']=session.token;
+    }
+    const response=await fetcher(origin+route,{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});
+    const result=await response.json();if(!response.ok||result?.error||result?.ok===false)throw Error(String(result?.error||'Controller refused review assessment').slice(0,200));
+    return {ok:true,id,decision,note:'Assessment acknowledged by '+id+' controller. Refresh candidates to verify the durable receipt.'};
+  }
+  return {status,startPreview,start,control,reviewCandidates,assessReview,pause:id=>control(id,'pause'),urls};
 }
 module.exports={DEFAULT_ENDPOINTS,loopbackEndpoint,summarizeMJobs,summarizeBaby,createAdapters};
