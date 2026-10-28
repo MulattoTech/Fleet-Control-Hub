@@ -26,6 +26,7 @@ The MulattoTechBox installation has a dedicated Cloudflare Access route at <http
 | Review/acceptance evidence | MJobs review queue | Verified per-task review receipts; overall requirement acceptance remains `NOT_ASSESSED` | Shows reported state |
 | Pause new dispatch | Native | Native | Scoped button |
 | Graceful stop | Native drain | Native drain | Scoped button |
+| Adjustable limits | Sustained and Turbo dispatch profiles | Run concurrency, dispatch count and duration | Project-specific profiles with paused-state, range and stale-value checks |
 | Start fleet | Protected Startup uses a saved restore manifest and now accepts an exact project/revision binding | Bounded Start | Fresh preview and exact confirmation; MJobs requires a MJobs-only roster and atomic revision check |
 | Start/restore/dispatch | Native | Native | Open full controls |
 | Emergency stop | Machine wide Codex/AO control | Project scoped AO sessions | Open full controls |
@@ -38,7 +39,7 @@ The shared view labels each controller's emergency scope and summarizes review d
 
 MJobs' native restore manifest can contain sessions from other projects. The current saved manifest includes BabyTracker. The controller derives a MJobs-only preview with 31 targets from the unchanged 37-target roster. Its scoped restore binds that subset to the global snapshot hash, checks membership and identity on every tick, and rejects a changed snapshot before dispatch. The hub uses the verified subset and exact revision for guarded MJobs Start. The live web Start was previewed and canceled because it would restore 31 sessions and enable Sustained dispatch; no MJobs Start was submitted. A reviewed cross-project restore must use the native controller.
 
-Graceful stop can cause idle sessions to exit and sends a wind-down instruction to active sessions. Its button asks for confirmation.
+Graceful stop can cause idle sessions to exit and sends a wind-down instruction to active sessions. Its button asks for confirmation. The Limits panel saves each project's native settings only while that project is paused. It requires an exact confirmation, rejects changed values since preview, and reads the controller back after saving. The profiles have different fields because the controllers enforce different work budgets.
 
 ## Next integration steps
 

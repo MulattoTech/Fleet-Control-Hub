@@ -4,6 +4,11 @@ const DEFAULT_ENDPOINTS = Object.freeze({
   babytracker: 'http://127.0.0.1:4319'
 });
 const {readMJobsProgress,babyProgress,mjobsLifecycle,mjobsPipeline,readMJobsReviewCandidates}=require('./progress');
+const LIMIT_PROFILES=Object.freeze({
+  babytracker:{run:{label:'Run budget',route:'/api/action',fields:{concurrency:[1,32],maxDispatches:[1,1000],maxMinutes:[1,720]}}},
+  mjobs:{sustain:{label:'Sustained dispatch',route:'/api/sustain/config',fields:{targetWorking:[3,64],maxDispatchPerTick:[1,12]}},
+    turbo:{label:'Turbo dispatch',route:'/api/turbo/config',fields:{targetWorking:[1,25],maxActionsPerCycle:[1,6],maxActionsPerHour:[1,60]}}}
+});
 
 function loopbackEndpoint(value) {
   const url = new URL(value);
@@ -119,6 +124,46 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
     const result=await response.json();if(!response.ok||result?.error||result?.ok===false)throw Error(String(result?.error||result?.note||'Controller refused start').slice(0,200));
     return {ok:true,id,note:id==='mjobs'?'Scoped Protected Startup requested. Verify each stage before treating dispatch as enabled.':'BabyTracker bounded Start acknowledged. Refresh status to verify.'};
   }
+  async function limits(id){
+    if(!LIMIT_PROFILES[id])throw Error('Unknown fleet');
+    if(id==='babytracker'){
+      const state=await read(id,'/api/state');
+      if(state.projectId!=='babytracker')throw Error('BabyTracker identity changed');
+      return {id,editable:state.mode==='paused'&&state.summary?.working===0&&state.sessions?.every(s=>!s.runtimeActive),
+        reason:'Pause and exit active sessions before editing a run budget',profiles:[limitProfile(id,'run',state.limits)]};
+    }
+    const [master,startup,sustain,turbo]=await Promise.all([read(id,'/api/master'),read(id,'/api/startup'),read(id,'/api/sustain'),read(id,'/api/turbo')]);
+    return {id,editable:master.dispatch?.sustainedEnabled!==true&&master.dispatch?.turboEnabled!==true&&startup.run?.active!==true,
+      reason:'Pause MJobs dispatch and wait for Protected Startup before editing limits',
+      profiles:[limitProfile(id,'sustain',sustain.config),limitProfile(id,'turbo',turbo.config)]};
+  }
+  function limitProfile(id,key,config){
+    const spec=LIMIT_PROFILES[id][key];if(!config||typeof config!=='object')throw Error('Native limit configuration unavailable');
+    const values={};for(const field of Object.keys(spec.fields)){
+      if(!Number.isSafeInteger(config[field]))throw Error('Native limit value unavailable: '+field);values[field]=config[field];
+    }
+    return {key,label:spec.label,fields:spec.fields,values};
+  }
+  async function saveLimits(id,profile,values,expected,confirmation){
+    const spec=LIMIT_PROFILES[id]?.[profile];if(!spec||confirmation!=='SAVE '+id+' '+profile)throw Error('Exact project and profile confirmation required');
+    const keys=Object.keys(spec.fields);
+    if(!values||!expected||typeof values!=='object'||typeof expected!=='object'||Array.isArray(values)||Array.isArray(expected)||
+       keys.length!==Object.keys(values).length||keys.length!==Object.keys(expected).length)throw Error('Complete limit values and expected revision required');
+    for(const key of keys){const [min,max]=spec.fields[key];if(!Number.isSafeInteger(values[key])||values[key]<min||values[key]>max||!Number.isSafeInteger(expected[key]))throw Error('Invalid limit: '+key);}
+    const current=await limits(id),chosen=current.profiles.find(p=>p.key===profile);
+    if(!current.editable)throw Error(current.reason);
+    if(keys.some(key=>chosen.values[key]!==expected[key]))throw Error('Native limits changed since preview');
+    const origin=urls[id],headers={'content-type':'application/json','origin':origin,'host':new URL(origin).host};
+    let body=values;if(id==='babytracker'){
+      const session=await read(id,'/api/session');if(typeof session.token!=='string'||session.token.length<32)throw Error('BabyTracker action token unavailable');
+      headers['x-babytracker-fleet']=session.token;body={action:'limits',limits:values};
+    }else headers['x-ao-fleet']='1';
+    const response=await fetcher(origin+spec.route,{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(5000)});
+    const result=await response.json();if(!response.ok||result?.error||result?.ok===false)throw Error(String(result?.error||'Native limits update refused').slice(0,160));
+    const verified=await limits(id),after=verified.profiles.find(p=>p.key===profile);
+    if(keys.some(key=>after.values[key]!==values[key]))throw Error('Native limits update outcome unverified; inspect controller before retrying');
+    return {ok:true,id,profile,note:'Limits verified by '+id+' controller. Fleet dispatch remains paused.'};
+  }
   async function reviewCandidates(id,offset=0,limit=50){
     if(!Number.isSafeInteger(offset)||offset<0||offset>3000||!Number.isSafeInteger(limit)||limit<1||limit>3000)throw Error('Invalid review page');
     if(id==='mjobs')return {id,...reviewReader({offset,limit})};
@@ -147,6 +192,6 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
     const result=await response.json();if(!response.ok||result?.error||result?.ok===false)throw Error(String(result?.error||'Controller refused review assessment').slice(0,200));
     return {ok:true,id,decision,note:'Assessment acknowledged by '+id+' controller. Refresh candidates to verify the durable receipt.'};
   }
-  return {status,startPreview,start,control,reviewCandidates,assessReview,pause:id=>control(id,'pause'),urls};
+  return {status,startPreview,start,control,limits,saveLimits,reviewCandidates,assessReview,pause:id=>control(id,'pause'),urls};
 }
 module.exports={DEFAULT_ENDPOINTS,loopbackEndpoint,summarizeMJobs,summarizeBaby,createAdapters};

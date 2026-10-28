@@ -1,3 +1,50 @@
+diff --git a/tools/fleet-control/bootstrap.js b/tools/fleet-control/bootstrap.js
+index 95cfff7..78d6e81 100644
+--- a/tools/fleet-control/bootstrap.js
++++ b/tools/fleet-control/bootstrap.js
+@@ -32,6 +32,22 @@ function parseCommand(output, label) {
+   catch { throw Error(label + ' returned invalid JSON'); }
+ }
+ 
++// AO's successful exit does not prove a session was created. Keep only bounded,
++// allowlisted response metadata if verification fails; never retain raw CLI output.
++function spawnResponseHint(result) {
++  const stdout = typeof result?.stdout === 'string' ? result.stdout : '';
++  const stderr = typeof result?.stderr === 'string' ? result.stderr : '';
++  const sample = (stdout + '\n' + stderr).slice(0, 100000);
++  const flags = ['queued', 'created', 'spawned', 'error', 'failed', 'warning',
++    'unauthorized', 'permission', 'project', 'workspace', 'timeout']
++    .filter(word => new RegExp('\\b' + word + '\\b', 'i').test(sample));
++  const sessionIds = [...new Set(sample.match(/\bbabytracker-\d{1,6}\b/g) || [])].slice(0, 3);
++  return 'AO response bytes=' + Math.min(Buffer.byteLength(stdout), 100000) + '/' +
++    Math.min(Buffer.byteLength(stderr), 100000) +
++    '; flags=' + (flags.join(',') || 'none') +
++    '; sessionHints=' + (sessionIds.join(',') || 'none');
++}
++
+ async function provisionFirstCodex(config, { runner, sessions, onSubmit = () => {}, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) }) {
+   if (!config.runtimeVerified) throw Error('BabyTracker AO project binding is not verified');
+   if (!config.aoPath || !fs.statSync(config.aoPath, { throwIfNoEntry: false })?.isFile()) {
+@@ -62,8 +78,9 @@ async function provisionFirstCodex(config, { runner, sessions, onSubmit = () =>
+   if (existing) return { id: existing.id, created: false };
+   const previousIds = new Set(before.map(s => s.id));
+   onSubmit(); // Persist an uncertain-delivery latch before the first native mutation.
+-  await run(['spawn', '--project', PROJECT, '--kind', 'orchestrator',
++  const spawnResult = await run(['spawn', '--project', PROJECT, '--kind', 'orchestrator',
+     '--harness', 'codex', '--mode', 'chat', '--name', BOOTSTRAP_NAME], 30000);
++  const responseHint = spawnResponseHint(spawnResult);
+   for (let attempt = 0; attempt < 16; attempt++) {
+     const after = await sessions();
+     if (!Array.isArray(after)) throw Error('AO session verification is unavailable');
+@@ -73,7 +90,7 @@ async function provisionFirstCodex(config, { runner, sessions, onSubmit = () =>
+     if (found.length > 1) throw Error('Multiple new BabyTracker orchestrators appeared; manual reconciliation required');
+     if (attempt < 15) await sleep(300);
+   }
+-  throw Error('AO accepted provisioning but the new BabyTracker session could not be verified; no automatic retry');
++  throw Error('AO accepted provisioning but the new BabyTracker session could not be verified; no automatic retry. ' + responseHint);
+ }
+ 
+ module.exports = { provisionFirstCodex, isCodex, repositoryId, sameDirectory, BOOTSTRAP_NAME };
 diff --git a/tools/fleet-control/controller.js b/tools/fleet-control/controller.js
 index bb5db62..7963ac4 100644
 --- a/tools/fleet-control/controller.js
@@ -119,6 +166,37 @@ index 347303f..57f286c 100644
          case 'model-plan': throw Error('Staging-only model plans are no longer supported. Reload this dashboard and use Change model to apply a real native AO change.');
          case 'model-change': result = await controller.changeModel(input.id, input.plan); break;
          case 'model-cancel': result = await controller.cancelModelChange(input.id); break;
+diff --git a/tools/fleet-control/test/bootstrap.test.js b/tools/fleet-control/test/bootstrap.test.js
+index ccbaaef..7ec7d0f 100644
+--- a/tools/fleet-control/test/bootstrap.test.js
++++ b/tools/fleet-control/test/bootstrap.test.js
+@@ -85,6 +85,26 @@ test('a failed native submission is not retried automatically', async t => {
+   assert.equal(f.state.called.filter(x => x[0] === 'spawn').length, 1);
+ });
+ 
++test('unverified spawn records bounded allowlisted diagnostics without raw CLI output', async t => {
++  const f = fixture(t);
++  const original = f.deps.runner;
++  let spawnAttempts = 0;
++  f.deps.runner = async (...args) => {
++    if (args[1][0] === 'spawn') {
++      spawnAttempts++;
++      return { stdout: 'queued babytracker-7 Bearer exampleSecret user@example.com C:\\Private\\record', stderr: 'warning' };
++    }
++    return original(...args);
++  };
++  await assert.rejects(provisionFirstCodex(f.config, f.deps), error => {
++    assert.match(error.message, /AO response bytes=\d+\/\d+; flags=queued,warning; sessionHints=babytracker-7/);
++    assert.doesNotMatch(error.message, /exampleSecret|user@example.com|Private|Bearer/);
++    assert.ok(error.message.length < 250);
++    return true;
++  });
++  assert.equal(spawnAttempts, 1);
++});
++
+ test('unverifiable newly created identity fails closed instead of accepting another project', async t => {
+   const f = fixture(t);
+   const previous = f.deps.runner;
 diff --git a/tools/fleet-control/test/controller.test.js b/tools/fleet-control/test/controller.test.js
 index bb7773e..65f394b 100644
 --- a/tools/fleet-control/test/controller.test.js

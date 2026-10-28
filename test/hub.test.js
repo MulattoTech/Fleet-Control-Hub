@@ -25,6 +25,55 @@ test('only fixed loopback controller origins are allowed',()=>{
   for(const value of ['http://example.com/','https://127.0.0.1:8787/','http://127.0.0.1:8787/path','http://user@127.0.0.1:8787/'])assert.throws(()=>loopbackEndpoint(value));
   assert.equal(loopbackEndpoint('http://localhost:8787/'),'http://localhost:8787');
 });
+
+test('project-specific limits require paused controllers, exact revision and native read-back',async()=>{
+  const calls=[];let baby={concurrency:1,maxDispatches:1,maxMinutes:5},sustain={targetWorking:12,maxDispatchPerTick:2},turbo={targetWorking:8,maxActionsPerCycle:2,maxActionsPerHour:10};
+  let babyActive=false,mjobsEnabled=false;
+  const fetcher=async(url,options={})=>{calls.push({url,options});
+    if(options.method==='POST'){
+      const body=JSON.parse(options.body);
+      if(url.endsWith('/api/action'))baby={...baby,...body.limits};
+      if(url.endsWith('/api/sustain/config'))sustain={...sustain,...body};
+      if(url.endsWith('/api/turbo/config'))turbo={...turbo,...body};
+      return {ok:true,json:async()=>({ok:true})};
+    }
+    if(url.endsWith('/api/state'))return {ok:true,json:async()=>({projectId:'babytracker',mode:'paused',summary:{working:0},sessions:[{runtimeActive:babyActive}],limits:baby})};
+    if(url.endsWith('/api/master'))return {ok:true,json:async()=>({dispatch:{sustainedEnabled:mjobsEnabled,turboEnabled:false}})};
+    if(url.endsWith('/api/startup'))return {ok:true,json:async()=>({run:{active:false}})};
+    if(url.endsWith('/api/sustain'))return {ok:true,json:async()=>({config:sustain})};
+    if(url.endsWith('/api/turbo'))return {ok:true,json:async()=>({config:turbo})};
+    if(url.endsWith('/api/session'))return {ok:true,json:async()=>({token:'x'.repeat(64)})};
+    throw Error('Unexpected read');
+  };
+  const api=createAdapters({fetcher});
+  const first=await api.limits('babytracker');assert.equal(first.editable,true);
+  await assert.rejects(api.saveLimits('babytracker','run',{concurrency:10,maxDispatches:8,maxMinutes:60},first.profiles[0].values,'wrong'),/confirmation/);
+  assert.equal(calls.filter(c=>c.options.method==='POST').length,0);
+  babyActive=true;await assert.rejects(api.saveLimits('babytracker','run',{concurrency:10,maxDispatches:8,maxMinutes:60},first.profiles[0].values,'SAVE babytracker run'),/Pause and exit/);
+  babyActive=false;baby.maxMinutes=6;await assert.rejects(api.saveLimits('babytracker','run',{concurrency:10,maxDispatches:8,maxMinutes:60},first.profiles[0].values,'SAVE babytracker run'),/changed since preview/);
+  const current=(await api.limits('babytracker')).profiles[0];await api.saveLimits('babytracker','run',{concurrency:10,maxDispatches:8,maxMinutes:60},current.values,'SAVE babytracker run');
+  assert.equal(calls.filter(c=>c.options.method==='POST').at(-1).url,'http://127.0.0.1:4319/api/action');assert.equal(calls.filter(c=>c.options.method==='POST').at(-1).options.headers['x-babytracker-fleet'],'x'.repeat(64));
+  const mjobs=(await api.limits('mjobs')).profiles[0];mjobsEnabled=true;
+  await assert.rejects(api.saveLimits('mjobs','sustain',{targetWorking:13,maxDispatchPerTick:2},mjobs.values,'SAVE mjobs sustain'),/Pause MJobs/);
+  mjobsEnabled=false;await api.saveLimits('mjobs','sustain',{targetWorking:13,maxDispatchPerTick:2},mjobs.values,'SAVE mjobs sustain');
+  assert.equal(calls.filter(c=>c.options.method==='POST').at(-1).url,'http://127.0.0.1:8787/api/sustain/config');assert.equal(calls.filter(c=>c.options.method==='POST').at(-1).options.headers['x-ao-fleet'],'1');
+  assert.equal((await api.limits('mjobs')).profiles[1].values.maxActionsPerHour,10);
+});
+
+test('limits HTTP write requires same origin and action token',async()=>{
+  const calls=[];const server=makeServer({port:4325,adapters:{limits:async id=>({id,profiles:[]}),saveLimits:async(...args)=>{calls.push(args);return {ok:true,note:'verified'};}}});
+  await new Promise(resolve=>server.listen(4325,'127.0.0.1',resolve));
+  try{const base='http://127.0.0.1:4325',body=JSON.stringify({id:'babytracker',profile:'run',values:{concurrency:1},expected:{concurrency:1},confirmation:'SAVE babytracker run'});
+    assert.equal((await fetch(base+'/api/limits?id=babytracker')).status,200);
+    const token=(await (await fetch(base+'/api/session')).json()).token;
+    const send=(origin,actionToken)=>fetch(base+'/api/limits',{method:'POST',headers:{origin,'content-type':'application/json','x-fleet-hub':actionToken},body});
+    assert.equal((await send(base,'wrong')).status,403);
+    assert.equal((await send('http://evil.example',token)).status,403);
+    assert.equal(calls.length,0);
+    assert.equal((await send(base,token)).status,200);
+    assert.deepEqual(calls[0],['babytracker','run',{concurrency:1},{concurrency:1},'SAVE babytracker run']);
+  }finally{await new Promise(resolve=>server.close(resolve));}
+});
 test('status reads normalize both fleets and never mutate',async()=>{
   const {calls,fetcher}=fixture();const api=createAdapters({fetcher});
   assert.equal((await api.status('mjobs')).total,1);assert.equal((await api.status('babytracker')).review,'NOT_ASSESSED');

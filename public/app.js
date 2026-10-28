@@ -2,6 +2,32 @@
 const $=id=>document.getElementById(id);
 let token=null;
 const openReviews=new Map();
+const openLimits=new Map();
+async function loadLimits(id,panel){panel.replaceChildren(el('p','','Loading project limits.'));try{
+  const r=await fetch('/api/limits?id='+encodeURIComponent(id),{cache:'no-store'}),data=await r.json();if(!r.ok)throw Error(data.error||'Limits unavailable');
+  data.drafts=Object.fromEntries(data.profiles.map(p=>[p.key,{...p.values}]));openLimits.set(id,data);renderLimits(id,panel,data);
+}catch(e){panel.replaceChildren(el('p','','Limits unavailable: '+e.message));}}
+function renderLimits(id,panel,data){panel.replaceChildren();
+  panel.append(el('p','',data.editable?'Changes are saved to the selected native controller.':'Read only: '+data.reason+'.'));
+  for(const profile of data.profiles){const form=el('form','limit-profile');form.addEventListener('submit',e=>{e.preventDefault();saveLimits(id,profile,data,form);});
+    form.append(el('h3','',profile.label));const fields=el('div','limit-fields');
+    for(const [key,range] of Object.entries(profile.fields)){const label=el('label','');label.append(el('span','',key.replace(/([A-Z])/g,' $1').replace(/^./,c=>c.toUpperCase())+' ('+range[0]+'–'+range[1]+')'));
+      const input=el('input','');input.type='number';input.min=range[0];input.max=range[1];input.step='1';input.required=true;input.value=data.drafts[profile.key][key];input.name=key;input.disabled=!data.editable;
+      input.addEventListener('input',()=>{data.drafts[profile.key][key]=input.value;});label.append(input);fields.append(label);}
+    form.append(fields);const save=el('button','','Save '+profile.label);save.type='submit';save.disabled=!data.editable;form.append(save);panel.append(form);
+  }
+}
+async function saveLimits(id,profile,data,form){const values={};for(const [key,range] of Object.entries(profile.fields)){
+  const raw=String(data.drafts[profile.key][key]);if(!/^\d+$/.test(raw)){showActionMessage('Every limit must be a whole number.');return;}
+  const value=Number(raw);if(!Number.isSafeInteger(value)||value<range[0]||value>range[1]){showActionMessage(key+' must be in range '+range[0]+'–'+range[1]+'.');return;}values[key]=value;
+}
+  const confirmation='SAVE '+id+' '+profile.key;
+  if(!await confirmAction('Save '+profile.label+' limits for '+id+'? These settings affect future work when the fleet is started.\nType '+confirmation+' to confirm.',confirmation))return;
+  const save=form.querySelector('button[type=submit]');save.disabled=true;try{
+    const r=await postAction('/api/limits',{id,profile:profile.key,values,expected:profile.values,confirmation}),result=await r.json();
+    if(!r.ok)throw Error(result.error||'Limits update refused');showActionMessage(result.note);await loadLimits(id,form.parentElement);
+  }catch(e){showActionMessage('Limits outcome was not confirmed. Inspect native controller before retrying: '+e.message);save.disabled=false;}
+}
 const pendingActions=new Set();
 let lastActionMessage='';
 function el(tag,className,text){const node=document.createElement(tag);if(className)node.className=className;if(text!=null)node.textContent=String(text);return node;}
@@ -42,10 +68,13 @@ function render(fleets){const holder=$('fleets');holder.replaceChildren();let ac
     const pause=el('button','','Pause dispatch');pause.type='button';pause.disabled=!fleet.online||pendingActions.has(fleet.id+':pause');pause.addEventListener('click',()=>controlFleet(fleet.id,fleet.name,'pause',pause));
     const stop=el('button','stop','Graceful stop');stop.type='button';stop.disabled=!fleet.online||pendingActions.has(fleet.id+':graceful-stop');stop.addEventListener('click',()=>controlFleet(fleet.id,fleet.name,'graceful-stop',stop));
     const reviews=el('button','','Review queue');reviews.type='button';reviews.disabled=!fleet.online;reviews.addEventListener('click',()=>{if(openReviews.has(fleet.id)){openReviews.delete(fleet.id);reviewPanel.replaceChildren();}else{openReviews.set(fleet.id,0);loadReviewQueue(fleet.id,reviewPanel,0);}});
-    actions.append(start,pause,stop,reviews);if(['127.0.0.1','localhost'].includes(location.hostname))actions.append(open);
+    const limits=el('button','','Limits');limits.type='button';limits.disabled=!fleet.online;limits.addEventListener('click',()=>{if(openLimits.has(fleet.id)){openLimits.delete(fleet.id);limitPanel.replaceChildren();}else loadLimits(fleet.id,limitPanel);});
+    actions.append(start,pause,stop,limits,reviews);if(['127.0.0.1','localhost'].includes(location.hostname))actions.append(open);
     const detail=el('div','detail');detail.append(el('strong','','Controls: '),document.createTextNode(safetyText(fleet.safety)),el('br'),el('strong','','Progress: '),document.createTextNode(progressText(fleet)+(fleet.detail?'  •  '+fleet.detail:'')));
     const reviewPanel=el('section','review-panel');reviewPanel.setAttribute('aria-label',fleet.name+' review candidates');
-    row.append(title,metrics,actions,detail,reviewPanel);holder.append(row);
+    const limitPanel=el('section','limit-panel');limitPanel.setAttribute('aria-label',fleet.name+' limits');
+    row.append(title,metrics,actions,detail,limitPanel,reviewPanel);holder.append(row);
+    if(openLimits.has(fleet.id))renderLimits(fleet.id,limitPanel,openLimits.get(fleet.id));
     if(openReviews.has(fleet.id))loadReviewQueue(fleet.id,reviewPanel,openReviews.get(fleet.id));
   }
   $('totals').replaceChildren(el('b','',active),el('span','','tracked sessions across both fleets'));
