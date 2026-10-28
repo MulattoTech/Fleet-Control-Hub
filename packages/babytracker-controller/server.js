@@ -120,7 +120,7 @@ function main() {
   const providers = createSharedProviders(config);
   const controller = new FleetController(config, { adapter: new AOAdapter(config), quota: () => quotaSnapshot(config.quotaFile), nativeModel: new NativeModelSwitch(config), agyUsage: () => providers.usage(), providers: async () => {
     const value = await providers.get();
-    return { ...value, source: 'MJobs verified Codex model catalog (read-only), local AGY model availability. Agent model changes use verified native AO next-turn settings and provider handoff.' };
+    return { ...value, source: 'MJobs Codex catalog (read-only); AGY static adapter-supported models, not live/account-verified. Background CLI probes are disabled; explicit agent controls are unchanged.' };
   } });
   let ending = false;
   const stop = code => {

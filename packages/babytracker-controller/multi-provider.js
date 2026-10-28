@@ -68,7 +68,7 @@ function createSharedProviders(config, { fetcher = fetch, local = null, now = Da
     if (agy) { agy.models = (agy.models || []).filter(m => /^gemini-[a-z0-9][a-z0-9.-]+$/.test(m.id)); agy.available = agy.available && agy.models.length > 0; }
     const gemini = providers.find(p => p.id === 'gemini');
     if (gemini) gemini.error = 'Standalone Gemini CLI not configured; Gemini models are available through AGY instead';
-    return { at: new Date(now()).toISOString(), source: 'Live AGY models + verified shared Codex catalog (read-only)',
+    return { at: new Date(now()).toISOString(), source: 'AGY static adapter catalog (not live/account-verified) + shared Codex catalog (read-only)',
       providers, note: 'AGY Google Gemini models use an independent allowance; no automatic percentage cutoff is verified.' };
   }
   async function usage() {
