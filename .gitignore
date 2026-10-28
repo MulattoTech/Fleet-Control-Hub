@@ -1,0 +1,10 @@
+.env
+*.log
+*.jsonl
+node_modules/
+state/
+runtime/
+backups/
+screenshots/
+*.db
+*.sqlite*
