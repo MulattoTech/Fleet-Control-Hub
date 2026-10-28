@@ -11,7 +11,7 @@ function render(fleets){const holder=$('fleets');holder.replaceChildren();let ac
     const metrics=el('div','metrics');metrics.append(metric('Sessions',fleet.total),metric('Working',fleet.working),metric('Available',fleet.idle),metric('Needs attention',fleet.attention));
     const actions=el('div','fleet-actions');const open=el('a','action','Full controls');open.href=fleet.controlUrl;open.rel='noopener';
     const pause=el('button','','Pause dispatch');pause.type='button';pause.disabled=!fleet.online;pause.addEventListener('click',()=>controlFleet(fleet.id,fleet.name,'pause',pause));
-    const stop=el('button','stop','Graceful stop');stop.type='button';stop.disabled=!fleet.online;stop.addEventListener('click',()=>controlFleet(fleet.id,fleet.name,'graceful-stop',stop));actions.append(pause,stop,open);
+    const stop=el('button','stop','Graceful stop');stop.type='button';stop.disabled=!fleet.online;stop.addEventListener('click',()=>controlFleet(fleet.id,fleet.name,'graceful-stop',stop));actions.append(pause,stop);if(['127.0.0.1','localhost'].includes(location.hostname))actions.append(open);
     const detail=el('div','detail');detail.append(el('strong','','Progress: '),document.createTextNode(progressText(fleet)+(fleet.detail?'  •  '+fleet.detail:'')));
     row.append(title,metrics,actions,detail);holder.append(row);
   }
@@ -23,4 +23,5 @@ async function controlFleet(id,name,action,button){const prompt=action==='pause'
   if(!token){const r=await fetch('/api/session');if(!r.ok)throw Error('Action session unavailable');token=(await r.json()).token;}
   const r=await fetch('/api/control',{method:'POST',headers:{'content-type':'application/json','x-fleet-hub':token},body:JSON.stringify({id,action})});const data=await r.json();if(!r.ok)throw Error(data.error||'Control failed');$('notice').textContent=data.note;await refresh();
 }catch(e){$('notice').textContent='Action outcome was not confirmed. Check the selected controller before retrying: '+e.message;button.disabled=false;}}
+if(!['127.0.0.1','localhost'].includes(location.hostname))document.querySelectorAll('nav a[href^="http://127.0.0.1:"]').forEach(a=>a.remove());
 $('refresh').addEventListener('click',refresh);refresh();setInterval(refresh,15000);

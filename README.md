@@ -16,6 +16,8 @@ npm start
 
 Open <http://127.0.0.1:4320>. The hub binds only to loopback. MJobs is expected at `127.0.0.1:8787` and BabyTracker at `127.0.0.1:4319`. They may be stopped; the hub then reports them as unavailable. Starting the hub does not start either controller or any fleet.
 
+Remote Access support is staged but **disabled by default**. It requires a dedicated Cloudflare Access application and a tunnel connector running on MulattoTechBox, so the origin can remain bound to loopback. Every remote request is verified against the Access application audience, issuer and owner's email. See [remote deployment](docs/REMOTE_DEPLOYMENT.md). No remote route or credential is included in this repository.
+
 ## Current control contract
 
 | Feature | MJobs | BabyTracker | Hub |

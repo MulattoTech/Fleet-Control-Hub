@@ -4,9 +4,10 @@ const fs=require('node:fs');
 const path=require('node:path');
 const {randomBytes,timingSafeEqual}=require('node:crypto');
 const {createAdapters}=require('./adapters');
+const {configuredRemote,createRemoteAuth}=require('./remote-auth');
 const root=path.join(__dirname,'..','public');
 
-function makeServer({adapters=createAdapters(),port=Number(process.env.FLEET_HUB_PORT||4320)}={}) {
+function makeServer({adapters=createAdapters(),port=Number(process.env.FLEET_HUB_PORT||4320),remote=configuredRemote(),verifyRemote=remote?createRemoteAuth(remote):null}={}) {
   if(!Number.isInteger(port)||port<1||port>65535)throw Error('Invalid port');
   const token=randomBytes(32).toString('hex');
   const files={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8']};
@@ -16,7 +17,9 @@ function makeServer({adapters=createAdapters(),port=Number(process.env.FLEET_HUB
     const host=req.headers.host;
     const allowed=['127.0.0.1:'+port,'localhost:'+port];
     function json(code,data){res.writeHead(code,{'Content-Type':'application/json; charset=utf-8'});res.end(JSON.stringify(data));}
-    if(!allowed.includes(host)||req.headers['sec-fetch-site']==='cross-site')return json(403,{error:'Local origin required'});
+    const remoteRequest=!!remote&&host===remote.hostname;
+    if((!allowed.includes(host)&&!remoteRequest)||req.headers['sec-fetch-site']==='cross-site')return json(403,{error:'Origin unavailable'});
+    if(remoteRequest){try{if(!verifyRemote)throw Error('Remote verification unavailable');await verifyRemote(req.headers['cf-access-jwt-assertion']);}catch{return json(403,{error:'Verified owner Access session required'});}}
     const url=new URL(req.url,'http://'+host);
     try {
       if(req.method==='GET') {
@@ -26,7 +29,7 @@ function makeServer({adapters=createAdapters(),port=Number(process.env.FLEET_HUB
         res.writeHead(200,{'Content-Type':file[1]});return res.end(fs.readFileSync(path.join(root,file[0])));
       }
       if(req.method!=='POST'||!['/api/pause','/api/control'].includes(url.pathname))return json(405,{error:'Method not allowed'});
-      if(!allowed.map(x=>'http://'+x).includes(req.headers.origin))return json(403,{error:'Same origin required'});
+      if(![...allowed.map(x=>'http://'+x),...(remoteRequest?['https://'+remote.hostname]:[])].includes(req.headers.origin))return json(403,{error:'Same origin required'});
       const candidate=String(req.headers['x-fleet-hub']||'');
       if(candidate.length!==token.length||!timingSafeEqual(Buffer.from(candidate),Buffer.from(token)))return json(403,{error:'Invalid action token'});
       if(!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))return json(415,{error:'JSON required'});

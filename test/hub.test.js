@@ -4,7 +4,9 @@ const assert=require('node:assert/strict');
 const {createAdapters,loopbackEndpoint}=require('../src/adapters');
 const {readMJobsProgress,babyProgress}=require('../src/progress');
 const {makeServer}=require('../src/server');
+const {configuredRemote}=require('../src/remote-auth');
 const fs=require('node:fs');const os=require('node:os');const path=require('node:path');
+const http=require('node:http');
 
 function fixture(){const calls=[];const fetcher=async(url,options={})=>{calls.push({url,options});
   if(url.endsWith('/api/state')&&url.includes(':8787'))return {ok:true,json:async()=>({projectId:'mjobs-luna',sessions:[{id:'a'}],summary:{total:1,working:0,idle:1,idlePending:0,ciAttention:0}})};
@@ -58,5 +60,17 @@ test('local hub rejects cross-origin actions and needs an action token',async()=
     const token=(await (await fetch(base+'/api/session')).json()).token;
     const paused=await fetch(base+'/api/pause',{method:'POST',headers:{origin:base,'content-type':'application/json','x-fleet-hub':token},body:'{"id":"mjobs"}'});assert.equal(paused.status,200);
     const bad=await fetch(base+'/api/control',{method:'POST',headers:{origin:base,'content-type':'application/json','x-fleet-hub':token},body:'{"id":"mjobs","action":"start"}'});assert.equal(bad.status,400);
+  }finally{await new Promise(resolve=>server.close(resolve));}
+});
+test('remote origin requires complete Access configuration and verified owner assertion',async()=>{
+  assert.throws(()=>configuredRemote({FLEET_HUB_REMOTE_HOST:'fleet.m-techlabs.com'}));
+  const remote={hostname:'fleet.m-techlabs.com',issuer:'https://example.cloudflareaccess.com',audience:'a'.repeat(64),ownerEmail:'owner@example.test'};
+  const {fetcher}=fixture();const server=makeServer({adapters:createAdapters({fetcher}),port:4323,remote,verifyRemote:async token=>{if(token!=='verified')throw Error('denied');return true;}});
+  await new Promise(resolve=>server.listen(4323,'127.0.0.1',resolve));
+  async function request(headers){return new Promise((resolve,reject)=>{http.get({hostname:'127.0.0.1',port:4323,path:'/api/status',headers},res=>{res.resume();res.on('end',()=>resolve(res.statusCode));}).on('error',reject);});}
+  try{
+    assert.equal(await request({host:'fleet.m-techlabs.com'}),403);
+    assert.equal(await request({host:'fleet.m-techlabs.com','cf-access-jwt-assertion':'wrong'}),403);
+    assert.equal(await request({host:'fleet.m-techlabs.com','cf-access-jwt-assertion':'verified'}),200);
   }finally{await new Promise(resolve=>server.close(resolve));}
 });

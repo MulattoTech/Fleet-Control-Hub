@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "description": "One local entry point for MJobs and BabyTracker fleet status and scoped pause controls",
-  "scripts": {"start": "node src/server.js", "test": "node --test"},
-  "engines": {"node": ">=22"}
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "jose": "^6.2.13"
+  }
 }
