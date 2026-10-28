@@ -30,7 +30,10 @@ function babyProgress(raw){
   return {available:true,tasks:{total:tasks.length,proposed:tasks.filter(t=>t.status==='proposed').length,
     inFlight:tasks.filter(t=>['queued','submitted','submitting','awaiting_reconciliation'].includes(t.status)).length,
     accepted:tasks.filter(t=>t.status==='accepted').length,unassessed:tasks.filter(t=>t.acceptance==='NOT_ASSESSED').length},
-    reviewDecisions:{available:true,awaitingAssessment:count(tasks,'acceptance',['NOT_ASSESSED']),accepted:null,revisionRequested:null,rejected:null},
+    reviewDecisions:{available:true,awaitingAssessment:count(tasks,'acceptance',['NOT_ASSESSED']),
+      accepted:raw.capabilities?.reviewAssessment===true?count(tasks,'acceptance',['ACCEPTED']):null,
+      revisionRequested:raw.capabilities?.reviewAssessment===true?count(tasks,'acceptance',['REVISION_REQUESTED']):null,
+      rejected:raw.capabilities?.reviewAssessment===true?count(tasks,'acceptance',['REJECTED']):null},
     pipeline:{available:true,proposed:count(tasks,'status',['proposed']),approved:null,active:count(tasks,'status',['submitting','submitted','awaiting_reconciliation']),
       completed:count(tasks,'status',['completed']),accepted:count(tasks,'status',['accepted']),blocked:count(tasks,'status',['blocked']),
       unassessed:count(tasks,'acceptance',['NOT_ASSESSED'])}};

@@ -136,6 +136,9 @@ test('review receipts are summarized without evidence text or unsupported decisi
     const baby=babyProgress({tasks:[{acceptance:'NOT_ASSESSED',title:'private family text'},{acceptance:'ACCEPTED',title:'private family text'}]}).reviewDecisions;
     assert.deepEqual(mjobs,{available:true,awaitingAssessment:0,accepted:1,revisionRequested:1,rejected:1});
     assert.deepEqual(baby,{available:true,awaitingAssessment:1,accepted:null,revisionRequested:null,rejected:null});
+    const upgraded=babyProgress({capabilities:{reviewAssessment:true},tasks:[{acceptance:'NOT_ASSESSED',title:'private'},{acceptance:'ACCEPTED',title:'private'},{acceptance:'REVISION_REQUESTED',title:'private'},{acceptance:'REJECTED',title:'private'}]}).reviewDecisions;
+    assert.deepEqual(upgraded,{available:true,awaitingAssessment:1,accepted:1,revisionRequested:1,rejected:1});
+    assert.equal(JSON.stringify(upgraded).includes('private'),false);
     assert.equal(JSON.stringify({mjobs,baby}).includes('private'),false);
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
