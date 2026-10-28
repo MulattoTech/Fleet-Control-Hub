@@ -1,0 +1,10 @@
+runtime/
+state/
+*.log
+controller.json
+controller.lock
+controller-recovery.lock
+dispatch-ledger.json
+audit.jsonl
+agent-plans.json
+provider-models.local.json

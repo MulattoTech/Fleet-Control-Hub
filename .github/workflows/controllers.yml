@@ -1,0 +1,31 @@
+name: Shared Fleet controllers
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: shared-fleet-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+jobs:
+  controllers:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npm run verify:packages
+      - run: npm test
+      - run: npm run test:babytracker
+      - run: npm run test:mjobs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: controller-regression-results
+          path: packages/mjobs-controller/diagnostics/preflight-results.json

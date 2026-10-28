@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "projects": {
+    "babytracker": {
+      "repository": "MulattoTech/BabyTracker",
+      "package": "babytracker-controller",
+      "port": 4319,
+      "stateSeparateFromSource": true,
+      "emergencyScope": "project"
+    },
+    "mjobs": {
+      "repository": "MulattoTech/MJobs",
+      "package": "mjobs-controller",
+      "port": 8787,
+      "stateSeparateFromSource": true,
+      "emergencyScope": "machine"
+    }
+  }
+}
