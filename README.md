@@ -1,6 +1,6 @@
 # Fleet Control Hub
 
-A single local entry point for the **MJobs** and **BabyTracker** fleet controllers. The hub displays both fleets' live session counts, work state and progress evidence. It offers **Pause dispatch** and **Graceful stop** for each fleet, guarded **Start fleet** when the native controller proves a safe project scope, and links to existing advanced controls when opened locally.
+A single local entry point for the **MJobs** and **BabyTracker** fleet controllers. The hub displays both fleets' live session counts, work state and progress evidence with shared work-stage counts. Unsupported stages remain unknown rather than appearing as zero. It offers **Pause dispatch** and **Graceful stop** for each fleet, guarded **Start fleet** when the native controller proves a safe project scope, and links to existing advanced controls when opened locally.
 
 This is a clean public source repository. It contains no runtime state, logs, tokens, baby records, worktrees or backups. The controllers continue to own their state and authorization. The hub does not start workers on launch or status refresh. Its MJobs progress adapter reads only counts from local review and draft ledgers; it never returns task content to the browser.
 

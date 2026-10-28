@@ -2,7 +2,7 @@
 const test=require('node:test');
 const assert=require('node:assert/strict');
 const {createAdapters,loopbackEndpoint}=require('../src/adapters');
-const {readMJobsProgress,babyProgress,mjobsLifecycle}=require('../src/progress');
+const {readMJobsProgress,babyProgress,mjobsLifecycle,mjobsPipeline}=require('../src/progress');
 const {makeServer}=require('../src/server');
 const {configuredRemote}=require('../src/remote-auth');
 const fs=require('node:fs');const os=require('node:os');const path=require('node:path');
@@ -111,10 +111,20 @@ test('progress summaries contain counts only and preserve unknown evidence',()=>
     fs.writeFileSync(path.join(dir,'artifact-review-state.json'),JSON.stringify({version:1,tasks:{a:{state:'review_ready',acceptance:'unassessed'},b:{state:'uncertain'}}}));
     fs.writeFileSync(path.join(dir,'productive-work-state.json'),JSON.stringify({version:1,tasks:{c:{state:'artifact_ready',acceptance:'unreviewed'}}}));
     assert.deepEqual(readMJobsProgress(dir),{available:true,reviews:{total:2,ready:1,inFlight:1,unassessed:1},drafts:{total:1,ready:1,inFlight:0,unreviewed:1}});
-    assert.deepEqual(babyProgress({tasks:[{title:'private',status:'proposed',acceptance:'NOT_ASSESSED'}]}),{available:true,tasks:{total:1,proposed:1,inFlight:0,accepted:0,unassessed:1}});
+    assert.deepEqual(babyProgress({tasks:[{title:'private',status:'proposed',acceptance:'NOT_ASSESSED'}]}),{available:true,tasks:{total:1,proposed:1,inFlight:0,accepted:0,unassessed:1},pipeline:{available:true,proposed:1,approved:null,active:0,completed:0,accepted:0,blocked:0,unassessed:1}});
     assert.deepEqual(mjobsLifecycle({workItems:[{issue:7,state:'approved'},{issue:9,state:'completed'}],artifactReviews:{ready:1}}),{available:true,approved:1,leased:0,completed:1,reviewReady:1});
     assert.deepEqual(readMJobsProgress(path.join(dir,'missing')),{available:false});
   }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('shared work stages count native states without claiming unsupported parity or exposing task text',()=>{
+  const native={workItems:[{issue:1,state:'approved',focus:'private text'},{issue:2,state:'dispatched',focus:'private text'},{issue:3,state:'in_review'},{issue:4,state:'completed'}]};
+  const mjobs=mjobsPipeline(mjobsLifecycle(native),{available:false});
+  const baby=babyProgress({tasks:[{status:'proposed',title:'private family data',acceptance:'NOT_ASSESSED'},
+    {status:'submitted',title:'private family data',acceptance:'NOT_ASSESSED'},{status:'completed',title:'private family data',acceptance:'NOT_ASSESSED'},
+    {status:'accepted',title:'private family data',acceptance:'ACCEPTED'},{status:'blocked',title:'private family data',acceptance:'NOT_ASSESSED'}]}).pipeline;
+  assert.deepEqual(mjobs,{available:true,proposed:null,approved:1,active:2,completed:1,accepted:null,blocked:null,unassessed:null});
+  assert.deepEqual(baby,{available:true,proposed:1,approved:null,active:1,completed:1,accepted:1,blocked:1,unassessed:4});
+  assert.equal(JSON.stringify({mjobs,baby}).includes('private'),false);
 });
 test('local hub rejects cross-origin actions and needs an action token',async()=>{
   const {fetcher}=fixture();const server=makeServer({adapters:createAdapters({fetcher}),port:4322});

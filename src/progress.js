@@ -28,13 +28,22 @@ function babyProgress(raw){
   const tasks=raw.tasks;
   return {available:true,tasks:{total:tasks.length,proposed:tasks.filter(t=>t.status==='proposed').length,
     inFlight:tasks.filter(t=>['queued','submitted','submitting','awaiting_reconciliation'].includes(t.status)).length,
-    accepted:tasks.filter(t=>t.status==='accepted').length,unassessed:tasks.filter(t=>t.acceptance==='NOT_ASSESSED').length}};
+    accepted:tasks.filter(t=>t.status==='accepted').length,unassessed:tasks.filter(t=>t.acceptance==='NOT_ASSESSED').length},
+    pipeline:{available:true,proposed:count(tasks,'status',['proposed']),approved:null,active:count(tasks,'status',['submitting','submitted','awaiting_reconciliation']),
+      completed:count(tasks,'status',['completed']),accepted:count(tasks,'status',['accepted']),blocked:count(tasks,'status',['blocked']),
+      unassessed:count(tasks,'acceptance',['NOT_ASSESSED'])}};
 }
+function count(items,key,states){return items.filter(item=>states.includes(item?.[key])).length;}
 function mjobsLifecycle(raw){
   if(!raw||!Array.isArray(raw.workItems))return {available:false};
   const items=raw.workItems;
   return {available:true,approved:items.filter(x=>x.state==='approved').length,
-    leased:items.filter(x=>x.state==='leased').length,completed:items.filter(x=>x.state==='completed').length,
+    leased:count(items,'state',['leased','dispatched','in_review']),completed:items.filter(x=>x.state==='completed').length,
     reviewReady:Number.isSafeInteger(raw.artifactReviews?.ready)?raw.artifactReviews.ready:null};
 }
-module.exports={readMJobsProgress,babyProgress,mjobsLifecycle};
+function mjobsPipeline(lifecycle,evidence){
+  if(!lifecycle.available)return {available:false};
+  return {available:true,proposed:null,approved:lifecycle.approved,active:lifecycle.leased,completed:lifecycle.completed,
+    accepted:null,blocked:null,unassessed:evidence?.available?evidence.reviews.unassessed:null};
+}
+module.exports={readMJobsProgress,babyProgress,mjobsLifecycle,mjobsPipeline};

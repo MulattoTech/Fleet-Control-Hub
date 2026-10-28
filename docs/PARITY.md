@@ -8,7 +8,7 @@
 | Review lifecycle | MJobs independent documentation review loop | Acceptance remains unassessed without imported evidence | Displays current report |
 | Quota | Global Codex monitor and emergency latch | Reads shared Codex quota snapshot; AGY separate | No spending decisions |
 | Emergency | Machine wide process stop | Project scoped AO termination | No emergency proxy |
-| Progress | PR/CI, document review state, and lifecycle approval/lease/completion counts | Task queue, session activity, acceptance placeholder | Normalized counts and evidence backlog |
+| Progress | PR/CI, document review state, and lifecycle approval/active/completion counts | Task queue, session activity, acceptance placeholder | Shared work-stage counts; unsupported stages remain unknown |
 | Control safety | Sustained/Turbo, emergency latch, drain, and fresh quota | Running/emergency/draining mode and fresh shared quota | Shared safety summary and blocked Start reasons |
 
 BabyTracker likely escaped the observed document review burst because its controller has no equivalent automatic documentation review source, and its queue requires explicit task entries. This is a code-path distinction, not proof of feature parity. Confirm with the fleet audit and dispatch ledgers before drawing a complete historical conclusion.
@@ -24,11 +24,11 @@ The hub is a first shared interface, not a completed merge of both controllers. 
 | Pause and drain | Pause stops new dispatch; drain awaits verified process exit and preserves active work | Both have controls; BabyTracker still reports one working session after wind-down | Controller reports a terminal drain outcome only after all scoped sessions are verified stopped |
 | Queue and budget | Every dispatch consumes an explicit useful work item and a bounded per-run budget | BabyTracker requires queued tasks; MJobs has productive/review catalogs and Sustained/Turbo | No dispatch occurs from status reads, empty queues, stale quota or exhausted budgets |
 | Review | Draft or review output is evidence, then one assessment reaches accepted, revision requested or rejected | MJobs has approval and assessment routes; BabyTracker remains `NOT_ASSESSED` | Shared receipt schema records source revision, reviewer decision and finite retry count |
-| Progress | Both report proposed, approved, leased, completed, assessed and blocked counts with timestamps | Hub reduces local MJobs ledgers and BabyTracker queue to counts | Cross-project fixture yields the same schema and never exposes task text or private records |
+| Progress | Both report proposed, approved, active, completed, accepted and blocked counts with timestamps | Hub reduces local MJobs ledgers and BabyTracker queue to a shared count schema; unsupported stages are null | Native controllers expose equivalent stage receipts and timestamps; no task text or private records reach the browser |
 | Emergency | Scope and side effects are explicit; recovery cannot silently rearm dispatch | MJobs emergency is machine wide; BabyTracker is project scoped | Tests prove an emergency on one project cannot silently kill or start another |
 | Remote control | Owner authentication, request origin and local controller gate are all verified | Hub has disabled remote configuration; no route or credential exists | Authenticated fixture can act only on chosen project; unauthenticated request is denied |
 
-The current hub implements the read model and shared pause/drain subset. BabyTracker Start is guarded but its live draining state blocks it. MJobs native source has atomic scope/revision checks and a MJobs-only derived restore manifest. The hub uses the derived revision for guarded Start. No live Start was submitted during this work.
+The current hub implements a shared work-stage read model and shared Start, pause and drain controls. BabyTracker Start is guarded but its live draining state blocks it. MJobs native source has atomic scope/revision checks and a MJobs-only derived restore manifest. The hub uses the derived revision for guarded Start. No live Start was submitted during this work. Shared stage counts do not imply equivalent native workflow or assessment semantics.
 
 The MJobs root-fix controller has approval, assessment and completion endpoints. The hub reads its lifecycle counts but does not yet expose those actions. Ready drafts and review results remain unassessed evidence until the controller records acceptance. The BabyTracker acceptance field remains `NOT_ASSESSED` until its own evidence is evaluated.
 

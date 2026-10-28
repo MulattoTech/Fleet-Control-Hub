@@ -3,7 +3,7 @@ const DEFAULT_ENDPOINTS = Object.freeze({
   mjobs: 'http://127.0.0.1:8787',
   babytracker: 'http://127.0.0.1:4319'
 });
-const {readMJobsProgress,babyProgress,mjobsLifecycle}=require('./progress');
+const {readMJobsProgress,babyProgress,mjobsLifecycle,mjobsPipeline}=require('./progress');
 
 function loopbackEndpoint(value) {
   const url = new URL(value);
@@ -48,7 +48,7 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
   }
   async function status(id) {
     try {
-      if(id==='mjobs') {const raw=await read(id,'/api/state'); let master=null,sustain=null,quota=null;try{master=await read(id,'/api/master')}catch{};try{sustain=await read(id,'/api/sustain')}catch{};try{quota=await read(id,'/api/quota')}catch{};return {...summarizeMJobs(raw,master),controlUrl:urls[id],safety:mjobsSafety(master,quota),progress:{...progressReader(),lifecycle:mjobsLifecycle(sustain)}};}
+      if(id==='mjobs') {const raw=await read(id,'/api/state'); let master=null,sustain=null,quota=null;try{master=await read(id,'/api/master')}catch{};try{sustain=await read(id,'/api/sustain')}catch{};try{quota=await read(id,'/api/quota')}catch{};const evidence=progressReader(),lifecycle=mjobsLifecycle(sustain);return {...summarizeMJobs(raw,master),controlUrl:urls[id],safety:mjobsSafety(master,quota),progress:{...evidence,lifecycle,pipeline:mjobsPipeline(lifecycle,evidence)}};}
       if(id==='babytracker') {const raw=await read(id,'/api/state');return {...summarizeBaby(raw),controlUrl:urls[id],safety:babySafety(raw),progress:babyProgress(raw)};}
       throw Error('Unknown fleet');
     } catch(e) {return {id,name:id==='mjobs'?'MJobs':'BabyTracker',online:false,mode:'unavailable',total:null,working:null,idle:null,pending:null,attention:null,review:'unavailable',controlUrl:urls[id],detail:String(e.message).slice(0,130)};}
