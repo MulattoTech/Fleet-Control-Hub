@@ -1,0 +1,196 @@
+diff --git a/startup-control.js b/startup-control.js
+--- a/startup-control.js
++++ b/startup-control.js
+@@ -270,6 +270,15 @@
+     this.state.guardAcknowledged = true; this._persist();
+     await this._checkSafety({ requireGuard: true });
+     if (!boot.alreadyOnline) {
++      // Bind any later pre-commit rejection to the exact durable restore bytes
++      // observed before calling the native start operation.
++      if (this.state.options.boundedPrimaryId) {
++        const restoreBefore = await this._call('read restore ledger', ctx => this.deps.restore.fingerprint(ctx));
++        if (!restoreBefore || !/^[a-f0-9]{64}$/.test(restoreBefore.stateFingerprint || '') ||
++            !/^[a-f0-9]{64}$/.test(restoreBefore.bytesFingerprint || ''))
++          throw new StartupError('RESTORE_LEDGER_UNREADABLE', 'Durable restore ledger could not be bound before start');
++        this.state.restoreBefore = restoreBefore; this._persist();
++      }
+       this._transition('starting_restore');
+       this.state.restoreStartAttempted = true; this._persist();
+       const receipt = await this._call('start existing RestoreFleet', ctx => this.deps.restore.start(ctx), { mutates: true, timeoutMs: this.timeouts.actionMs });
+@@ -415,6 +424,18 @@
+           outcome = 'resumable';
+         } else if (proof.outcome === 'idle') {
+           if (proof.submissionAuditComplete !== true || proof.submittedResume !== false || proof.runningExpectedAgents !== 0) return pending(proof.reason || 'A submitted resume or running agent cannot be ruled out. Unknown work is not cleared for a retry.');
++          if ((proof.precommitRejected === true || original.options?.boundedPrimaryId) &&
++              (original.options?.expectedProjectId !== 'mjobs-luna' ||
++               original.options?.boundedPrimaryId !== original.bootstrap?.targetIds?.[0] ||
++               original.bootstrap?.targetCount !== 1 ||
++               original.error?.code !== 'STARTUP_FAILED' ||
++               original.error?.message !== 'Bounded restore requires only the saved MJobs primary and dispatch off' ||
++               original.restoreStarted !== false || original.restoreReceipt !== null ||
++               original.actionPending?.name !== 'start existing RestoreFleet' ||
++               proof.precommitRejected !== true ||
++               !/^[a-f0-9]{64}$/.test(original.restoreBefore?.bytesFingerprint || '') ||
++               proof.restoreLedgerFingerprint !== original.restoreBefore.bytesFingerprint))
++            return pending('The rejected restore lacks an exact pre-commit ledger and runtime proof. Nothing was cleared.');
+           outcome = 'idle';
+         } else return pending(proof.reason || 'The inspector could not establish a safe ready or never-submitted state. Nothing was cleared.');
+         // No awaits after this comparison: the state change is tied to exactly
+diff --git a/startup-adapter.js b/startup-adapter.js
+--- a/startup-adapter.js
++++ b/startup-adapter.js
+@@ -331,6 +331,42 @@
+    return {stateFingerprint:stateFingerprint(this.master.restore.state),bytesFingerprint:createHash('sha256').update(bytes).digest('hex')};
+   }catch{return null}
+  }
++ restoreFingerprint(ctx){this.check(ctx);return this.durableRestoreState();}
++ async precommitRejectionProof(ctx,manifest,durableBefore){
++  const previous=ctx.previousRun||{},state=this.master.restore.state;
++  if(previous.options?.expectedProjectId!=='mjobs-luna'||previous.options?.boundedPrimaryId!==manifest.targets[0]?.id||
++     previous.options?.startWorkAfter!==false||previous.options?.autoDispatchAfter!==false||
++     previous.error?.code!=='STARTUP_FAILED'||previous.error?.message!=='Bounded restore requires only the saved MJobs primary and dispatch off'||
++     previous.restoreStartAttempted!==true||previous.restoreStarted!==false||previous.restoreReceipt!==null||
++     previous.actionPending?.name!=='start existing RestoreFleet'||manifest.targets.length!==1||
++     previous.bootstrap?.manifestRevision!==manifest.revision||
++     !previous.restoreBefore||!durableBefore||
++     previous.restoreBefore.stateFingerprint!==durableBefore.stateFingerprint||
++     previous.restoreBefore.bytesFingerprint!==durableBefore.bytesFingerprint||
++     state.active!==false||this.master.restore.running||state.phase!=='complete'||
++     !Array.isArray(state.source?.targets)||!Array.isArray(state.desiredIds)||
++     state.source.startupRunId===previous.runId||!state.source.startupRunId||
++     !exactIds(state.source.targets.map(s=>s.id),state.desiredIds)||
++     state.source.targets.some(s=>s.projectId!=='mjobs-luna')||
++     Object.keys(state.inflight||{}).length||Object.keys(state.errors||{}).length)return false;
++  const events=Array.isArray(previous.events)?previous.events:[];
++  const stage=events.filter(e=>e?.phase==='starting_restore');
++  const times=[state.startedAt,state.completedAt,previous.startedAt,stage[0]?.at,previous.actionPending.startedAt,previous.finishedAt].map(x=>Date.parse(x||''));
++  if(stage.length!==1||events.at(-1)?.phase!=='starting_restore'||!times.every(Number.isFinite)||
++     !times.every((t,i)=>i===0||t>=times[i-1])||times[5]>this.now()+1000)return false;
++  // Observe every MJobs session, including the older operation and the selected
++  // primary, so an unrelated running worker cannot be hidden by the one-ID scope.
++  const sessions=(await this.getSessions()).filter(s=>s.projectId==='mjobs-luna');this.check(ctx);
++  const required=new Set([...state.desiredIds,manifest.targets[0].id]);
++  if(!sessions.length||sessions.length!==new Set(sessions.map(s=>s.id)).size||
++     [...required].some(id=>sessions.filter(s=>s.id===id).length!==1))return false;
++  const counts=await this.master.restore.runtimeInspector(['mjobs-luna']);this.check(ctx);
++  if(sessions.some(s=>s.activity?.state!=='exited'||
++      !(counts.get(s.id)===0||runtimeAbsentEvidence(s,counts,this.now()))))return false;
++  const durableAfter=this.durableRestoreState();
++  return !!durableAfter&&durableAfter.stateFingerprint===durableBefore.stateFingerprint&&
++   durableAfter.bytesFingerprint===durableBefore.bytesFingerprint;
++ }
+  recoveryBinding(previous,manifest,{uncommitted=false,durableBefore=null}={}){
+   const state=this.master.restore.state,ids=manifest.targets.map(s=>s.id),source=state.source;
+   const events=Array.isArray(previous.events)?previous.events:[];
+@@ -402,6 +438,13 @@
+    proof.outcome='idle';proof.submissionAuditComplete=true;proof.submittedResume=false;proof.runningExpectedAgents=0;
+    proof.nativeRuntimeAbsenceVerified=current.runtimeAbsenceComplete===true;
+   }
++  if(proof.outcome==='unknown'&&!operationInFlight&&submittedIds.length===0&&dispatchPaused&&identitiesMatch&&
++     current.daemonOnline===true&&current.conflicts?.length===0&&knownAbsent&&
++     await this.precommitRejectionProof(ctx,manifest,durableBefore)){
++   Object.assign(proof,{outcome:'idle',submissionAuditComplete:true,submittedResume:false,
++    runningExpectedAgents:0,precommitRejected:true,restoreLedgerFingerprint:durableBefore.bytesFingerprint,
++    reason:'Exact bounded pre-commit rejection and unchanged older restore ledger verified; no MJobs runtime or submission remains.'});
++  }
+   // An interrupted partial restore is neither a completed fleet nor a run that
+   // never submitted work. Account for every exact target without clearing any
+   // native submission ledger. Recheck only permits a new explicit Startup.
+@@ -454,7 +497,7 @@
+   return {enabled:true,mode:'sustained',targetWorking:result.config?.targetWorking??this.master.sustain.config.targetWorking};
+  }
+  deps(){
+-  return Object.fromEntries(['safety','bootstrap','holdDispatch','unlock','watchdogDisarmed','arm','guardAck','readiness','openUi','reconcile','startDispatch'].map(k=>[k,this[k].bind(this)]).concat([['readiness',this.stableReadiness.bind(this)],['restore',{start:this.restoreStart.bind(this),status:this.restoreStatus.bind(this),pause:this.restorePause.bind(this)}]]));
++  return Object.fromEntries(['safety','bootstrap','holdDispatch','unlock','watchdogDisarmed','arm','guardAck','readiness','openUi','reconcile','startDispatch'].map(k=>[k,this[k].bind(this)]).concat([['readiness',this.stableReadiness.bind(this)],['restore',{start:this.restoreStart.bind(this),status:this.restoreStatus.bind(this),pause:this.restorePause.bind(this),fingerprint:this.restoreFingerprint.bind(this)}]]));
+  }
+ }
+ 
+diff --git a/test-startup-adapter.js b/test-startup-adapter.js
+--- a/test-startup-adapter.js
++++ b/test-startup-adapter.js
+@@ -571,9 +571,9 @@
+   assert.equal(f.state.effects.length, 1);
+ });
+ 
+-test('deps exposes bound adapter methods and only the existing restoration interface', async t => {
++test('deps exposes bound adapter methods and a read-only restoration fingerprint', async t => {
+   const f = fixture(t), adapter = f.make(), deps = adapter.deps();
+-  assert.deepEqual(Object.keys(deps.restore).sort(), ['pause', 'start', 'status']);
++  assert.deepEqual(Object.keys(deps.restore).sort(), ['fingerprint', 'pause', 'start', 'status']);
+   const safety = deps.safety; assert.equal(safety(f.context()).emergency.latched, true);
+   const watchdog = deps.watchdogDisarmed; assert.equal(await watchdog(f.context()), true);
+   assert.deepEqual(f.state.reads, [{ op: 'watchdog', explicit: true }]); assert.deepEqual(f.state.effects, []);
+@@ -1160,6 +1160,73 @@
+  const persist=()=>fs.writeFileSync(file,JSON.stringify(state));persist();
+  return {adapter,ctx,persist,file};
+ }
++function boundedPrecommitRejection(f){
++ f.protect();f.state.saved.at=new Date(f.state.now-60000).toISOString();
++ for(const s of f.state.saved.sessions)s.projectId='mjobs-luna';
++ f.state.saved.sessions[0].id='mjobs-luna-40';
++ f.state.saved.sessions[0].mode='chat';
++ f.state.saved.sessions[1].id='mjobs-luna-3';
++ f.state.saved.sessions[1].mode='tui';
++ f.state.saved.sessions[2].id='mjobs-luna-4';
++ f.state.saved.sessions[2].mode='tui';
++ const at=delta=>new Date(f.state.now+delta).toISOString();
++ f.state.sessions=f.state.saved.sessions.map(s=>({...s,activity:{state:'exited'},isTerminated:false,
++  statusReadiness:'ready',createdAt:at(-60000),updatedAt:at(-1000),terminalGeneration:'old-generation',
++  controllerState:'stopped',controllerVerified:s.mode==='chat'}));
++ f.state.counts=new Map(f.state.sessions.map(s=>[s.id,0]));
++ const state=f.master.restore.state;
++ Object.assign(state,{active:false,phase:'complete',startedAt:at(-10000),completedAt:at(-9000),
++  source:{startupRunId:'older-run',snapshotAt:f.state.saved.at,targets:f.state.saved.sessions.map(s=>({
++   id:s.id,projectId:s.projectId,kind:s.kind,harness:s.harness,model:s.model,mode:s.mode}))},
++  desiredIds:f.state.saved.sessions.map(s=>s.id),inflight:{},errors:{}});
++ state.source=JSON.parse(JSON.stringify(state.source));
++ const file=path.join(f.root,'restore-state.json');f.master.restore.statePath=file;
++ const persist=()=>fs.writeFileSync(file,JSON.stringify(state));persist();
++ const adapter=f.make(),manifest=adapter.manifest('mjobs-luna','mjobs-luna-40');
++ const previous={schemaVersion:1,runId:'startup-run-001',phase:'uncertain',active:false,
++  reconciliationRequired:true,startedAt:at(-3000),finishedAt:at(-800),
++  options:{expectedProjectId:'mjobs-luna',expectedManifestRevision:manifest.revision,boundedPrimaryId:'mjobs-luna-40',autoDispatchAfter:false,startWorkAfter:false},
++  bootstrap:{manifestRevision:manifest.revision,targetCount:1,targetIds:['mjobs-luna-40']},
++  restoreBefore:adapter.durableRestoreState(),restoreStartAttempted:true,restoreStarted:false,restoreReceipt:null,
++  actionPending:{name:'start existing RestoreFleet',startedAt:at(-900)},
++  error:{code:'STARTUP_FAILED',message:'Bounded restore requires only the saved MJobs primary and dispatch off'},
++  events:[{phase:'starting_restore',at:at(-1000)}],recentRequests:[]};
++ const ctx=f.context({expectedProjectId:'mjobs-luna',expectedManifestRevision:manifest.revision,
++  boundedPrimaryId:'mjobs-luna-40',previousRun:previous,expectedStateRevision:'precommit-revision'});
++ return {adapter,ctx,previous,persist,file};
++}
++test('exact bounded pre-commit rejection reconciles only an unchanged ledger and absent project runtimes',async t=>{
++ const f=fixture(t),x=boundedPrecommitRejection(f),bytes=fs.readFileSync(x.file);
++ const proof=await x.adapter.reconcile(x.ctx);
++ assert.equal(proof.outcome,'idle');assert.equal(proof.precommitRejected,true);
++ assert.equal(proof.restoreLedgerFingerprint,x.previous.restoreBefore.bytesFingerprint);
++ assert.deepEqual(fs.readFileSync(x.file),bytes);assert.deepEqual(f.state.effects,[]);
++ const startupFile=path.join(f.root,'startup-state.json');
++ fs.writeFileSync(startupFile,JSON.stringify({...x.previous,revision:'precommit-revision'}));
++ const controller=new StartupController({root:f.root,deps:x.adapter.deps(),now:()=>f.state.now});
++ const result=await controller.reconcile({confirm:'RECHECK STARTUP',runId:x.previous.runId});
++ assert.equal(result.reconciled,true);assert.equal(result.run.phase,'idle');
++ assert.deepEqual(fs.readFileSync(x.file),bytes);assert.deepEqual(f.state.effects,[]);
++});
++test('bounded pre-commit reconciliation rejects missing or conflicting evidence',async t=>{
++ const cases={
++  'missing before ledger':x=>{delete x.previous.restoreBefore;},
++  'different before ledger':x=>{x.previous.restoreBefore.bytesFingerprint='a'.repeat(64);},
++  'different error':x=>{x.previous.error.message='Other restore failure';},
++  'different prior owner':x=>{x.adapter.master.restore.state.source.startupRunId=x.previous.runId;x.persist();},
++  'new ledger write':x=>{x.adapter.master.restore.state.completedAt=new Date(x.adapter.now()-1).toISOString();x.persist();},
++  'unverified submission':x=>{x.adapter.master.restore.state.inflight['mjobs-luna-3']={command:'resume-agent'};x.persist();},
++  'running sibling':x=>{x.adapter.getSessions=async()=>x.adapter.master.restore.getSnapshot().sessions.map(s=>({...s,activity:{state:s.id==='mjobs-luna-3'?'active':'exited'}}));},
++  'missing process count':x=>{x.adapter.master.restore.runtimeInspector=async()=>new Map();},
++  'dispatch enabled':x=>{x.adapter.master.sustain.config.enabled=true;},
++  'manifest drift':(x,f)=>{f.state.saved.sessions[1].id='mjobs-luna-9';},
++ };
++ for(const [name,change] of Object.entries(cases))await t.test(name,async st=>{
++  const f=fixture(st),x=boundedPrecommitRejection(f);change(x,f);
++  const proof=await x.adapter.reconcile(x.ctx);
++  assert.notEqual(proof.outcome,'idle',name);assert.deepEqual(f.state.effects,[]);
++ });
++});
+ test('completed restore followed by a positively stopped runtime can reconcile without launching or discarding its ledger',async t=>{
+  const f=fixture(t),x=completedThenStoppedRecovery(f),bytes=fs.readFileSync(x.file),ledger=clone(f.master.restore.state);
+  const proof=await x.adapter.reconcile(x.ctx);assert.equal(proof.outcome,'resumable',JSON.stringify({proof,binding:x.adapter.recoveryBinding(x.ctx.previousRun,x.adapter.manifest(),{durableBefore:x.adapter.durableRestoreState()}),durable:x.adapter.durableRestoreState()}));assert.equal(proof.restoreBinding.kind,'completed-restore');assert.equal(proof.verifiedTargetCount,1);assert.equal(proof.verifiedStoppedCount,2);assert.equal(proof.restoreBinding.completedAt,ledger.completedAt);assert.deepEqual(f.master.restore.state,ledger);assert.deepEqual(fs.readFileSync(x.file),bytes);assert.deepEqual(f.state.effects,[]);
