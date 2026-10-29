@@ -129,6 +129,33 @@ async function startOneMJobs(button){const key='mjobs:one-session';if(pendingAct
   const response=await postAction('/api/bounded-start',{id:'mjobs',confirmation:preview.confirmation,requestId,manifestRevision:preview.manifestRevision,primaryId:preview.primaryId});
   const result=await response.json();if(!response.ok)throw Error(result.error||'One-session Start was refused');sessionStorage.removeItem('mjobsBoundedStartRequestId');showActionMessage(result.note);
 }catch(e){showActionMessage('One-session Start outcome was not confirmed. Inspect MJobs before retrying: '+e.message);}finally{pendingActions.delete(key);await refresh();}}
+async function refreshServices(){try{
+  const r=await fetch('/api/services',{cache:'no-store'}),state=await r.json();if(!r.ok)throw Error(state.error||'Unavailable');
+  $('service-status').textContent='Plex: '+(state.plex.running?'running':'stopped')+'; RustDesk: '+state.rustdesk.state+'; Tailscale: '+state.tailscale.state+'; Docker engine: '+(state.docker.healthy?'healthy':'unavailable')+'; Monai gateway: '+(state.monai.gatewayRunning?'running':'stopped')+'.';
+  $('plex-start').disabled=!state.plex.canStart||state.plex.running;
+  $('rustdesk-restart').disabled=!state.rustdesk.canRestart;
+  $('tailscale-restart').disabled=!state.tailscale.canRestart;
+  $('docker-start').disabled=!state.docker.canStart||state.docker.healthy;
+  $('docker-restart').disabled=!state.docker.canRestart||!state.docker.healthy;
+  $('monai-start').disabled=!state.monai.canStart||state.monai.gatewayRunning;
+}catch(e){$('service-status').textContent='Service status unavailable: '+e.message;for(const id of ['plex-start','rustdesk-restart','tailscale-restart','docker-start','docker-restart','monai-start'])$(id).disabled=true;}}
+async function serviceAction(action){
+  const exact='RUN '+action;
+  const warning=action==='rustdesk-restart'||action==='tailscale-restart'?'This may disconnect the remote session.':action==='docker-restart'?'This will stop Docker Desktop and may interrupt containers.':'This starts a local service.';
+  if(!await confirmAction(warning+' Type '+exact+' to proceed.',exact))return;
+  try{
+    const nonceResponse=await fetch('/api/services/nonce',{cache:'no-store'}),nonceData=await nonceResponse.json();if(!nonceResponse.ok)throw Error(nonceData.error||'Action unavailable');
+    const r=await postAction('/api/services/action',{action,confirmation:exact,nonce:nonceData.nonce}),data=await r.json();
+    if(!r.ok)throw Error(data.error||'Action refused');showActionMessage(data.note);
+  }catch(e){showActionMessage('Action outcome uncertain; check service status before retrying: '+e.message);}finally{await refreshServices();}
+}
+$('plex-start').addEventListener('click',()=>serviceAction('plex-start'));
+$('rustdesk-restart').addEventListener('click',()=>serviceAction('rustdesk-restart'));
+$('tailscale-restart').addEventListener('click',()=>serviceAction('tailscale-restart'));
+$('docker-start').addEventListener('click',()=>serviceAction('docker-start'));
+$('docker-restart').addEventListener('click',()=>serviceAction('docker-restart'));
+$('monai-start').addEventListener('click',()=>serviceAction('monai-start'));
+refreshServices();setInterval(refreshServices,15000);
 if(!['127.0.0.1','localhost'].includes(location.hostname)){
   document.querySelectorAll('nav a[href^="http://127.0.0.1:"]').forEach(a=>a.remove());
   document.querySelector('.rail-bottom').replaceChildren(document.createTextNode('Protected remote control'),document.createElement('br'),el('span','',location.hostname));
