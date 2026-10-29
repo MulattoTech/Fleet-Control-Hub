@@ -27,7 +27,7 @@ const parse=x=>{const v=Date.parse(x||'');return Number.isFinite(v)?v:0};
 const clone=x=>JSON.parse(JSON.stringify(x));
 const {publicError,publicState,privateDiagnostic,isUsageLimit}=require('./control-errors');
 const {canReceiveInstruction}=require('./runtime-health');
-const {prSignal,DispatchSignals,REPORT_POLICY}=require('./dispatch-policy');
+const {prSignal,graphSignal,DispatchSignals,REPORT_POLICY}=require('./dispatch-policy');
 const short=()=>publicError('sustain');
 function atomic(p,x){const t=p+'.tmp';fs.writeFileSync(t,JSON.stringify(x,null,2),'utf8');fs.renameSync(t,p)}
 function read(p,x){try{return JSON.parse(fs.readFileSync(p,'utf8'))}catch{return clone(x)}}
@@ -268,8 +268,22 @@ class Sustain {
    const deliveryHold=this.deliveryLedger?.holdFor(s.id,now);if(deliveryHold){held.push({id:s.id,...deliveryHold});continue;}
    const owned=(s.prs||[]).filter(p=>['open','draft'].includes(p.state)&&prs.some(g=>g.number===p.number));
    let message=null,reason='',type='',key='',priority=5,issueId=null;
-    // The primary receives no idle-capacity checkpoints. It acts on explicit work.
-    if(s.kind==='orchestrator')continue;
+    // A verified idle primary is the only source of new issue/file ownership.
+    // Without this lane the fleet can be healthy and Sustained enabled while
+    // no worker has an approved issue. One graph-bound checkpoint per 30-minute
+    // period prevents repeated status-only prompts and respects all cooldowns.
+    if(s.kind==='orchestrator'){
+     if(s.id!==root?.id||(!prs.length&&!Object.values(this.status.workItems).some(w=>w.state==='approved')))continue;
+     const failing=prs.filter(p=>(p.statusCheckRollup||[]).some(c=>['FAILURE','TIMED_OUT','ACTION_REQUIRED'].includes(c.conclusion))).length;
+     const workers=snap.sessions.filter(w=>w.kind==='worker'&&canReceiveInstruction(w));
+     const graph=graphSignal(snap.sessions,prs);
+     key='root-coordination:'+root.id+':'+graph+':'+Math.floor(now/(30*60*1000));
+     type='root';priority=0;reason='Coordinate real outstanding MJobs work and PR integration';
+     message='USER-AUTHORIZED UNATTENDED MJOBS DEVELOPMENT: You are the SOLE MJobs primary integration coordinator '+root.id+'. The authoritative GitHub queue currently has '+prs.length+' open PRs, '+failing+' with failing hosted checks, and '+workers.length+' verified idle worker sessions. Do substantial, prioritized P0/P1 MJobs development; first inspect current git/PR/issue state and the repository AGENTS.md and continuity contract. Resolve existing unfinished PRs and CI failures, and delegate independent, nonoverlapping issue/file ownership to EXISTING idle workers using ao send (do not spawn or restore any agents). Keep no more than 8 concurrent turns including yourself and at most one heavy local test. Prefer working code with tests and exact-head CI evidence over status reports or duplicate documentation. Integrate only with valid branch protections and required reviews; never force push, bypass approvals, auto-merge unreviewed changes, handle credentials, or submit real job applications. Continue productive work while resource and quota guards permit; if a step is blocked, assign the next safe nonoverlapping issue rather than wait for me. When the backlog is exhausted or no safe useful work exists, report NO_NEW_GAP and park. Do not spend tokens on periodic status messages without work. '+REPORT_POLICY;
+     const action=this.possibleDispatch(s,type,key,message,reason,now,{priority});
+     if(action)actions.push(action);
+     continue;
+    }
     if(owned.length){
     const options=owned.map(p=>({pr:prs.find(x=>x.number===p.number),signal:prSignal(prs.find(x=>x.number===p.number))})).filter(x=>x.signal);
     options.sort((a,b)=>(a.signal.kind==='ci'?0:1)-(b.signal.kind==='ci'?0:1)||a.pr.number-b.pr.number);

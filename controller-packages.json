@@ -112,7 +112,7 @@
       "restore-fleet.js": "cf514df1894a317385c2e5c9175ce7f3166643e8e428bd92c03b1d050d3f2337",
       "Run-Mission-Control.py": "2a31eef8924750ce359652dfcca200ad938039046bbbbec7e4b682db2849e4ef",
       "runtime-health.js": "fe565da3e914a65dcb32613ab14d33a610417fac0c6096c7e8038a696128ae21",
-      "server.js": "78ab5d811418a3de745d5ef53c857a07ebd5a918abe74639bd75f1cea2fbfc3a",
+      "server.js": "e73ea33130d0ee74a40512dc5a24831f553a8e882b0c4bb87d64638f48e407d5",
       "server.quiet-stage-e97ba723cc024dfd98e6ee371cfec32a.js": "2de0202e99387af5e986f095c096916ba0295b89cdbcd9f7b512be1bd67eca36",
       "snapshot-retention.js": "b1cfba8158ca84078866672a12b94ba081b2f808161e5f52799f152ebd43613c",
       "Start-Fleet-Analytics.ps1": "cf7985945d38cbaca19803fd554cfea2ed437454350bd8610480e372fa63b681",
@@ -127,7 +127,7 @@
       "startup-adapter.js": "4c86b4c02d560bd501c672d46452d9feb1e726f6529e604e8ce1138ee2311c8f",
       "startup-control.js": "9d391ea9c628ca2c7cb126fd82ac4a87ae26dd10f0da6bd80130ca829aed277b",
       "Stop-Fleet-Control.ps1": "a87711054a4b3cc821fe2f2eedb261cd610876ebdae7a43da09495c10d39f2b5",
-      "sustain.js": "ca55d68dabf7c1c12a83c18742e392eb6a4161aada2b041b40cfb49cc2ed9613",
+      "sustain.js": "649e0693b9a6a626750d4039ce4b14c06bbb32a821b7ace242b031888506c7a3",
       "terminal-delivery.js": "19a8d8400793de422058250f4cf1cb01f833552ef5eb9dae102504b9afe00307",
       "test-active-turn-observation.js": "f59219100ea70813b16a7b566a62e16b64005bba64de4ad956352f8cd68146c9",
       "test-agent-observability.js": "7ccaf92f6c33fa92c6290c5e3d6535562c321ddf9080a2228d62be959c1eb61e",
@@ -183,10 +183,10 @@
       "test-stale-dispatch.js": "ed0e43375ad487c0fbec9c1068e8e8834e05935fc8e9827ede416a697b220183",
       "test-stale-watchdog.js": "8a2483d466f333f607f0a976ad3ad5dd93d4aa498cd64a8ef885fa33a1b589f2",
       "test-startup-adapter.js": "4424dfb7f8a00cc9455a6af3ea0160e1729f498c0ddf0c90052f7776fba86c01",
-      "test-startup-integration.js": "53466c1c425eb26264a49c3e97610c2af052b665ce6854ebbc3860fa64083505",
+      "test-startup-integration.js": "2316ee64f553fd83616d973acfd4ad656a15f57b1e1d83e3a21cbe4b6fed1bc5",
       "test-startup.js": "4c2eaf9ad554699ce815127d9a71525c8ea9ed7271056a05ad6cf0d9f6cf948b",
       "test-sustain-browser.js": "8962a0c618a6ab9376b87c5c372c59ca3c90b2ab0aa478036d98630f05076d9c",
-      "test-sustain.js": "f4485d14c4a33733f9b2278a3e78add792a09719f436aaf46b078aeccc344a2f",
+      "test-sustain.js": "7217f73424ea69d0e428ccc5b4d05e475996d3171f520d220e62e38ea9915de2",
       "test-terminal-delivery.js": "f1284d3d5093abddb3b76fb7718ce5f249c8c0cecf3357dea1ef526ee53a873d",
       "test-turbo-browser.js": "20d9ba3c6d81cda7bccf3537eea90dec07c570ce9bbbcc65c53da56524cc1f8c",
       "test-turbo.js": "d159330d195c7da588784771f371f2b93d61823c1af98213b16055f912f6de07",
@@ -235,7 +235,9 @@
       "remote/public/analytics/index.html": "03e0c4a844f188859bb5e8abc754bc6c9a4bf1b32c88d90111966857a9a8ccfd",
       "legacy-startup-evidence.js": "e95f6108e5550f16463a02573394b67c2de8657e9ed7846724aed538e2a55b42",
       "recovery-selection.js": "873f1235b6560626106285ca35d823c0c5227e3ab7a502d47e06eda5a6058ad8",
-      "test-recovery-selection.js": "282e6f6e88568f47732bee1fb1cb2a1f7c09992efb33c1d33f227e8e15011932"
+      "test-recovery-selection.js": "282e6f6e88568f47732bee1fb1cb2a1f7c09992efb33c1d33f227e8e15011932",
+      "session-governor.js": "85339f3cb3a27e376e66054cc09c9835de1ea4975a2b19886e1e3a4dd303169f",
+      "test-session-governor.js": "9b0401e9916afdfb4e353c2fef39b6953c4d10ca7cfcdd1e8cc44200603eeb0b"
     }
   }
 }

@@ -54,17 +54,17 @@ async function test(){
  assert.equal(pre.working,0);
  assert.equal(pre.rootId,'mjobs-luna-35');
  assert.equal(sent.length,0);
- assert.ok(!pre.selected.some(x=>x.id==='mjobs-luna-35'),'idle primary receives no automatic checkpoint');
+ assert.ok(pre.selected.some(x=>x.id==='mjobs-luna-35'&&x.type==='root'),'idle primary receives bounded coordination while real PRs exist');
  assert.ok(pre.selected.some(x=>x.id==='mjobs-luna-9'&&x.issue===173));
  assert.ok(pre.selected.some(x=>x.id==='mjobs-luna-10'&&x.issue===217));
  sustain.enable(true);
  const first=await sustain.tick();
- assert.equal(first.sent.length,4);
- assert.equal(sent.length,4);
+ assert.equal(first.sent.length,5);
+ assert.equal(sent.length,5);
  assert.ok(sent.some(args=>args.includes('mjobs-luna-9')),'An instruction-waiting worker receives its assigned work');
  assert.ok(!sent.some(args=>args.includes('mjobs-blocked')),'A pending decision never receives an automatic instruction despite a stale isIdle flag');
- assert.equal(sent.some(x=>x.includes('mjobs-luna-35')),false);
- assert.equal(new Set(sent.map(x=>x[2])).size,4);
+ assert.equal(sent.some(x=>x.includes('mjobs-luna-35')),true);
+ assert.equal(new Set(sent.map(x=>x[2])).size,5);
  assert.ok(sustain.status.leases[173]);
  assert.ok(sustain.status.leases[217]);
  assert.notEqual(sustain.status.leases[173].scope[0],sustain.status.leases[217].scope[0]);
@@ -88,7 +88,7 @@ async function test(){
  const completed=sustain.completeIssue(173,'Reviewed protected PR #173 at exact head abcdef123456');
  assert.equal(completed.state,'completed');
  assert.equal(sustain.status.leases[173].state,'complete');
- assert.equal(sustain.status.dispatches.length,4);
+ assert.equal(sustain.status.dispatches.length,5);
  snap.metrics.ramFree=4*1024**3;clockTime+=200000; const blocked=await sustain.tick();
  assert.ok(/RAM/i.test(blocked.blocked),'memory stops a cycle');
  const restart=new Sustain({root,getState:async()=>snap,turbo,command:async args=>sent.push(args),audit:()=>{},issueRunner:async()=>({state:'OPEN',title:'Mock issue',assignees:[]}),clock:()=>clockTime,autoSchedule:false});
@@ -121,7 +121,7 @@ async function test(){
  fs.writeFileSync(path.join(raceRoot,'sustain-task-bank.json'),JSON.stringify([{session:'race-worker',issue:173,scope:['tests/unit/race.py'],focus:'bounded test'}]));
  const raceAgent={...agent('race-worker','Implementation'),mode:'tui',activity:'waiting_input'};
  const race=new Sustain({root:raceRoot,autoSchedule:false,clock:()=>clockTime,turbo,
-  getState:async()=>({...snap,sessions:[sessions[0],{...raceAgent,activity:++raceReads===1?'waiting_input':'blocked'}]}),
+  getState:async()=>({...snap,sessions:[{...sessions[0],isIdle:false,busy:true,activity:'active'},{...raceAgent,activity:++raceReads===1?'waiting_input':'blocked'}]}),
   command:async args=>raceSent.push(args),audit:()=>{},issueRunner:async()=>({state:'OPEN',title:'Mock issue',assignees:[]})});
  race.approveIssue(173,'race-worker');
  race.enable(true);

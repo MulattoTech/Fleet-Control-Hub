@@ -95,6 +95,7 @@ function fixture() {
   const modules = {
     './turbo': { Turbo: dummy }, './sustain': { Sustain: dummy }, './master-controls': { MasterControls: dummy },
     './startup-control': { StartupController: dummy }, './startup-adapter': { StartupAdapter: dummy },
+    './session-governor': { SessionGovernor: dummy },
     './post-review-control': { completeReviewedRestore: async data => {
       if(data.confirm!=='COMPLETE REVIEWED RESTORE')throw Error('Explicit reviewed completion required');
       if(b.onReviewedCompletion)await b.onReviewedCompletion();

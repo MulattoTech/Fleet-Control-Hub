@@ -10,6 +10,7 @@ const { Sustain } = require('./sustain');
 const { MasterControls } = require('./master-controls');
 const { StartupController } = require('./startup-control');
 const { StartupAdapter } = require('./startup-adapter');
+const { SessionGovernor } = require('./session-governor');
 const { completeReviewedRestore } = require('./post-review-control');
 const { OrchestratorLauncher } = require('./orchestrator-launcher');
 const { runtimeHealthy, addControllerHealth, controllerStopped } = require('./runtime-health');
@@ -63,7 +64,7 @@ let sustain=null;
 let master=null;
 let quota=null;
 let findWork=null;
-let startup=null, startupAdapter=null, orchestratorLauncher=null;
+let startup=null, startupAdapter=null, orchestratorLauncher=null, sessionGovernor=null;
 let manualRestoreAuthorized=false;
 let cached={at:0, result:null};
 let cpuLast=os.cpus().map(c=>c.times);
@@ -589,6 +590,7 @@ async function main(req,res){
   catch(e){return json(res,503,{codexExecutableReady:false,error:e.message})}
  }
  if(req.method==='GET'&&req.url==='/api/state'){try{return json(res,200,await state(true))}catch(e){return json(res,503,{error:String(e.message)})}}
+ if(req.method==='GET'&&req.url==='/api/session-governor')return json(res,200,sessionGovernor?.status()||{enabled:false,error:'not-initialized'});
  if(req.method==='GET'&&req.url==='/api/health'){return json(res,200,{ok:true,port,host:listenHost,turboEnabled:turbo?.configuration().enabled,sustainedEnabled:sustain?.config.enabled,dispatchBlockedReason:dispatchHealthBlockReason()})}
  if(req.method==='GET'&&req.url==='/api/sustain')return json(res,200,sustain.summary());
  if(req.method==='GET'&&req.url==='/api/sustain/preview'){
@@ -704,5 +706,16 @@ findWork=new FindWork({root,getState:state,command,audit,guard:()=>{
  if(master?.restore?.state?.active)return 'Fleet restoration is active';
  return quota?.dispatchBlockReason()||startupBlockReason()||null;
 }});
+sessionGovernor=new SessionGovernor({root,projectId,
+ listSessions:async()=>{const data=await daemon('/api/v1/sessions');if(!Array.isArray(data.sessions))throw Error('AO inventory unavailable');return data.sessions;},
+ getSession:async id=>daemon('/api/v1/sessions/'+encodeURIComponent(id)),
+ exitAgent:async id=>{
+  if(!/^mjobs-luna-[0-9]+$/.test(id))throw Error('Invalid scoped session ID');
+  const result=await exec(AO,['session','exit-agent',id,'--project',projectId,'--json'],{windowsHide:true,timeout:16000,maxBuffer:180000});
+  return JSON.parse(result.stdout);
+ },
+ pauseDispatch:()=>master.disableAutomaticDispatch(),audit
+});
+sessionGovernor.start(5000);
 const server=http.createServer((req,res)=>{main(req,res).catch(e=>json(res,500,{error:e.message}))});
 server.listen(port,listenHost,()=>console.log('MJobs Fleet Control listening on http://'+listenHost+':'+port));
