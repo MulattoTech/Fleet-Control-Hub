@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/turbo.css">
   <script defer src="/app.js"></script>
+  <script defer src="/run-ui.js"></script>
   <script defer src="/startup-ui.js"></script>
   <link rel="stylesheet" href="/startup.css">
   <script defer src="/turbo-ui.js"></script>
@@ -58,11 +59,12 @@
           <div><div class="eyebrow"><span class="dot inline"></span> FLEET CONTROL <span class="slash">/</span> MJOBS</div><h1>Your agent fleet, <em>under control.</em></h1><p>Monitor activity, find idle capacity, and adjust the right agent without losing its work.</p></div>
           <div class="headline-side"><span class="live-label"><span class="pulse"></span> <span id="connectionText">CONNECTING</span></span><span class="small-muted">Automatic refresh every 8 seconds</span></div>
         </section>
+        <section id="runSection" aria-label="Start and pause MJobs"></section>
         <section id="quotaSection" class="quota-section" aria-label="Codex usage and automatic quota protection">
           <div class="quota-policy-panel" id="quotaPolicyPanel" role="status" aria-live="polite">
             <strong id="quotaPolicyState">Checking start / new-work limit...</strong>
             <p id="quotaPolicyReason">Quota eligibility and runtime health are separate.</p>
-            <div class="quota-policy-controls"><label for="quotaMinimum">Pause starts and NEW tasks at or below (%)<input id="quotaMinimum" type="number" min="7" max="99" step="1" value="15"></label><button id="quotaMinimumSave" class="quota-save" type="button">Save start / work limit</button></div>
+            <div class="quota-policy-controls"><label for="quotaMinimum">Pause starts and NEW tasks at or below (%)<input id="quotaMinimum" type="number" min="0" max="99" step="1" value="0"></label><button id="quotaMinimumSave" class="quota-save" type="button">Save start / work limit</button></div>
             <p class="quota-policy-note" id="quotaMinimumFeedback">Saved limit applies to Startup, Sustained, Turbo and All Hands. It does not change the emergency stop. Lowering it can allow an already-enabled scheduler to resume.</p>
           </div>
           <div class="quota-heading">
@@ -81,18 +83,18 @@
               </div>
               <div class="quota-source"><span class="quota-source-led" id="quotaSourceLed"></span><span id="quotaSourceText">Read-only Codex App Server · waiting for first sample</span></div>
             </div>
-            <div class="quota-guard-controls">
-              <div class="quota-guard-title"><div><strong>Automatic quota protection</strong><small id="quotaGuardStatus">Not armed</small></div><span class="quota-shield">◎</span></div>
+            <details class="quota-guard-controls"><summary>Advanced: optional automatic emergency stop</summary>
+              <div class="quota-guard-title"><div><strong>Optional emergency termination</strong><small id="quotaGuardStatus">Not armed</small></div><span class="quota-shield">◎</span></div>
               <div class="quota-controls">
                 <label>Kill at or below remaining %<input id="quotaThreshold" type="number" min="0" max="50" step="1" value="7" aria-label="Quota kill threshold"></label>
                 <label>Watch which limit?<select id="quotaWindow" aria-label="Quota limit to watch"><option value="any">Lowest available</option><option value="weekly">Weekly</option><option value="five-hour">Five-hour</option></select></label>
               </div>
               <div class="quota-actions"><button id="quotaSave" class="quota-save" type="button">Save threshold</button><button id="quotaArm" class="quota-arm" type="button">Arm auto-stop</button></div>
               <div class="quota-disclaimer">Checks every <strong id="quotaInterval">5 seconds</strong>. Uses whole percentage points; provider updates may lag actual usage.</div>
-            </div>
+            </details>
           </div>
         </section>
-        <section id="startupSection" aria-label="Protected startup"></section>
+        <details class="startup-panel"><summary>Advanced: restore a saved fleet</summary><section id="startupSection" aria-label="Preserved fleet recovery"></section></details>
         <section class="metrics-grid" aria-label="Fleet metrics">
           <article class="metric-card"><div class="metric-heading"><span>TRACKED SESSIONS</span><span class="metric-icon">▦</span></div><div class="metric-number" id="mTotal">—</div><div class="metric-footer">Across all model classes</div></article>
           <article class="metric-card"><div class="metric-heading"><span>WORKING NOW</span><span class="metric-icon cyan">↗</span></div><div class="metric-number" id="mWorking">—</div><div class="metric-footer"><span class="mini-dot cyan"></span> Executing an agent turn</div></article>

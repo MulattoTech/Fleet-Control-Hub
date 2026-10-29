@@ -1,3 +1,15 @@
+# Everyday MJobs Fleet Start
+
+The primary **Start** control now prepares a current MJobs run in one action. It uses fresh quota and resource checks, reuses/resumes the current primary, or creates one Sol 5.6 Medium chat orchestrator when none exists. It enables Sustained after verification and sends no competing instruction to a busy primary. Pause fences later native delivery, including terminal Enter. Known pending launches are verified without replay; unknown prompt delivery stays preserved.
+
+Set **start/new-work reserve** to **0%** to use all fresh positive allowance. Normal Start does not require emergency auto-kill to be armed. It preserves your chosen positive reserve, prepares monitoring, and records a pause when the reserve is reached. A quota reset does not restart a paused run. The optional automatic emergency stop and full preserved-fleet recovery are advanced controls.
+
+Both this package and BabyTracker live in the canonical Fleet-Control-Hub repository. The shared Hub calls this package's `/api/run` and `/api/run/start` endpoints. Reading the dashboard never starts agents. Runtime state and audit files remain outside the source package.
+
+## Preserved recovery documentation
+
+The older recovery mechanisms below remain available for explicit advanced restoration. They are not prerequisites for normal Start.
+
 # MJobs Fleet Control
 
 Local Orchestrator.inc controls for MJobs, with a shared entry point in Mission Control.

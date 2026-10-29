@@ -19,7 +19,7 @@ It **does not load MJobs runtime state or install its machine-wide kill scripts*
 - A durable dispatch reservation precedes each send. Uncertain delivery is
   preserved across cooldown expiry and restarts and is not automatically retried.
 - Emergency latch persists across restart and cannot be downgraded by Pause,
-  Graceful Stop or a late graceful-shutdown tick. Only an explicit release after
+  Graceful Stop or a late graceful-shutdown tick. An intentional Start or explicit release after
   fresh verification that project sessions stopped clears it.
 - Every native mutation checks live session membership immediately before
   execution. No global process kill, AO-daemon stop, shell command execution,
@@ -124,8 +124,8 @@ AGY's Google allowance is distinct from Codex's shared percentage. The native AG
 
 See [UNIFIED_FLEET_HUB.md](UNIFIED_FLEET_HUB.md) for shared portal scope and the next project-template migration steps. See [MODEL_CHANGE_HANDOFF.md](MODEL_CHANGE_HANDOFF.md) for actual model-switch routes, safety limits, and recovery states.
 
-Then start a bounded run explicitly. Default limits are 2 concurrent turns,
-8 dispatches, 60 minutes, 20% minimum remaining Codex allowance, 4 GiB free RAM and 12 agents. Existing local accounts may have different user-set limits (including 7%); the persisted values always take precedence.
+Click Start once to start a bounded run using saved limits and models. Repeated Start requests preserve the active run; an in-flight double click shares one attempt. Completed graceful/emergency stops are verified and prepared by intentional Start. Uncertain provisioning or delivery still requires recovery. Default limits are 2 concurrent turns,
+8 dispatches, 60 minutes, 20% minimum remaining Codex allowance, 4 GiB free RAM and 12 agents. Existing local accounts may have different user-set limits (including 0%); the persisted values always take precedence.
 They are configurable while paused. All Hands runs one bounded pass. Automatic
 Turbo sends only existing explicitly assigned queue tasks and pauses when none
 remain; it never generates filler tasks or unbounded status prompts.

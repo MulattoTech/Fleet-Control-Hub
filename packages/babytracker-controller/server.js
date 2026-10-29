@@ -77,7 +77,8 @@ function createServer({ config, controller, onRestart = null, projectsReader = a
       let result;
       switch (input.action) {
         case 'reconcile-bootstrap': result = await controller.reconcileBootstrap(input.confirm); break;
-        case 'start': result = await controller.start(); break;
+        case 'simpleStart':
+        case 'start': result = await controller.simpleStart(); break;
         case 'pause': result = controller.pause(); break;
         case 'drain': result = await controller.stop(false); break;
         case 'emergency': result = await controller.stop(true); break;

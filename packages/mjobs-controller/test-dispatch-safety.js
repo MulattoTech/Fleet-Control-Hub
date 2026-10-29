@@ -77,18 +77,18 @@ async function post(url,data){
   await assert.rejects(()=>f.command(['send','--session','worker-1','--message','invalid harness']),/Target changed/);
   assert.equal(calls.length,launches,'Missing or unknown harness must not launch AO');
   assert.equal(ledgerFinishes.filter(entry=>entry.state==='submitted').length,submittedAfterTerminal,'Invalid harness cannot become submitted');
-  assert.equal(ledgerFinishes.at(-1).state,'uncertain','Invalid harness reservation remains uncertain');
+  assert.equal(ledgerFinishes.at(-1).state,'cancelled','Invalid harness is rejected before native submission');
  }
  daemonSessions=[];
  await assert.rejects(()=>f.command(['send','--session','worker-1','--message','missing target']),/Target changed/);
  assert.equal(calls.length,launches,'Missing pre-send target must not launch AO');
  assert.equal(ledgerFinishes.filter(entry=>entry.state==='submitted').length,submittedAfterTerminal,'Missing target cannot become submitted');
- assert.equal(ledgerFinishes.at(-1).state,'uncertain','Missing target reservation remains uncertain');
+ assert.equal(ledgerFinishes.at(-1).state,'cancelled','Missing target is rejected before native submission');
  daemonSessions=[daemonSession,structuredClone(daemonSession)];
  await assert.rejects(()=>f.command(['send','--session','worker-1','--message','ambiguous target']),/Target changed/);
  assert.equal(calls.length,launches,'Duplicate pre-send targets must not launch AO');
  assert.equal(ledgerFinishes.filter(entry=>entry.state==='submitted').length,submittedAfterTerminal,'Ambiguous target cannot become submitted');
- assert.equal(ledgerFinishes.at(-1).state,'uncertain','Ambiguous target reservation remains uncertain');
+ assert.equal(ledgerFinishes.at(-1).state,'cancelled','Ambiguous target is rejected before native submission');
  assert.equal((await post('/api/sustain/toggle',{enabled:true})).status,200);
  console.log('PASS: stale/7%-threshold/tripped state blocks send, spawn, resume, restore, review, and dispatch enable; pause, stop, and reads remain available. No real process launched.');
 })().catch(e=>{console.error(e);process.exitCode=1;});

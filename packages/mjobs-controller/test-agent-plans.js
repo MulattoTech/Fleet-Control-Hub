@@ -15,7 +15,7 @@ const plans=new AgentPlans({root,validate:async x=>{if(x.model!=='test')throw Er
  const q={fresh:true,selectedRemainingPercent:0,config:{thresholdPercent:7,autoKillArmed:false,tripped:true}};
  const report=preflight({quota:q,master:{emergency:{latched:true,remainingTotal:0,checkedAt:new Date().toISOString()},dispatch:{sustainedEnabled:false}},snapshot:{offline:true}});
  assert.equal(report.ready,false);assert.equal(report.canSaveAgentPlans,true);
- assert.equal(report.issues.length,4);assert.equal(report.quota.brakeAt,15);
+ assert.equal(report.issues.length,4);assert.equal(report.quota.brakeAt,0);
  console.log('PASS: settings can be staged without launch; invalid choices rejected; unverified apply cannot be retried; preflight cannot show ready at zero quota.');
  fs.rmSync(root,{recursive:true,force:true});
 })().catch(e=>{console.error(e);process.exitCode=1});

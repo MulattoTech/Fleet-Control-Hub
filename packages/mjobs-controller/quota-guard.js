@@ -14,7 +14,7 @@ const FALLBACK=path.join(ROOT,'Invoke-Emergency-Kill-Codex.ps1');
 const WATCHDOG=path.join(ROOT,'Emergency-Stop-Codex.ps1');
 const EMERGENCY_STATUS=path.join(ROOT,'emergency-status.json');
 const WATCHDOG_LOG=path.join(ROOT,'watchdog-runtime.log');
-const DEFAULT={enabled:true,pollSeconds:5,thresholdPercent:7,window:'any',autoKillArmed:false,tripped:false};
+const DEFAULT={enabled:true,pollSeconds:5,thresholdPercent:7,minimumRemainingPercent:0,window:'any',autoKillArmed:false,tripped:false};
 const short=x=>String(x||'').slice(0,260);
 const clone=x=>JSON.parse(JSON.stringify(x));
 function read(file,fallback){try{return JSON.parse(fs.readFileSync(file,'utf8').replace(/^\uFEFF/,''))}catch{return clone(fallback)}}

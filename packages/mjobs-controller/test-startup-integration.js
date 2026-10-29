@@ -78,6 +78,21 @@ function fixture() {
       return { statusCode: 200, run: clone(b.run), reconciled: true };
     },
   };
+  // Current-primary orchestration is bounded separately from preserved Startup.
+  // Its native behavior has dedicated adapter/controller regression tests.
+  b.currentRunState = { projectId: 'mjobs-luna', phase: 'paused', active: false, running: false, requestId: null };
+  b.currentRunStarts = 0; b.currentRunPauses = [];
+  b.currentRun = {
+    task: null, ownsLegacy: () => false,
+    status: () => clone(b.currentRunState),
+    start(data) {
+      if (typeof data.requestId !== 'string' || !/^[A-Za-z0-9._:-]{8,128}$/.test(data.requestId)) throw Error('A stable Start request ID is required');
+      const idempotent = !!this.task || data.requestId === b.currentRunState.requestId;
+      if (!idempotent) { b.currentRunStarts++; this.task = {}; Object.assign(b.currentRunState, { requestId: data.requestId, phase: 'starting', active: true }); }
+      return { ok: true, idempotent, run: this.status() };
+    },
+    pause(reason) { b.currentRunPauses.push(reason || 'Paused by user'); this.task = null; Object.assign(b.currentRunState, { phase: 'paused', active: false, running: false }); return this.status(); },
+  };
   b.startupAdapter = {
     readiness: async () => clone(b.readiness),
     manifest: () => ({ targets: [{ id: 'mjobs-primary', kind: 'orchestrator' }] }),
@@ -94,6 +109,7 @@ function fixture() {
   const dummy = class {};
   const modules = {
     './turbo': { Turbo: dummy }, './sustain': { Sustain: dummy }, './master-controls': { MasterControls: dummy },
+    './run-control': { RunController: dummy }, './run-adapter': { RunAdapter: dummy },
     './startup-control': { StartupController: dummy }, './startup-adapter': { StartupAdapter: dummy },
     './post-review-control': { completeReviewedRestore: async data => {
       if(data.confirm!=='COMPLETE REVIEWED RESTORE')throw Error('Explicit reviewed completion required');
@@ -125,7 +141,7 @@ function fixture() {
   vm.runInContext(serverSource.slice(0, serverSource.indexOf(initMarker)) + '\nglobalThis.subject={main,command,startupBlockReason,workBlockReason};', context);
   vm.runInContext(`
     master=bridge.master;quota=bridge.quota;sustain=bridge.sustain;turbo=bridge.turbo;findWork=bridge.findWork;
-    startup=bridge.startup;startupAdapter=bridge.startupAdapter;orchestratorLauncher=bridge.launcher;agentPlans=bridge.agentPlans;
+    currentRun=bridge.currentRun;startup=bridge.startup;startupAdapter=bridge.startupAdapter;orchestratorLauncher=bridge.launcher;agentPlans=bridge.agentPlans;
     state=async()=>bridge.snapshot;audit=(event,data)=>bridge.audit.push({event,data});
     nudge=async data=>{bridge.effects.push({op:'nudge',data});return {ok:true}};
     replace=async data=>{bridge.effects.push({op:'replace',data});return {ok:true}};
@@ -425,4 +441,53 @@ test('every dashboard launch pauses saved dispatch, even without a startup block
  const start=serverSource.indexOf('if(master.restore.state.active)master.restore.pause();'),end=serverSource.indexOf('findWork=new FindWork',start);
  assert.ok(start>=0&&end>start);vm.runInContext(serverSource.slice(start,end),f.context);
  assert.deepEqual(f.b.effects.map(x=>x.op),['hold']);assert.deepEqual(f.b.native,[]);
+});
+
+test('current run GET is read-only and reports current state without starting work', async () => {
+  const f = fixture();
+  const result = await f.get('/api/run');
+  assert.equal(result.status, 200); assert.equal(result.body.projectId, 'mjobs-luna'); assert.equal(result.body.phase, 'paused');
+  assert.equal(f.b.currentRunStarts, 0); assert.deepEqual(f.b.currentRunPauses, []); assert.deepEqual(f.b.effects, []); assert.deepEqual(f.b.native, []);
+});
+test('current run Start requires local authenticated writes and accepts only a stable request ID', async t => {
+  for (const invalid of ['host', 'origin', 'action header', 'missing request', 'unsupported option']) await t.test(invalid, async () => {
+    const f = fixture(), headers = {}, body = { requestId: 'current-start-001' };
+    if (invalid === 'host') headers.host = 'public.example:8787';
+    if (invalid === 'origin') headers.origin = 'https://public.example';
+    if (invalid === 'action header') headers['x-ao-fleet'] = '0';
+    if (invalid === 'missing request') delete body.requestId;
+    if (invalid === 'unsupported option') body.confirm = 'STARTUP';
+    const result = await f.post('/api/run/start', body, { headers });
+    assert.equal(result.status, invalid === 'host' ? 403 : 409); assert.equal(f.b.currentRunStarts, 0); assert.deepEqual(f.b.native, []);
+  });
+});
+test('current run Start returns async accepted state and coalesces the same request', async () => {
+  const f = fixture(); f.b.locked = true;
+  const body = { requestId: 'current-start-001' };
+  const first = await f.post('/api/run/start', body), duplicate = await f.post('/api/run/start', body);
+  assert.equal(first.status, 202); assert.equal(first.body.ok, true); assert.equal(first.body.idempotent, false); assert.equal(first.body.run.phase, 'starting');
+  assert.equal(duplicate.status, 202); assert.equal(duplicate.body.idempotent, true); assert.equal(duplicate.body.run.requestId, body.requestId);
+  assert.equal(f.b.currentRunStarts, 1); assert.deepEqual(f.b.native, []);
+});
+test('current run Start cannot claim another operation lane while status GET remains available', async () => {
+  const f = fixture(); f.setLock(true);
+  assert.equal((await f.post('/api/run/start', { requestId: 'current-start-001' })).status, 409);
+  assert.equal((await f.get('/api/run')).status, 200); assert.equal(f.b.currentRunStarts, 0); assert.equal(f.locked(), true);
+});
+test('current run Pause and confirmed stops cancel Start while unrelated writes remain blocked', async t => {
+  for (const [route, data] of [['/api/master/pause', {}], ['/api/master/drain', { confirm: 'GRACEFUL STOP' }], ['/api/master/emergency', { confirm: 'KILL ALL CODEX' }]]) await t.test(route, async () => {
+    const f = fixture(); await f.post('/api/run/start', { requestId: 'current-start-001' });
+    assert.equal((await f.post('/api/quota/config', { minimumRemainingPercent: 0 })).status, 409);
+    assert.equal(f.b.currentRun.task !== null, true);
+    const stopped = await f.post(route, data);
+    assert.ok([200, 202].includes(stopped.status)); assert.equal(f.b.currentRun.task, null); assert.equal(f.b.currentRunState.phase, 'paused');
+    assert.equal(f.b.currentRunPauses.length, 1); assert.equal(f.b.currentRunStarts, 1); assert.deepEqual(f.b.native, []);
+  });
+});
+test('unconfirmed stops cannot cancel a current Start', async t => {
+  for (const route of ['/api/master/drain', '/api/master/emergency']) await t.test(route, async () => {
+    const f = fixture(); await f.post('/api/run/start', { requestId: 'current-start-001' });
+    assert.equal((await f.post(route, { confirm: 'wrong' })).status, 400);
+    assert.equal(f.b.currentRun.task !== null, true); assert.deepEqual(f.b.currentRunPauses, []); assert.deepEqual(f.b.native, []);
+  });
 });

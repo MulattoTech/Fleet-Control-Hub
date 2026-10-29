@@ -54,7 +54,7 @@ class FleetController {
   quotaPolicy() {
     const q=this.quota(), configured=this.state.limits.minimumRemainingPercent;
     const sharedStop=Number.isInteger(q.sharedEmergencyGuard?.thresholdPercent)?q.sharedEmergencyGuard.thresholdPercent:null;
-    const floor=Math.max(7,sharedStop??7), effective=Number.isInteger(configured)&&configured>=7&&configured<=99?Math.max(floor,configured):100;
+    const floor=0, effective=Number.isInteger(configured)&&configured>=0&&configured<=99?configured:100;
     const fresh=q.fresh===true&&Number.isFinite(q.remainingPercent)&&q.remainingPercent>=0&&q.remainingPercent<=100;
     const blocked=!fresh||q.remainingPercent<=effective;
     return {configuredMinimumRemainingPercent:configured,minimumRemainingPercent:effective,minimumAllowedPercent:floor,remainingPercent:fresh?q.remainingPercent:null,fresh,blocked,
@@ -66,14 +66,14 @@ class FleetController {
     return this.serial(async()=>{
       if(['emergency','draining'].includes(this.state.mode))throw Error('Finish emergency/drain recovery before changing quota policy');
       const floor=this.quotaPolicy().minimumAllowedPercent;
-      if(!Number.isInteger(value)||value<floor||value>99)throw Error('Start/new-work quota limit must be '+floor+' to 99%. Emergency protection cannot be bypassed.');
+      if(!Number.isInteger(value)||value<floor||value>99)throw Error('Start/new-work quota limit must be '+floor+' to 99%. Zero reserve allows any fresh positive balance.');
       this.state.limits.minimumRemainingPercent=value;this.save();this.audit('quota_policy_changed',{minimumRemainingPercent:value});
       return {ok:true,quotaPolicy:this.quotaPolicy(),note:'Quota limit saved at '+value+'%. Emergency guard and fleet running/paused state are unchanged.'};
     });
   }
-  guard({ requireRunning = true, session = null, manualAgy = false } = {}) {
-    if (this.state.mode === 'emergency') return 'BabyTracker emergency stop is latched';
-    if (this.state.mode === 'draining') return 'BabyTracker is draining';
+  guard({ requireRunning = true, session = null, manualAgy = false, preparingStart = false } = {}) {
+    if (!preparingStart && this.state.mode === 'emergency') return 'BabyTracker emergency stop is latched';
+    if (!preparingStart && this.state.mode === 'draining') return 'BabyTracker is draining';
     if (requireRunning && this.state.mode !== 'running') return 'Fleet is paused';
     if (!this.config.runtimeVerified) return 'BabyTracker Orchestrator project/repository binding is not yet verified';
     if (this.resources().freeMemoryGiB < this.state.limits.minimumFreeMemoryGiB) return 'Below configured free-memory threshold';
@@ -204,24 +204,42 @@ class FleetController {
       return { ok: true, note: 'Two live AO reads found no new or active BabyTracker session. Dispatch remains paused.' };
     });
   }
-  async start() {
+  start() { return this.simpleStart(); }
+  simpleStart() {
+    // Duplicate clicks share the original attempt, including an uncertain result.
+    // Never replay a native provision operation after a timeout or lost response.
+    if (this.startPending) return this.startPending;
+    this.startPending = this.startRun().finally(() => { this.startPending = null; });
+    return this.startPending;
+  }
+  async startRun() {
     return this.serial(async () => {
-      if (this.state.mode === 'running') throw Error('Pause before explicitly starting a new bounded run');
-      if (this.state.mode === 'draining') throw Error('Graceful shutdown is still in progress; wait for it to finish');
-      const blocker = this.guard({ requireRunning: false }); if (blocker) throw Error(blocker);
+      if (this.state.mode === 'running') return { ok: true, alreadyRunning: true, note: 'BabyTracker is already running with its existing run budget and models.' };
+      let generation = this.state.generation;
+      let sessions = await this.sessions();
+      if (generation !== this.state.generation) throw Error('Start superseded by a lifecycle action; dispatch remains disabled');
+      const recoveringStop = ['emergency', 'draining'].includes(this.state.mode);
+      if (recoveringStop && sessions.some(active)) throw Error(this.state.mode === 'emergency' ? 'BabyTracker emergency stop is latched; runtime shutdown is not yet verified' : 'Graceful shutdown is still in progress; wait for it to finish');
+      const blocker = this.guard({ requireRunning: false, preparingStart: recoveringStop }); if (blocker) throw Error(blocker);
       // A persistent pending/uncertain bootstrap must be reconciled before any
       // new CLI spawn. A failed/slow response may already have created a worker.
       if (Object.values(this.ledger.entries).some(r => ['reserved', 'uncertain'].includes(r.status))) throw Error('Unresolved delivery requires manual reconciliation before startup');
-      const generation = this.state.generation;
-      let sessions = await this.sessions();
+      if (['pending', 'uncertain'].includes(this.state.bootstrap?.status)) throw Error('An earlier Codex bootstrap has unverified delivery. Inspect AO sessions before retrying.');
+      if (['pending', 'uncertain'].includes(this.state.provisioning?.status)) throw Error('An earlier agent provision has unverified delivery. Reconcile it before startup.');
       // AGY-only fleets are not blocked by a separate Codex quota window.
       if (!sessions.some(s => active(s) && s.harness === 'agy')) {
-        const codexGate = this.guard({ requireRunning: false, session: { harness: 'codex' } });
+        const codexGate = this.guard({ requireRunning: false, session: { harness: 'codex' }, preparingStart: recoveringStop });
         if (codexGate) throw Error(codexGate);
+      }
+      // Intentional Start releases a verified completed stop without a separate
+      // rearm action. It preserves tasks, models, limits and delivery records.
+      if (recoveringStop) {
+        this.state.mode = 'paused'; this.state.emergency = null;
+        generation = ++this.state.generation; // Fence late results from the completed stop.
+        this.save(); this.audit('completed_stop_prepared_for_start');
       }
       let createdSessionId = null;
       if (!sessions.some(active)) {
-        if (['pending', 'uncertain'].includes(this.state.bootstrap?.status)) throw Error('An earlier Codex bootstrap has unverified delivery. Inspect AO sessions before retrying.');
         if (typeof this.adapter.provisionCodex !== 'function') throw Error('No verified BabyTracker Codex session exists; provisioning adapter is unavailable.');
         let provisioned;
         try {
@@ -257,7 +275,7 @@ class FleetController {
         }
         throw Error('Start superseded by a stop; dispatch remains disabled');
       }
-      const freshBlocker = this.guard({ requireRunning: false }); if (freshBlocker) throw Error(freshBlocker);
+      const freshBlocker = this.guard({ requireRunning: false, session: sessions.some(s => active(s) && s.harness === 'agy') ? null : { harness: 'codex' } }); if (freshBlocker) throw Error(freshBlocker);
       this.state.mode = 'running'; this.state.generation++;
       this.state.run = { id: randomUUID(), startedAt: new Date(this.now()).toISOString(), deadline: this.now() + this.state.limits.maxMinutes * 60000, dispatches: 0, turbo: false };
       this.save(); this.audit('fleet_started', { runId: this.state.run.id });
@@ -272,7 +290,7 @@ class FleetController {
     return { ok: true, note: 'New assignments paused; active turns were preserved.' };
   }
   async stop(emergency) {
-    if (!emergency && this.state.mode === 'emergency') return { ok: true, note: 'Emergency stop stays latched. Verify shutdown and explicitly release it before other lifecycle changes.' };
+    if (!emergency && this.state.mode === 'emergency') return { ok: true, note: 'Emergency stop stays latched. Verify shutdown, then intentionally Start to resume.' };
     if (!emergency && this.state.mode === 'draining') return { ok: true, note: 'Graceful shutdown is already in progress.' };
     // Stop fencing happens synchronously before any awaited network operation.
     this.state.mode = emergency ? 'emergency' : 'draining'; this.state.generation++;
@@ -315,9 +333,8 @@ class FleetController {
   }
   limits(input) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw Error('Limits object required');
-    const ranges = { concurrency: [1, 32], maxDispatches: [1, 1000], maxMinutes: [1, 720], minimumRemainingPercent: [7, 99], minimumFreeMemoryGiB: [1, 128], maxAgents: [1, 64] };
+    const ranges = { concurrency: [1, 32], maxDispatches: [1, 1000], maxMinutes: [1, 720], minimumRemainingPercent: [0, 99], minimumFreeMemoryGiB: [1, 128], maxAgents: [1, 64] };
     for (const [key, value] of Object.entries(input)) if (!ranges[key] || !Number.isInteger(value) || value < ranges[key][0] || value > ranges[key][1]) throw Error('Invalid limit: ' + key);
-    if(input.minimumRemainingPercent!==undefined&&input.minimumRemainingPercent<this.quotaPolicy().minimumAllowedPercent)throw Error('Quota limit cannot be below shared emergency protection');
     if (this.state.mode === 'running') throw Error('Pause before changing a run budget');
     this.state.limits = { ...this.state.limits, ...input }; this.save(); this.audit('limits_changed', input); return this.state.limits;
   }

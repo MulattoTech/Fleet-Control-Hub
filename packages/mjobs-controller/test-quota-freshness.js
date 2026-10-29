@@ -4,7 +4,7 @@ const {QuotaControl}=require('./quota-control');
 const {configRevision}=require('./quota-guard');
 const root=fs.mkdtempSync(path.join(os.tmpdir(),'fleet-quota-freshness-'));
 const now=Date.now(),stamp=new Date(now-1000).toISOString();
-const config={enabled:true,pollSeconds:5,thresholdPercent:7,window:'any',autoKillArmed:true,tripped:false};
+const config={enabled:true,pollSeconds:5,thresholdPercent:7,window:'any',autoKillArmed:true,tripped:false,minimumRemainingPercent:15};
 const window={label:'Weekly',remainingPercent:99,resetsAt:new Date(now+3600000).toISOString()};
 const info={status:'fresh',error:null,ordinaryUsageAllowed:true,heartbeatAt:stamp,lastSuccessfulPoll:stamp,windows:[window]};
 const write=(name,value)=>fs.writeFileSync(path.join(root,name),JSON.stringify(value));
@@ -34,7 +34,7 @@ try{
   assert.equal(Boolean(q.dispatchBlockReason()),pct<=15);
  }
  set({}, {autoKillArmed:false,tripped:true});assert.match(q.dispatchBlockReason(),/tripped/);
- set({status:'unavailable',error:'offline'},{autoKillArmed:false,tripped:false});assert.match(q.dispatchBlockReason(),/not armed/);
+ set({status:'unavailable',error:'offline'},{autoKillArmed:false,tripped:false});assert.match(q.dispatchBlockReason(),/unavailable|stale/);
  set({ordinaryUsageAllowed:false});assert.match(q.dispatchBlockReason(),/ordinary usage/);
  set({}, {enabled:false});assert.match(q.dispatchBlockReason(),/disabled/);
  for(const guardAck of [null,{revision:'old',appliedAt:stamp},{revision:configRevision(config),appliedAt:new Date(now+1000).toISOString()}]){

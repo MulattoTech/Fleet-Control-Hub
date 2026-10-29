@@ -10,6 +10,8 @@ const { Sustain } = require('./sustain');
 const { MasterControls } = require('./master-controls');
 const { StartupController } = require('./startup-control');
 const { StartupAdapter } = require('./startup-adapter');
+const { RunController } = require('./run-control');
+const { RunAdapter } = require('./run-adapter');
 const { completeReviewedRestore } = require('./post-review-control');
 const { OrchestratorLauncher } = require('./orchestrator-launcher');
 const { runtimeHealthy, addControllerHealth, controllerStopped } = require('./runtime-health');
@@ -63,7 +65,7 @@ let sustain=null;
 let master=null;
 let quota=null;
 let findWork=null;
-let startup=null, startupAdapter=null, orchestratorLauncher=null;
+let startup=null, startupAdapter=null, orchestratorLauncher=null, currentRun=null;
 let manualRestoreAuthorized=false;
 let cached={at:0, result:null};
 let cpuLast=os.cpus().map(c=>c.times);
@@ -92,18 +94,20 @@ function readReplacements(){
  catch(e){if(e.code==='ENOENT')return {pairs:[]};throw Error('Replacement ledger unreadable; refusing unsafe duplicate dispatch');}
 }
 function saveReplacements(x){const tmp=statePath+'.tmp';fs.writeFileSync(tmp,JSON.stringify(x,null,2));fs.renameSync(tmp,statePath);}
-function startupBlockReason({allowRestore=false}={}){
+function startupBlockReason({allowRestore=false,allowRunStart=false}={}){
+ if(currentRun?.task&&!allowRunStart)return 'Start is preparing the current MJobs run';
  const s=startup?.status();
+ if(currentRun?.ownsLegacy(s))return null;
  if(!s)return 'Startup safety controller has not initialized';
  if(s.reconciliationRequired||s.phase==='uncertain')return 'Interrupted Startup needs reconciliation before more work';
  if(s.phase==='resumable')return 'Interrupted Startup is verified resumable; run Startup to finish restoring the fleet before dispatch';
  if(s.active&&!(allowRestore&&['starting_restore','restoring'].includes(s.phase)))return 'Protected Startup is running; wait for runtime verification';
  return null;
 }
-function workBlockReason({allowStartupRestore=false}={}){
+function workBlockReason({allowStartupRestore=false,allowRunStart=false}={}){
  if(master?.locked())return 'Emergency shutdown lockout is active';
  if(master?.drainState?.enabled)return 'Graceful wind-down is active';
- return quota?.dispatchBlockReason()||startupBlockReason({allowRestore:allowStartupRestore})||null;
+ return quota?.dispatchBlockReason()||startupBlockReason({allowRestore:allowStartupRestore,allowRunStart})||null;
 }
 function dispatchHealthBlockReason(){
  // Report the enabled scheduler's observed hold as well as the control gates.
@@ -116,21 +120,28 @@ function assertCanStartWork(options){
  const reason=workBlockReason(options);
  if(reason)throw Error(reason);
 }
-async function command(args,ms=30000,{windDown=false,startupRestore=false}={}){
+async function command(args,ms=30000,{windDown=false,startupRestore=false,runStart=false}={}){
  const startsWork=['send','spawn'].includes(args[0])||(args[0]==='review'&&args[1]==='trigger')||(args[0]==='session'&&['resume-agent','restore'].includes(args[1]));
  const message=args[args.indexOf('--message')+1]||'';
  const stopNotice=windDown&&args[0]==='send'&&master?.drainState?.enabled&&!master?.locked()&&message.startsWith('GRACEFUL WIND-DOWN ORDER FROM USER:');
  const authorizedRestore=startupRestore&&args[0]==='session'&&['resume-agent','restore'].includes(args[1])&&master?.restore?.state.active;
- if(startsWork&&!stopNotice)assertCanStartWork({allowStartupRestore:authorizedRestore});
+ const authorizedRun=runStart===true&&!!currentRun?.task&&currentRun.prepared===true;
+ const runGeneration=currentRun?.generation;
+ const assertCommand=()=>{
+  if(runStart&&(!authorizedRun||currentRun?.generation!==runGeneration||currentRun?.state.phase!=='starting'))throw Object.assign(Error('Start was superseded before native submission'),{nativeSubmitted:false});
+  assertCanStartWork({allowStartupRestore:authorizedRestore,allowRunStart:authorizedRun});
+ };
  const id=args[args.indexOf('--session')+1];
- const reserved=args[0]==='send'&&!stopNotice&&dispatchLedger?dispatchLedger.reserve(id,message):null;
+ let reserved=null,nativeSubmitted=false;
  try{
+  if(startsWork&&!stopNotice)assertCommand();
+  reserved=args[0]==='send'&&!stopNotice&&dispatchLedger?dispatchLedger.reserve(id,message):null;
   let before=null;
   if(args[0]==='send'&&!stopNotice&&!args.includes('--steer')){
    const sessions=(await daemon('/api/v1/sessions')).sessions;
    const matches=Array.isArray(sessions)?sessions.filter(s=>s?.id===id):[];
    if(matches.length!==1)throw Error('Target changed before terminal delivery');
-   before=matches[0];assertCanStartWork();
+   before=matches[0];assertCommand();
    const supportedHarness=['codex','agy'].includes(before.harness);
    const needsTerminalVerification=before.harness==='codex';
    if(before.isTerminated||before.mode!=='tui'||!supportedHarness||!['idle','waiting_input'].includes(before.activity?.state)||(needsTerminalVerification&&(typeof before.terminalGeneration!=='string'||!before.terminalGeneration)))throw Error('Target changed before terminal delivery');
@@ -138,17 +149,19 @@ async function command(args,ms=30000,{windDown=false,startupRestore=false}={}){
   const deliveryBaseline=before?.mode==='tui'&&before.harness==='codex'?deliveryReceipts.capture({id,generation:before.terminalGeneration,createdAt:before.createdAt}):null;
   if(reserved&&deliveryBaseline)dispatchLedger.attach(id,reserved.id,{baseline:deliveryBaseline,normalizedHash:require('node:crypto').createHash('sha256').update(message.replace(/\r\n/g,'\n').trimEnd()).digest('hex')});
   const sentAt=Date.now();
+  if(startsWork&&!stopNotice)assertCommand();
+  nativeSubmitted=true;
   const x=await exec(AO,args,{windowsHide:true,timeout:ms,maxBuffer:1024*1024,cwd:root});
   if(before?.mode==='tui'&&before.harness==='codex'){
    const delivery=await completeKnownPaste({root,id,generation:before.terminalGeneration,message,sentAt,
-    getSession:async()=> (await daemon('/api/v1/sessions')).sessions.find(s=>s.id===id),guard:()=>assertCanStartWork(),
+    getSession:async()=> (await daemon('/api/v1/sessions')).sessions.find(s=>s.id===id),guard:()=>assertCommand(),
     receipt:()=>deliveryReceipts.inspect({id,messageHash:require('node:crypto').createHash('sha256').update(message).digest('hex'),normalizedHash:require('node:crypto').createHash('sha256').update(message.replace(/\r\n/g,'\n').trimEnd()).digest('hex'),sentAt,baseline:deliveryBaseline})});
    audit('terminal_delivery_checked',{id,state:delivery.state,extraEnter:delivery.extraEnter});
    if(delivery.state!=='native-observed')throw Error('Terminal delivery remains unverified; inspect before retrying');
   }
   if(reserved)dispatchLedger.finish(id,reserved.id,'submitted');
   return String(x.stdout||'').trim();
- }catch(e){if(reserved)dispatchLedger.finish(id,reserved.id,'uncertain');throw e}
+ }catch(e){if(reserved)dispatchLedger.finish(id,reserved.id,nativeSubmitted?'uncertain':'cancelled');e.nativeSubmitted=nativeSubmitted;throw e}
 }
 async function daemon(uri){
  const response=await fetch('http://127.0.0.1:3001'+uri,{signal:AbortSignal.timeout(5500)});
@@ -439,8 +452,20 @@ async function retire(x){
 }
 async function main(req,res){
  if(!['127.0.0.1:'+port,'localhost:'+port].includes(req.headers.host||''))return json(res,403,{error:'Local host only'});
- if(master?.locked()&&req.method==='POST'&&!['/api/master/emergency','/api/master/rearm','/api/master/restore','/api/master/pause','/api/agent-plan','/api/startup','/api/startup/cancel','/api/startup/reconcile'].includes(req.url))return json(res,423,{error:'Emergency shutdown lockout is active; use protected Startup after the allowance reset'});
- if(master?.drainState.enabled&&req.method==='POST'&&req.url!=='/api/agent-plan'&&!req.url.startsWith('/api/master/')&&!req.url.startsWith('/api/startup'))return json(res,423,{error:'Graceful shutdown is draining sessions. New work is disabled'});
+ if(master?.locked()&&req.method==='POST'&&!['/api/master/emergency','/api/master/rearm','/api/master/restore','/api/master/pause','/api/agent-plan','/api/startup','/api/startup/cancel','/api/startup/reconcile','/api/run/start'].includes(req.url))return json(res,423,{error:'Emergency shutdown lockout is active; use protected Startup after the allowance reset'});
+ if(master?.drainState.enabled&&req.method==='POST'&&req.url!=='/api/agent-plan'&&!req.url.startsWith('/api/master/')&&!req.url.startsWith('/api/startup')&&req.url!=='/api/run/start')return json(res,423,{error:'Graceful shutdown is draining sessions. New work is disabled'});
+ if(req.method==='GET'&&req.url==='/api/run')return json(res,200,currentRun.status());
+ if(req.method==='POST'&&req.url==='/api/run/start'){
+  try{checkWrite(req);const data=await body(req);
+   if(Object.keys(data).some(k=>k!=='requestId'))throw Error('Unsupported Start option');
+   if(mutationLock&&!currentRun.task)throw Error('Another controller operation is finishing');
+   return json(res,202,currentRun.start(data));
+  }catch(e){return json(res,409,{error:e.message});}
+ }
+ if(req.method==='POST'&&currentRun?.task){
+  const allowed=['/api/master/pause','/api/master/drain','/api/master/emergency','/api/master/restore/pause'];
+  if(!allowed.includes(req.url))return json(res,409,{error:'Start is in progress; wait for its current status'});
+ }
  if(req.method==='GET'&&req.url==='/api/startup/mjobs-preview'){
   try{return json(res,200,startupAdapter.projectPreview('mjobs-luna'));}catch(e){return json(res,409,{error:String(e.message).slice(0,200)});}
  }
@@ -540,9 +565,10 @@ async function main(req,res){
     if(req.url==='/api/master/emergency'&&data.confirm!=='KILL ALL CODEX')throw Error('Explicit emergency confirmation missing');
     startup.cancel({runId:startup.status().runId});master.disableAutomaticDispatch();master.restore.pause();
    }
-   if(req.url==='/api/master/pause')return json(res,200,master.pause());
+   if(req.url==='/api/master/pause'){currentRun?.pause();return json(res,200,master.pause());}
    if(req.url==='/api/master/drain'){
     if(data.confirm!=='GRACEFUL STOP')throw Error('Graceful stop confirmation missing');
+    currentRun?.pause('Graceful stop requested');
     return json(res,200,await master.drain());
    }
    if(req.url==='/api/master/cancel-drain')return json(res,200,master.cancelDrain());
@@ -563,9 +589,10 @@ async function main(req,res){
     const result=await completeReviewedRestore(data,{master,startup,quota,launcher:orchestratorLauncher,adapter:startupAdapter,sustain,turbo,findWork});
     return json(res,200,result);
    }
-   if(req.url==='/api/master/restore/pause')return json(res,200,master.restorePause());
+   if(req.url==='/api/master/restore/pause'){currentRun?.pause();return json(res,200,master.restorePause());}
    if(req.url==='/api/master/emergency'){
     if(data.confirm!=='KILL ALL CODEX')throw Error('Explicit emergency confirmation missing');
+    currentRun?.pause('Emergency Stop requested');
     return json(res,202,await master.emergency());
    }
    if(req.url==='/api/master/rearm'){
@@ -590,7 +617,7 @@ async function main(req,res){
   try{
    checkWrite(req);
    const data=await body(req);
-   if(req.url==='/api/sustain/toggle'&&data.enabled===false)return json(res,200,sustain.enable(false));
+   if(req.url==='/api/sustain/toggle'&&data.enabled===false){currentRun?.pause();return json(res,200,sustain.enable(false));}
    if(mutationLock||turbo.running||sustain.running)return json(res,409,{error:'Another controller operation is running'});
    if(req.url==='/api/sustain/toggle'){
     if(data.enabled)assertCanStartWork();
@@ -655,7 +682,7 @@ async function main(req,res){
  if(req.method!=='GET')return json(res,405,{error:'Method not allowed'});
  const item=(req.url||'/').split('?')[0];
  const assets={'/':'index.html','/index.html':'index.html','/app.js':'app.js','/turbo-ui.js':'turbo-ui.js','/sustain-ui.js':'sustain-ui.js','/master-ui.js':'master-ui.js','/restore-ui.js':'restore-ui.js','/quota-ui.js':'quota-ui.js','/find-work-ui.js':'find-work-ui.js','/style.css':'style.css','/turbo.css':'turbo.css','/master.css':'master.css','/restore.css':'restore.css','/quota.css':'quota.css','/find-work.css':'find-work.css'};
- Object.assign(assets,{'/startup-ui.js':'startup-ui.js','/startup.css':'startup.css'});
+ Object.assign(assets,{'/run-ui.js':'run-ui.js','/startup-ui.js':'startup-ui.js','/startup.css':'startup.css'});
  const file=assets[item];
  if(!file)return json(res,404,{error:'Not found'});
  try{
@@ -686,6 +713,12 @@ startupAdapter=new StartupAdapter({root,master,quota,launcher:orchestratorLaunch
  verifyCodex:verifyCodexExecutable,getSessions:getLiveSessions,runtimeHealth:runtimeHealthy,
  operationBusy:()=>mutationLock||sustain.running||turbo.running||!!findWork?.running});
 startup=new StartupController({root,deps:startupAdapter.deps(),audit,timeouts:{readMs:30000,actionMs:35000}});
+const runAdapter=new RunAdapter({root,master,quota,startup,launcher:orchestratorLauncher,
+ getSessions:getLiveSessions,verifyCodex:verifyCodexExecutable,command,
+ busy:()=>mutationLock||sustain.running||turbo.running||!!findWork?.running,
+ inspectProject:async()=>{const r=await exec(AO,['project','get',projectId,'--json'],{windowsHide:true,timeout:10000,maxBuffer:100000,cwd:root});return JSON.parse(r.stdout).project;}});
+currentRun=new RunController({root,deps:runAdapter.deps(),audit});
+setInterval(()=>{try{currentRun.observeQuota();}catch(e){master.disableAutomaticDispatch();audit('run_quota_pause_failed',{reason:String(e.message).slice(0,180)});}},5000).unref();
 // A server restart never authorizes replay of a saved restore operation.
 if(master.restore.state.active)master.restore.pause();
 // A scheduled dashboard launch is never authorization to resume saved AI work.

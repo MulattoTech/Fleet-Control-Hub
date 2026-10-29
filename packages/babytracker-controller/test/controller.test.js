@@ -84,7 +84,9 @@ test('Start changes only local run state; it does not launch or assign a worker'
   const f = fixture(t); await f.controller.start();
   assert.equal(f.controller.state.mode, 'running'); assert.equal(f.controller.state.run.dispatches, 0);
   assert.equal(f.state.commands.length, 0);
-  await assert.rejects(f.controller.start(), /Pause/);
+  const run = structuredClone(f.controller.state.run);
+  assert.equal((await f.controller.start()).alreadyRunning, true);
+  assert.deepEqual(f.controller.state.run, run);
 });
 test('no project session without available bootstrap remains paused, with no native mutation', async t => {
   const f = fixture(t, { sessions: [session('mjobs-worker', { projectId: 'mjobs-luna' })] });
@@ -197,7 +199,7 @@ test('Graceful Stop, Pause, and controller restart cannot downgrade the emergenc
   await f.controller.stop(false); f.controller.pause();
   assert.equal(f.controller.state.mode, 'emergency'); assert.equal(f.state.commands.length, count);
   const restarted = new FleetController(f.config, f.deps); assert.equal(restarted.state.mode, 'emergency');
-  await assert.rejects(restarted.start(), /latched/);
+  assert.equal(restarted.state.mode, 'emergency'); // Only an intentional Start or release may clear it.
 });
 test('late draining tick cannot clear a newer emergency latch', async t => {
   const f = fixture(t); f.controller.state.mode = 'draining'; const gate = deferred();
@@ -256,4 +258,88 @@ test('corrupt or cross-project persisted state cannot be overwritten', t => {
   fs.writeFileSync(file, '{broken'); assert.throws(() => new FleetController(f.config, f.deps), /unreadable/); assert.equal(fs.readFileSync(file, 'utf8'), '{broken');
   fs.writeFileSync(file, JSON.stringify({ schema: 1, projectId: 'mjobs-luna', tasks: [] }));
   assert.throws(() => new FleetController(f.config, f.deps), /identity/);
+});
+
+
+test('simpleStart coalesces double clicks into one scoped provision and preserves the run on repetition', async t => {
+  const f = fixture(t, { sessions: [session('mjobs-worker', { projectId: 'mjobs-luna' })], bootstrap: 'success' });
+  const gate = deferred(), previous = f.adapter.provisionCodex;
+  f.adapter.provisionCodex = async before => { await gate.promise; return previous(before); };
+  const a = f.controller.simpleStart(), b = f.controller.start();
+  assert.equal(a, b); gate.resolve();
+  assert.deepEqual(await a, await b);
+  assert.equal(f.state.provisions, 1);
+  const run = structuredClone(f.controller.state.run);
+  await f.controller.simpleStart();
+  assert.deepEqual(f.controller.state.run, run);
+  assert.equal(f.state.provisions, 1);
+  assert.equal(f.state.sessions[0].isTerminated, false);
+  assert.equal(f.state.commands.length, 0);
+});
+
+test('intentional Start prepares a completed drain or emergency without a separate release', async t => {
+  for (const emergency of [false, true]) {
+    const f = fixture(t, { bootstrap: 'success' });
+    f.controller.limits({ concurrency: 3, minimumRemainingPercent: 0 });
+    const limits = structuredClone(f.controller.state.limits);
+    const task = f.controller.enqueue({ title: 'Preserve queued test task', issue: 1, files: ['src/test.js'] });
+    await f.controller.stop(emergency);
+    await f.controller.simpleStart();
+    assert.equal(f.controller.state.mode, 'running');
+    assert.equal(f.controller.state.emergency, null);
+    assert.deepEqual(f.controller.state.limits, limits);
+    assert.equal(f.controller.state.tasks[0].id, task.id);
+    assert.equal(f.state.provisions, 1);
+    assert.equal(f.state.sessions[2].isTerminated, false);
+  }
+});
+
+test('Start preserves genuine uncertainty and an unverified emergency', async t => {
+  const f = fixture(t);
+  f.state.fail = true; await f.controller.stop(true);
+  await assert.rejects(f.controller.simpleStart(), /latched.*not yet verified/);
+  assert.equal(f.controller.state.mode, 'emergency');
+  f.state.fail = false;
+  for (const s of f.state.sessions.filter(s => s.projectId === PROJECT)) s.isTerminated = true;
+  f.controller.ledger.entries['unknown-session'] = { status: 'uncertain' };
+  await assert.rejects(f.controller.simpleStart(), /Unresolved delivery/);
+  assert.equal(f.controller.ledger.entries['unknown-session'].status, 'uncertain');
+  assert.equal(f.controller.state.mode, 'emergency');
+  assert.equal(f.state.provisions, 0);
+});
+
+test('uncertain provisioning blocks Start even when a live BabyTracker session appears', async t => {
+  const f = fixture(t);
+  for (const key of ['bootstrap', 'provisioning']) {
+    f.controller.state[key] = { status: 'uncertain' };
+    await assert.rejects(f.controller.simpleStart(), /unverified delivery/);
+    assert.equal(f.controller.state.mode, 'paused');
+    delete f.controller.state[key];
+  }
+  assert.equal(f.state.provisions, 0);
+});
+
+test('quota becoming stale during bootstrap prevents running and never replays the created session', async t => {
+  const f = fixture(t, { sessions: [], bootstrap: 'success' });
+  const previous = f.adapter.provisionCodex;
+  f.adapter.provisionCodex = async before => { const result = await previous(before); f.state.quota = { fresh: false, reason: 'stale' }; return result; };
+  await assert.rejects(f.controller.simpleStart(), /stale/);
+  assert.equal(f.controller.state.mode, 'paused');
+  await assert.rejects(f.controller.simpleStart(), /stale/);
+  assert.equal(f.state.provisions, 1);
+});
+
+
+test('late emergency shutdown verification cannot relatch after intentional Start', async t => {
+  const f = fixture(t, { sessions: [], bootstrap: 'success' });
+  const gate = deferred(), previous = f.adapter.sessions;
+  let reads = 0;
+  f.adapter.sessions = () => ++reads === 2 ? gate.promise : previous();
+  const stopping = f.controller.stop(true);
+  await new Promise(resolve => setImmediate(resolve));
+  await f.controller.simpleStart();
+  gate.resolve([]); await stopping;
+  assert.equal(f.controller.state.mode, 'running');
+  assert.equal(f.controller.state.emergency, null);
+  assert.equal(f.state.provisions, 1);
 });
