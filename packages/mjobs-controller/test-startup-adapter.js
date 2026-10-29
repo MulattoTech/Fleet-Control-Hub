@@ -27,7 +27,7 @@ function fixture(t) {
     sessions: [], counts: new Map(), stoppedEvidence: new Map(),
     resources: { ramGiB: 30, diskGiB: 150, cpuPercent: 10 },
     quota: { fresh: true, selectedRemainingPercent: 100, ordinaryUsageAllowed: true },
-    config: { enabled: true, pollSeconds: 5, thresholdPercent: 7, window: 'any', autoKillArmed: false, tripped: false, updatedAt: '2026-10-25T00:00:00.000Z' },
+    config: { enabled: true, minimumRemainingPercent: 15, pollSeconds: 5, thresholdPercent: 7, window: 'any', autoKillArmed: false, tripped: false, updatedAt: '2026-10-25T00:00:00.000Z' },
     acknowledgedRevision: null,
     catalog: { providers: [{ id: 'codex', available: true }, { id: 'agy', available: true }] },
     launch: { pending: false, requiresReconciliation: false },

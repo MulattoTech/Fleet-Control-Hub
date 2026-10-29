@@ -60,17 +60,16 @@ class QuotaControl{
  }
  dispatchBlockReason(){
   const s=this.status();
-  if(s.config.tripped)return 'Automatic quota stop has tripped; explicitly re-arm protection before starting more work';
-  if(!s.config.autoKillArmed)return 'Codex '+s.config.thresholdPercent+'% emergency quota guard is not armed; start/dispatch is disabled until you explicitly arm it';
-  if(!s.config.enabled)return 'Quota protection is armed but monitoring is disabled';
-  if(!s.monitorOnline||!s.fresh||s.selectedRemainingPercent===null)return 'Quota protection is armed but the usage reading is unavailable or stale; new work is paused';
+  if(this.locked())return 'Emergency lockout is active; new work is blocked';
+  if(s.config.tripped)return 'Automatic quota stop has tripped; explicitly Start again after recovery';
+  if(!s.config.enabled)return 'Quota monitoring is disabled';
+  if(!s.monitorOnline||!s.fresh||s.selectedRemainingPercent===null)return 'Quota usage reading is unavailable or stale; new work is paused';
   if(s.ordinaryUsageAllowed===false)return 'Codex reports that ordinary usage is unavailable; new work is paused';
-  if(s.selectedRemainingPercent<=s.config.thresholdPercent)return 'Quota safety threshold reached at '+s.selectedRemainingPercent+'% remaining; new work is blocked';
-  // New assignments stop 8 percentage points early. Already-running agent turns
-  // can consume quota after the last provider sample; the hard kill stays at 7%.
+  if(s.config.autoKillArmed&&s.selectedRemainingPercent<=s.config.thresholdPercent)return 'Quota safety threshold reached at '+s.selectedRemainingPercent+'% remaining; new work is blocked';
+  // The chosen reserve governs ordinary dispatch. Hard termination is opt-in.
   const brake=minimumRemaining(s.config);
   if(s.selectedRemainingPercent<=brake)return 'Quota safety brake: '+s.selectedRemainingPercent+'% remaining (new assignments paused at '+brake+'%, emergency at '+s.config.thresholdPercent+'%)';
-  if(!s.guardAcknowledged)return 'Quota guard settings are awaiting acknowledgment from the live monitor; new work is paused';
+  if(s.config.autoKillArmed&&!s.guardAcknowledged)return 'Quota guard settings are awaiting acknowledgment from the live monitor; new work is paused';
   return null;
  }
  validateUpdate(x){
@@ -83,8 +82,7 @@ class QuotaControl{
   if(x.window!==undefined&&!['any','five-hour','weekly'].includes(x.window))throw Error('Invalid quota window');
   if(x.enabled!==undefined&&typeof x.enabled!=='boolean')throw Error('enabled must be boolean');
   const result={...this.config(),...x,updatedAt:new Date().toISOString()};
-  if(x.minimumRemainingPercent!==undefined && (!Number.isInteger(x.minimumRemainingPercent)||x.minimumRemainingPercent<Math.max(7,result.thresholdPercent)||x.minimumRemainingPercent>99))throw Error('Start/new-work limit must be a whole percentage from '+Math.max(7,result.thresholdPercent)+' to 99; it cannot be below emergency protection.');
-  if(result.minimumRemainingPercent!==undefined&&result.minimumRemainingPercent<result.thresholdPercent)throw Error('Emergency threshold cannot exceed the saved start/new-work limit.');
+  if(x.minimumRemainingPercent!==undefined && (!Number.isInteger(x.minimumRemainingPercent)||x.minimumRemainingPercent<0||x.minimumRemainingPercent>99))throw Error('Start/new-work limit must be a whole percentage from 0 to 99.');
   return result;
  }
  update(x){
@@ -97,11 +95,24 @@ class QuotaControl{
   persist(this.configPath,config);this.audit('quota_settings',{thresholdPercent:config.thresholdPercent,minimumRemainingPercent:minimumRemaining(config),window:config.window,pollSeconds:config.pollSeconds});
   this.ensure();return this.status();
  }
+ prepareForStart(){
+  if(this.locked())throw Error('Emergency lockout is active; re-arm Codex first');
+  const before=this.config();
+  // Restarting normal work never grants emergency termination authority.
+  // Preserve the saved reserve, including explicit zero and positive choices.
+  if(!before.enabled||before.tripped||before.autoKillArmed){
+   const config={...before,enabled:true,autoKillArmed:false,tripped:false,updatedAt:new Date().toISOString()};
+   for(const key of ['triggeredAt','triggerRemainingPercent','triggerWindow'])delete config[key];
+   persist(this.configPath,config);
+   this.audit('quota_prepared_for_start',{minimumRemainingPercent:minimumRemaining(config)});
+  }
+  this.ensure();return this.status();
+ }
  arm(){
   if(this.locked())throw Error('Emergency lockout is active; re-arm Codex first');
   const s=this.status();
   if(!s.monitorOnline||!s.fresh||s.selectedRemainingPercent===null)throw Error('Wait for a fresh Codex quota sample before arming auto-kill');
-  if(s.ordinaryUsageAllowed===false||s.selectedRemainingPercent<=minimumRemaining(s.config))throw Error('Usage must be above the safety brake ('+minimumRemaining(s.config)+'% remaining) before arming a new sprint.');
+  if(s.ordinaryUsageAllowed===false||s.selectedRemainingPercent<=Math.max(minimumRemaining(s.config),s.config.thresholdPercent))throw Error('Usage must be above the reserve and emergency threshold ('+Math.max(minimumRemaining(s.config),s.config.thresholdPercent)+'% remaining) before arming automatic termination.');
   const config={...this.config(),enabled:true,autoKillArmed:true,tripped:false,updatedAt:new Date().toISOString()};
   persist(this.configPath,config);
   this.audit('quota_auto_stop_armed',{threshold:config.thresholdPercent,window:config.window,remaining:s.selectedRemainingPercent});

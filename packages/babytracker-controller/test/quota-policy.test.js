@@ -8,5 +8,28 @@ test('quota remains visible while paused and threshold changes are project-local
  const recreated=new FleetController(f.config,f.deps);assert.equal(recreated.state.limits.minimumRemainingPercent,12);assert.equal(recreated.quotaPolicy().sharedEmergencyGuard.thresholdPercent,7);
  f.state.remaining=12;assert.equal(recreated.quotaPolicy().blocked,true);assert.match(recreated.guard({requireRunning:false,session:{harness:'codex'}}),/QUOTA HOLD/);
 });
-test('below-emergency, noninteger, unavailable readings and shared higher threshold cannot bypass protection',async t=>{const f=fixture(t);for(const x of [0,6,100,12.5,'12',null])await assert.rejects(f.controller.updateQuotaPolicy(x),/limit/);await f.controller.updateQuotaPolicy(7);f.state.fresh=false;assert.equal(f.controller.quotaPolicy().blocked,true);f.state.fresh=true;f.state.shared=15;assert.equal(f.controller.quotaPolicy().minimumRemainingPercent,15);assert.equal(f.controller.quotaPolicy().blocked,true);await assert.rejects(f.controller.updateQuotaPolicy(12),/limit/);assert.equal(f.state.commands.length,0);});
+test('zero reserve persists independently of shared guard and allows only fresh positive quota',async t=>{
+ const f=fixture(t);
+ for(const x of [-1,100,12.5,'12',null])await assert.rejects(f.controller.updateQuotaPolicy(x),/limit/);
+ await f.controller.updateQuotaPolicy(0);
+ const recreated=new FleetController(f.config,f.deps);
+ assert.equal(recreated.state.limits.minimumRemainingPercent,0);
+ f.state.shared=15;f.state.remaining=1;
+ assert.equal(recreated.quotaPolicy().minimumAllowedPercent,0);
+ assert.equal(recreated.quotaPolicy().minimumRemainingPercent,0);
+ assert.equal(recreated.quotaPolicy().blocked,false);
+ assert.equal(recreated.quotaPolicy().sharedEmergencyGuard.thresholdPercent,15);
+ await recreated.simpleStart();assert.equal(recreated.state.mode,'running');
+ recreated.pause();f.state.remaining=0;
+ await assert.rejects(recreated.simpleStart(),/QUOTA HOLD/);
+ f.state.remaining=1;f.state.fresh=false;
+ await assert.rejects(recreated.simpleStart(),/Fresh Codex/);
+ assert.equal(f.state.commands.length,0);
+});
+test('limits form also saves zero reserve without modifying shared protection',async t=>{
+ const f=fixture(t);f.controller.limits({minimumRemainingPercent:0});
+ assert.equal(f.controller.state.limits.minimumRemainingPercent,0);
+ assert.equal(f.controller.quotaPolicy().sharedEmergencyGuard.thresholdPercent,7);
+ assert.equal(f.controller.state.mode,'paused');
+});
 test('configured low-quota Startup is blocked before provisioning or native dispatch; changing policy alone keeps pause',async t=>{const f=fixture(t);await assert.rejects(f.controller.start(),/QUOTA HOLD/);assert.equal(f.state.commands.length,0);await f.controller.updateQuotaPolicy(12);assert.equal(f.controller.state.mode,'paused');await f.controller.start();assert.equal(f.controller.state.mode,'running');assert.equal(f.state.commands.length,0);});

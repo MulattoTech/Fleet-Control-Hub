@@ -73,7 +73,7 @@ function makeServer({adapters=createAdapters(),services=createServiceLaunchpad()
       const action=url.pathname==='/api/pause'?'pause':input?.action;
       if(!input||!['mjobs','babytracker'].includes(input.id)||!['pause','graceful-stop'].includes(action)||Object.keys(input).some(k=>!['id','action'].includes(k)))return json(400,{error:'Choose one known fleet and control action'});
       return json(200,await adapters.control(input.id,action));
-    }catch(e){return json(502,{error:String(e.message).slice(0,200)});}
+    }catch(e){return json(502,{error:String(e.message).slice(0,200),definitive:e.definitive===true});}
   });
   return server;
 }

@@ -12,6 +12,7 @@ function fixture(){const calls=[];const fetcher=async(url,options={})=>{calls.pu
   if(url.endsWith('/api/state')&&url.includes(':8787'))return {ok:true,json:async()=>({projectId:'mjobs-luna',sessions:[{id:'a'}],summary:{total:1,working:0,idle:1,idlePending:0,ciAttention:0}})};
   if(url.endsWith('/api/master'))return {ok:true,json:async()=>({dispatch:{sustainedEnabled:false,turboEnabled:false},emergency:{latched:false},drain:{enabled:true}})};
   if(url.endsWith('/api/sustain'))return {ok:true,json:async()=>({workItems:[{state:'approved'},{state:'leased'}],artifactReviews:{ready:1}})};
+  if(url.endsWith('/api/run'))return {ok:true,json:async()=>({projectId:'mjobs-luna',phase:'idle',active:false,running:false,primaryId:'mjobs-luna-40',quota:{fresh:true,remainingPercent:46,minimumRemainingPercent:0,blocked:false},blockedReasons:[]})};
   if(url.endsWith('/api/startup'))return {ok:true,json:async()=>({run:{phase:'idle',active:false},preview:{targetCount:2,projectIds:['mjobs-luna'],primaryIds:['mjobs-luna-40'],manifestRevision:'a'.repeat(64)}})};
   if(url.endsWith('/api/startup/mjobs-preview'))return {ok:true,json:async()=>({projectId:'mjobs-luna',targetCount:2,primaryIds:['mjobs-luna-40'],manifestRevision:'a'.repeat(64),scopedStartSupported:true})};
   if(url.endsWith('/api/quota'))return {ok:true,json:async()=>({fresh:true,policy:{blocked:false,remainingPercent:46}})};
@@ -95,6 +96,17 @@ test('bounded MJobs web Start, Pause and Stop flow is project scoped in an isola
     assert.deepEqual(operations,['mjobs:start','mjobs:pause','mjobs:graceful-stop']);
   }finally{await new Promise(resolve=>server.close(resolve));}
 });
+test('Hub Start HTTP errors retain the distinction between transport uncertainty and definitive refusal',async()=>{
+  let definitive=false;
+  const server=makeServer({port:4328,adapters:{start:async()=>{throw Object.assign(Error('native failed'),{definitive});}}});
+  await new Promise(resolve=>server.listen(4328,'127.0.0.1',resolve));
+  try{
+    const base='http://127.0.0.1:4328',token=(await (await fetch(base+'/api/session')).json()).token;
+    const send=()=>fetch(base+'/api/start',{method:'POST',headers:{origin:base,'content-type':'application/json','x-fleet-hub':token},body:JSON.stringify({id:'mjobs',confirmation:'START MJobs',requestId:'stable-123'})});
+    let response=await send();assert.equal(response.status,502);assert.equal((await response.json()).definitive,false);
+    definitive=true;response=await send();assert.equal(response.status,502);assert.equal((await response.json()).definitive,true);
+  }finally{await new Promise(resolve=>server.close(resolve));}
+});
 test('one-session MJobs start binds the exact saved primary and keeps dispatch off',async()=>{
   const calls=[];let babyChanged=false;
   const fetcher=async(url,options={})=>{calls.push({url,options});
@@ -132,51 +144,62 @@ test('status reads normalize both fleets and never mutate',async()=>{
   assert.equal((await api.status('babytracker')).safety.emergencyScope,'project');
   assert.ok(calls.every(x=>!x.options.method||x.options.method==='GET'));
 });
-test('Start preview names controller states that block dispatch',async()=>{
+test('MJobs status projects native run progress and errors while preserving observed worker counts',async()=>{
+  const {fetcher}=fixture();let run={projectId:'mjobs-luna',phase:'starting',active:true,running:false};
+  const api=createAdapters({fetcher:async(url,options)=>{if(url.endsWith('/api/run')){if(!run)throw Error('Older controller');return {ok:true,json:async()=>run};}return fetcher(url,options);},progressReader:()=>({available:false})});
+  let status=await api.status('mjobs');assert.equal(status.mode,'starting');assert.equal(status.working,0);assert.equal(status.total,1);
+  run={projectId:'mjobs-luna',phase:'blocked',active:false,running:false,error:'Fresh Codex sample unavailable'};
+  status=await api.status('mjobs');assert.equal(status.mode,'blocked');assert.equal(status.detail,'Fresh Codex sample unavailable');assert.equal(status.working,0);
+  run={projectId:'mjobs-luna',phase:'running',active:false,running:true};assert.equal((await api.status('mjobs')).mode,'running');
+  run=null;assert.equal((await api.status('mjobs')).mode,'paused or manual');
+});
+test('Start preview preserves native reconciliation blockers without requiring a completed stop to be rearmed',async()=>{
   const {fetcher}=fixture();
   const api=createAdapters({fetcher:async(url,options)=>{
-    if(url.endsWith('/api/startup'))return {ok:true,json:async()=>({run:{phase:'uncertain',active:false},preview:{targetCount:3,projectIds:['mjobs-luna'],primaryIds:['mjobs-luna-40'],manifestRevision:'a'.repeat(64)}})};
+    if(url.endsWith('/api/run'))return {ok:true,json:async()=>({projectId:'mjobs-luna',phase:'uncertain',quota:{fresh:true,remainingPercent:46},blockedReasons:['Native delivery requires reconciliation']})};
     if(url.includes(':4319')&&url.endsWith('/api/state'))return {ok:true,json:async()=>({projectId:'babytracker',mode:'draining',bootstrap:{status:'uncertain'},quota:{fresh:true,remainingPercent:46},summary:{total:1},sessions:[],tasks:[]})};
     return fetcher(url,options);
   }});
-  assert.match((await api.startPreview('mjobs')).blockedReasons.join(' '),/Last Protected Startup is uncertain/);
-  assert.match((await api.startPreview('babytracker')).blockedReasons.join(' '),/draining sessions/);
-  assert.match((await api.startPreview('babytracker')).blockedReasons.join(' '),/bootstrap needs native reconciliation/);
+  assert.match((await api.startPreview('mjobs')).blockedReasons.join(' '),/delivery requires reconciliation/);
+  const baby=await api.startPreview('babytracker');
+  assert.doesNotMatch(baby.blockedReasons.join(' '),/draining sessions/);
+  assert.match(baby.blockedReasons.join(' '),/bootstrap needs native reconciliation/);
 });
-test('MJobs scoped Start rejects an unproven derived roster',async()=>{
-  const {calls,fetcher}=fixture();
-  const api=createAdapters({fetcher:async(url,options)=>url.endsWith('/api/startup/mjobs-preview')
-    ?{ok:true,json:async()=>({projectId:'mjobs-luna',targetCount:31,primaryIds:['babytracker-1'],manifestRevision:'a'.repeat(64),scopedStartSupported:true})}
-    :fetcher(url,options)});
-  const preview=await api.startPreview('mjobs');
-  assert.equal(preview.blocked,true);
-  assert.match(preview.blockedReasons.join(' '),/primary identity is not proven/);
-  await assert.rejects(api.start('mjobs','START MJobs','stable-123'));
-  assert.equal(calls.filter(x=>x.options.method==='POST').length,0);
+test('MJobs uncertain spawn or resume may be verified by native Start while unknown delivery stays blocked',async()=>{
+  const {calls,fetcher}=fixture();let pending={kind:'spawn'},blockedReasons=[];
+  const api=createAdapters({fetcher:async(url,options)=>url.endsWith('/api/run')?{ok:true,json:async()=>({projectId:'mjobs-luna',phase:'uncertain',pending,quota:{fresh:true,remainingPercent:46,minimumRemainingPercent:0,blocked:false},blockedReasons})}:fetcher(url,options)});
+  for(const kind of ['spawn','resume']){
+    pending={kind};assert.equal((await api.startPreview('mjobs')).blocked,false);
+    await api.start('mjobs','START MJobs','verify-'+kind);
+  }
+  for(const value of [null,{kind:'send'},{kind:'unknown'}]){
+    pending=value;assert.equal((await api.startPreview('mjobs')).blocked,true);
+    await assert.rejects(api.start('mjobs','START MJobs','verify-unknown'),/reconciliation/);
+  }
+  pending={kind:'spawn'};blockedReasons=['Run state is unreadable'];assert.equal((await api.startPreview('mjobs')).blocked,true);
+  await assert.rejects(api.start('mjobs','START MJobs','verify-unreadable'),/unreadable/);
+  assert.equal(calls.filter(c=>c.options.method==='POST').length,2);
 });
-test('MJobs-only preview blocks Start if native scoped restore is unsupported',async()=>{
+test('MJobs normal Start validates project identity and never reads the saved restore manifest',async()=>{
   const {calls,fetcher}=fixture();
-  const api=createAdapters({fetcher:async(url,options)=>url.endsWith('/api/startup/mjobs-preview')
-    ?{ok:true,json:async()=>({projectId:'mjobs-luna',targetCount:31,scopedStartSupported:false})}
-    :fetcher(url,options)});
-  const preview=await api.startPreview('mjobs');
-  assert.equal(preview.targetCount,31);
-  assert.equal(preview.blocked,true);
-  await assert.rejects(api.start('mjobs','START MJobs','stable-123','a'.repeat(64)));
+  const api=createAdapters({fetcher:async(url,options)=>url.endsWith('/api/run')?{ok:true,json:async()=>({projectId:'babytracker'})}:fetcher(url,options)});
+  await assert.rejects(api.startPreview('mjobs'),/identity changed/);
+  await assert.rejects(api.start('mjobs','START MJobs','stable-123'),/identity changed/);
   assert.equal(calls.filter(x=>x.options.method==='POST').length,0);
+  const valid=createAdapters({fetcher});assert.equal((await valid.startPreview('mjobs')).blocked,false);
+  assert.equal(calls.some(c=>c.url.includes('/api/startup')),false);
 });
-test('MJobs scoped preview permits a mixed global roster without submitting it',async()=>{
-  const {calls,fetcher}=fixture();
-  const api=createAdapters({fetcher:async(url,options)=>url.endsWith('/api/startup')
-    ?{ok:true,json:async()=>({run:{phase:'failed',active:false,reconciliationRequired:false},preview:{targetCount:37,projectIds:['babytracker','mjobs-luna'],primaryIds:['babytracker-1','mjobs-luna-40']}})}
-    :url.endsWith('/api/startup/mjobs-preview')
-    ?{ok:true,json:async()=>({projectId:'mjobs-luna',targetCount:31,primaryIds:['mjobs-luna-40'],manifestRevision:'a'.repeat(64),scopedStartSupported:true})}
-    :fetcher(url,options)});
-  const preview=await api.startPreview('mjobs');
-  assert.equal(preview.blocked,false);
-  assert.equal(preview.targetCount,31);
-  assert.equal(preview.globalTargetCount,37);
-  assert.equal(calls.filter(x=>x.options.method==='POST').length,0);
+test('MJobs zero reserve allows one percent, blocks provider exhaustion and delegates stale refresh to native Start',async()=>{
+  const {calls,fetcher}=fixture();let fresh=true,remainingPercent=1,blocked=false;
+  const api=createAdapters({fetcher:async(url,options)=>url.endsWith('/api/run')?{ok:true,json:async()=>({projectId:'mjobs-luna',phase:'paused',quota:{fresh,remainingPercent,minimumRemainingPercent:0,blocked},blockedReasons:[]})}:fetcher(url,options)});
+  assert.equal((await api.startPreview('mjobs')).blocked,false);
+  await api.start('mjobs','START MJobs','stable-123');
+  remainingPercent=0;assert.equal((await api.startPreview('mjobs')).blocked,true);
+  await assert.rejects(api.start('mjobs','START MJobs','stable-124'),/quota/);
+  fresh=false;remainingPercent=null;blocked=true;
+  const stale=await api.startPreview('mjobs');assert.equal(stale.quotaFresh,false);assert.equal(stale.blocked,false);
+  await api.start('mjobs','START MJobs','stable-125');
+  assert.equal(calls.filter(c=>c.options.method==='POST').length,2);
 });
 test('pause targets only the selected controller',async()=>{
   const {calls,fetcher}=fixture();const api=createAdapters({fetcher});
@@ -192,20 +215,35 @@ test('pause targets only the selected controller',async()=>{
   await api.control('babytracker','graceful-stop');assert.equal(JSON.parse(calls.at(-1).options.body).action,'drain');
   await assert.rejects(api.control('babytracker','start'));
 });
-test('Start binds MJobs request to exact project and revision and guards BabyTracker',async()=>{
+test('Start uses native simple run routes, stable request IDs and project action authentication',async()=>{
   const {calls,fetcher}=fixture();const api=createAdapters({fetcher,progressReader:()=>({available:false})});
-  assert.equal((await api.startPreview('mjobs')).targetCount,2);
+  assert.equal((await api.startPreview('mjobs')).targetCount,1);
   await assert.rejects(api.start('mjobs','wrong','stable-123'));
+  await assert.rejects(api.start('mjobs','START MJobs','bad'),/Stable request ID/);
   assert.equal(calls.filter(x=>x.options.method==='POST').length,0);
-  await assert.rejects(api.start('mjobs','START MJobs','stable-123','b'.repeat(64)),/unchanged manifest revision/);
-  assert.equal(calls.filter(x=>x.options.method==='POST').length,0);
-  await api.start('mjobs','START MJobs','stable-123','a'.repeat(64));
-  assert.equal(calls.at(-1).url,'http://127.0.0.1:8787/api/startup');
-  assert.deepEqual(JSON.parse(calls.at(-1).options.body),{confirm:'STARTUP',requestId:'stable-123',openUi:false,startWorkAfter:true,expectedProjectId:'mjobs-luna',expectedManifestRevision:'a'.repeat(64)});
-  await assert.rejects(api.start('babytracker','wrong'));
-  assert.equal(calls.filter(x=>x.options.method==='POST').length,1);
-  await api.start('babytracker','START BabyTracker');
-  assert.equal(JSON.parse(calls.at(-1).options.body).action,'start');
+  await api.start('mjobs','START MJobs','stable-123');
+  assert.equal(calls.at(-1).url,'http://127.0.0.1:8787/api/run/start');
+  assert.deepEqual(JSON.parse(calls.at(-1).options.body),{requestId:'stable-123'});
+  assert.equal(calls.at(-1).options.headers['x-ao-fleet'],'1');
+  assert.equal(calls.at(-1).options.headers.origin,'http://127.0.0.1:8787');
+  await assert.rejects(api.start('babytracker','wrong','stable-124'));
+  await api.start('babytracker','START BabyTracker','stable-124');
+  assert.deepEqual(JSON.parse(calls.at(-1).options.body),{action:'simpleStart',requestId:'stable-124'});
+  assert.equal(calls.at(-1).options.headers['x-babytracker-fleet'],'x'.repeat(64));
+});
+test('BabyTracker uses a saved zero reserve and leaves running, stop recovery and real pending checks to native Start',async()=>{
+  const {fetcher}=fixture();let mode='emergency',remainingPercent=1,fresh=true,bootstrap;
+  const api=createAdapters({fetcher:async(url,options)=>url.endsWith('/api/state')?{ok:true,json:async()=>({projectId:'babytracker',mode,bootstrap,quota:{fresh,remainingPercent},quotaPolicy:{minimumAllowedPercent:0}})}:fetcher(url,options)});
+  for(mode of ['emergency','draining','running','paused']){assert.equal((await api.startPreview('babytracker')).blocked,false);await api.start('babytracker','START BabyTracker','stable-123');}
+  remainingPercent=0;assert.equal((await api.startPreview('babytracker')).blocked,true);
+  remainingPercent=1;fresh=false;assert.equal((await api.startPreview('babytracker')).blocked,true);
+  fresh=true;bootstrap={status:'uncertain'};assert.equal((await api.startPreview('babytracker')).blocked,true);
+});
+test('Hub Start distinguishes native transport uncertainty from a parsed controller refusal',async()=>{
+  const {fetcher}=fixture();let refusal=false;
+  const api=createAdapters({fetcher:async(url,options)=>{if(url.endsWith('/api/run/start')){if(!refusal)throw Error('native response lost');return {ok:false,json:async()=>({error:'native quota hold'})};}return fetcher(url,options);}});
+  await assert.rejects(api.start('mjobs','START MJobs','stable-123'),e=>e.message==='native response lost'&&e.definitive!==true);
+  refusal=true;await assert.rejects(api.start('mjobs','START MJobs','stable-123'),e=>e.message==='native quota hold'&&e.definitive===true);
 });
 test('progress summaries contain counts only and preserve unknown evidence',()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'fleet-hub-test-'));

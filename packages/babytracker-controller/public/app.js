@@ -1,7 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-let token = null, snapshot = null, refreshing = false, providers = [], limitsLoaded = false, quotaDirty = false, quotaSaving = false, concurrencyDirty = false, concurrencySaving = false;
+let token = null, snapshot = null, refreshing = false, providers = [], limitsLoaded = false, quotaDirty = false, quotaSaving = false, concurrencyDirty = false, concurrencySaving = false, startPending = false;
 function toast(message, error = false) { const node = document.createElement('div'); node.className = 'toast' + (error ? ' error' : ''); node.textContent = message; $('toastRoot').append(node); setTimeout(() => node.remove(), 9000); }
 async function get(url) { const r = await fetch(url, { signal: AbortSignal.timeout(7000) }); const value = await r.json(); if (!r.ok) throw Error(value.error || 'Request failed'); return value; }
 async function action(action, extra = {}) {
@@ -15,7 +15,7 @@ async function action(action, extra = {}) {
     if (action === 'restart') token = null;
     toast(value.note || (value.ok === false ? 'Operation could not be verified. Inspect the current state.' : 'Controller action recorded.'), value.ok === false);
     await refresh(); return value;
-  } catch (e) { toast(e.name === 'TimeoutError' ? 'Response timed out. Refresh and inspect the controller before retrying; an action may have been submitted.' : e.message, true); throw e; }
+  } catch (e) { toast(e.name === 'TimeoutError' ? 'Response timed out. Checking actual controller state automatically; an action may have been submitted.' : e.message, true); await refresh(); throw e; }
 }
 function render(s) {
   snapshot = s;
@@ -30,8 +30,8 @@ function render(s) {
     $('quotaMinimum').min=qp.minimumAllowedPercent;
     const noAgy=!s.sessions.some(a=>a.harness==='agy'&&a.runtimeActive===true);
     const start=document.querySelector('[data-action="start"]');
-    start.disabled=s.mode==='running'||!!s.emergency||(qp.blocked&&noAgy);
-    start.textContent=s.mode==='running'?'Already started':qp.blocked&&noAgy?'Start blocked by quota':'Start Fleet';
+    start.disabled=startPending||s.mode==='running'||(qp.blocked&&noAgy);
+    start.textContent=startPending?'Starting…':s.mode==='running'?'Already started':qp.blocked&&noAgy?'Start blocked by quota':'Start Fleet';
     start.title=qp.blocked?qp.reason:'';
     document.querySelector('[data-action="all-hands"]').disabled=qp.blocked||s.mode!=='running';
     $('turbo').disabled=(!s.run?.turbo&&qp.blocked)||s.mode!=='running';
@@ -67,13 +67,16 @@ async function refresh() {
 }
 document.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', async () => {
   const name = button.dataset.action;
+  if (name === 'start' && startPending) return;
   if(name==='start'&&snapshot?.quotaPolicy?.blocked&&!snapshot.sessions.some(a=>a.harness==='agy'&&a.runtimeActive===true))return toast(snapshot.quotaPolicy.reason,true);
-  if (['emergency', 'drain', 'start', 'release'].includes(name) && !confirm(({ emergency: 'Stop only BabyTracker runtime sessions now? Uncommitted files and branches are preserved.', drain: 'Ask BabyTracker workers to checkpoint and stop?', start: 'Enable this bounded BabyTracker run? If none exists, Start may provision one Codex orchestrator (which may use quota); tasks still require explicit assignment or Find Work.', release: 'Release the BabyTracker emergency latch after verifying its sessions have stopped?' })[name])) return;
-  button.disabled = true; try { await action(name); } catch {} finally { button.disabled = false; if(snapshot)render(snapshot); }
+  if (['emergency', 'drain', 'release'].includes(name) && !confirm(({ emergency: 'Stop only BabyTracker runtime sessions now? Uncommitted files and branches are preserved.', drain: 'Ask BabyTracker workers to checkpoint and stop?', start: 'Enable this bounded BabyTracker run? If none exists, Start may provision one Codex orchestrator (which may use quota); tasks still require explicit assignment or Find Work.', release: 'Release the BabyTracker emergency latch after verifying its sessions have stopped?' })[name])) return;
+  if (name === 'start') startPending = true;
+  button.disabled = true; if(snapshot)render(snapshot);
+  try { await action(name === 'start' ? 'simpleStart' : name); } catch {} finally { if (name === 'start') startPending = false; button.disabled = false; await refresh(); if(snapshot)render(snapshot); }
 }));
 $('quotaMinimum').addEventListener('input',()=>{quotaDirty=true;$('quotaPolicyFeedback').textContent='UNSAVED quota change. Save to apply. Shared emergency protection stays unchanged.';});
 $('quotaMinimumSave').addEventListener('click',async()=>{
-  if(quotaSaving)return;const value=Number($('quotaMinimum').value),floor=snapshot?.quotaPolicy?.minimumAllowedPercent??7;
+  if(quotaSaving)return;const value=Number($('quotaMinimum').value),floor=snapshot?.quotaPolicy?.minimumAllowedPercent??0;
   if(!Number.isInteger(value)||value<floor||value>99)return toast('Quota limit must be '+floor+' to 99%.',true);
   if(value<snapshot.limits.minimumRemainingPercent&&!confirm('Lower BabyTracker start/new-work limit to '+value+'%? A running scheduler may resume Codex tasks. Shared emergency protection is unchanged; less headroom increases overshoot risk.'))return;
   quotaSaving=true;$('quotaMinimumSave').disabled=true;
@@ -196,7 +199,7 @@ $('concurrencySave').addEventListener('click', async () => {
   if (concurrencySaving) return;
   const value = Number($('concurrencyLimit').value);
   if (!Number.isInteger(value) || value < 1 || value > 32) return toast('Parallel-turn limit must be 1 to 32.', true);
-  if (value > snapshot.limits.concurrency && !confirm('Raise the shared BabyTracker parallel-turn limit from ' + snapshot.limits.concurrency + ' to ' + value + '? Existing automatic scheduling may use the extra slots. Resource and provider usage can increase. The 7% quota safeguard is not changed.')) return;
+  if (value > snapshot.limits.concurrency && !confirm('Raise the shared BabyTracker parallel-turn limit from ' + snapshot.limits.concurrency + ' to ' + value + '? Existing automatic scheduling may use the extra slots. Resource and provider usage can increase. The saved quota reserve is not changed.')) return;
   concurrencySaving = true; $('concurrencySave').disabled = true;
   try { const result = await action('concurrency-policy', { concurrency: value }); concurrencyDirty = false; limitsLoaded = false; $('concurrencyFeedback').textContent = result.note; await refresh(); }
   catch {} finally { concurrencySaving = false; if (snapshot) renderCapacity(snapshot); }

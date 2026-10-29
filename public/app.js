@@ -70,7 +70,7 @@ function render(fleets){const holder=$('fleets');holder.replaceChildren();let ac
     const stop=el('button','stop','Graceful stop');stop.type='button';stop.disabled=!fleet.online||pendingActions.has(fleet.id+':graceful-stop');stop.addEventListener('click',()=>controlFleet(fleet.id,fleet.name,'graceful-stop',stop));
     const reviews=el('button','','Review queue');reviews.type='button';reviews.disabled=!fleet.online;reviews.addEventListener('click',()=>{if(openReviews.has(fleet.id)){openReviews.delete(fleet.id);reviewPanel.replaceChildren();}else{openReviews.set(fleet.id,0);loadReviewQueue(fleet.id,reviewPanel,0);}});
     const limits=el('button','','Limits');limits.type='button';limits.disabled=!fleet.online;limits.addEventListener('click',()=>{if(openLimits.has(fleet.id)){openLimits.delete(fleet.id);limitPanel.replaceChildren();}else loadLimits(fleet.id,limitPanel);});
-    actions.append(start);if(fleet.id==='mjobs')actions.append(one);actions.append(pause,stop,limits,reviews);if(['127.0.0.1','localhost'].includes(location.hostname))actions.append(open);
+    actions.append(start);actions.append(pause,stop,limits,reviews);if(fleet.id==='mjobs'){const advanced=el('details','advanced-controls'),summary=el('summary','','Advanced');advanced.append(summary,one);actions.append(advanced);}if(['127.0.0.1','localhost'].includes(location.hostname))actions.append(open);
     const detail=el('div','detail');detail.append(el('strong','','Controls: '),document.createTextNode(safetyText(fleet.safety)),el('br'),el('strong','','Progress: '),document.createTextNode(progressText(fleet)+(fleet.detail?'  •  '+fleet.detail:'')));
     const reviewPanel=el('section','review-panel');reviewPanel.setAttribute('aria-label',fleet.name+' review candidates');
     const limitPanel=el('section','limit-panel');limitPanel.setAttribute('aria-label',fleet.name+' limits');
@@ -112,15 +112,14 @@ async function controlFleet(id,name,action,button){const key=id+':'+action;if(pe
 }catch(e){showActionMessage('Action outcome was not confirmed. Check the selected controller before retrying: '+e.message);}finally{pendingActions.delete(key);await refresh();}}
 async function startFleet(id,name,button){const key=id+':start';if(pendingActions.has(key))return;pendingActions.add(key);button.disabled=true;try{
   const previewResponse=await fetch('/api/start-preview?id='+encodeURIComponent(id),{cache:'no-store'});const preview=await previewResponse.json();if(!previewResponse.ok)throw Error(preview.error||'Start preview unavailable');
-  if(preview.blocked||!preview.quotaFresh){showActionMessage((id==='mjobs'&&Number.isInteger(preview.targetCount)?'MJobs-only saved roster: '+preview.targetCount+' targets. ':'')+name+' cannot start: '+(preview.blockedReasons?.join('; ')||'current controller or quota state blocks Start')+'. Inspect the selected controller before retrying.');return;}
-  const message=preview.note+'\nSaved or current sessions: '+count(preview.targetCount)+'. Codex quota remaining: '+(preview.quotaRemaining??'unknown')+'%.\nType '+preview.confirmation+' to request Start.';
-  if(!await confirmAction(message,preview.confirmation))return;
-  const requestId=id==='mjobs'?(sessionStorage.getItem('mjobsStartRequestId')||crypto.randomUUID()):undefined;
-  if(id==='mjobs')sessionStorage.setItem('mjobsStartRequestId',requestId);
-  const r=await postAction('/api/start',{id,confirmation:preview.confirmation,requestId,manifestRevision:id==='mjobs'?preview.manifestRevision:undefined});const result=await r.json();if(!r.ok)throw Error(result.error||'Start was refused');
-  if(id==='mjobs')sessionStorage.removeItem('mjobsStartRequestId');
+  if(preview.blocked){showActionMessage(name+' cannot start: '+(preview.blockedReasons?.join('; ')||'current controller or quota state blocks Start')+'.');return;}
+  const storageKey=id+'StartRequestId',requestId=sessionStorage.getItem(storageKey)||crypto.randomUUID();
+  sessionStorage.setItem(storageKey,requestId);
+  showActionMessage('Starting '+name+'… Watching controller status.');
+  const r=await postAction('/api/start',{id,confirmation:preview.confirmation,requestId});const result=await r.json();if(!r.ok){const definitive=result.definitive===true||(r.status>=400&&r.status<500);if(definitive)sessionStorage.removeItem(storageKey);throw Object.assign(Error(result.error||'Start was refused'),{definitive});}
+  sessionStorage.removeItem(storageKey);
   showActionMessage(result.note);
-}catch(e){showActionMessage('Start outcome was not confirmed. Inspect the selected controller before retrying: '+e.message);}finally{pendingActions.delete(key);await refresh();}}
+}catch(e){showActionMessage(e.definitive?'Start was refused: '+e.message:'Start outcome was not confirmed. Click Start again to retry the same request: '+e.message);}finally{pendingActions.delete(key);await refresh();}}
 async function startOneMJobs(button){const key='mjobs:one-session';if(pendingActions.has(key))return;pendingActions.add(key);button.disabled=true;try{
   const previewResponse=await fetch('/api/bounded-start-preview?id=mjobs',{cache:'no-store'});const preview=await previewResponse.json();if(!previewResponse.ok)throw Error(preview.error||'One-session preview unavailable');
   if(preview.blocked){showActionMessage('One-session MJobs Start is blocked: '+preview.blockedReasons.join('; '));return;}
@@ -160,4 +159,4 @@ if(!['127.0.0.1','localhost'].includes(location.hostname)){
   document.querySelectorAll('nav a[href^="http://127.0.0.1:"]').forEach(a=>a.remove());
   document.querySelector('.rail-bottom').replaceChildren(document.createTextNode('Protected remote control'),document.createElement('br'),el('span','',location.hostname));
 }
-$('refresh').addEventListener('click',()=>{lastActionMessage='';refresh();});refresh();setInterval(refresh,15000);
+$('refresh').addEventListener('click',()=>{lastActionMessage='';refresh();});refresh();setInterval(refresh,3000);
