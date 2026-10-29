@@ -449,7 +449,7 @@ async function main(req,res){
  }
  if(req.method==='GET'&&req.url==='/api/startup'){
   const readiness=await startupAdapter.readiness();
-  let preview;try{const {targets,revision}=startupAdapter.manifest();preview={targetCount:targets.length,manifestRevision:revision,projectIds:[...new Set(targets.map(s=>s.projectId))],primaryIds:targets.filter(s=>s.kind==='orchestrator').map(s=>s.id)};}catch(e){preview={targetCount:0,reason:e.message};}
+  let preview;try{const {targets,revision}=startupAdapter.manifest();preview={projectId,targetCount:targets.length,manifestRevision:revision,projectIds:[...new Set(targets.map(s=>s.projectId))],primaryIds:targets.filter(s=>s.kind==='orchestrator').map(s=>s.id)};}catch(e){preview={targetCount:0,reason:e.message};}
   return json(res,200,{run:startup.status(),readiness,preview,launcher:orchestratorLauncher.status()});
  }
  if(req.method==='POST'&&['/api/startup','/api/startup/cancel','/api/startup/reconcile','/api/orchestrator/open'].includes(req.url)){
@@ -459,7 +459,15 @@ async function main(req,res){
    if(req.url==='/api/startup/cancel'){const r=startup.cancel(data);master.disableAutomaticDispatch();master.restore.pause();return json(res,r.statusCode,r);}
    if(mutationLock||sustain.running||turbo.running||findWork.running)return json(res,409,{error:'Another control operation is running; Startup did not submit work'});
    mutationLock=true;owns=true;
-   if(req.url==='/api/startup'){const policy=quota.status().policy;if(policy?.blocked)return json(res,409,{error:policy.reason,code:'QUOTA_BLOCKED',quotaPolicy:policy});const r=startup.start(data);return json(res,r.statusCode,r);}
+   if(req.url==='/api/startup'){
+    const previous=startup.status();
+    if(data.expectedProjectId==null&&data.expectedManifestRevision==null){
+     if(previous.requestId===data.requestId||previous.recentRequests?.some(x=>x.requestId===data.requestId)){
+      data.expectedProjectId=previous.options?.expectedProjectId??null;data.expectedManifestRevision=previous.options?.expectedManifestRevision??null;
+     }else{data.expectedProjectId=projectId;data.expectedManifestRevision=startupAdapter.manifest(projectId).revision;}
+    }
+    if(data.expectedProjectId!==projectId&&!previous.recentRequests?.some(x=>x.requestId===data.requestId))throw Error('This dashboard starts only the MJobs project');
+    const policy=quota.status().policy;if(policy?.blocked)return json(res,409,{error:policy.reason,code:'QUOTA_BLOCKED',quotaPolicy:policy});const r=startup.start(data);return json(res,r.statusCode,r);}
    if(req.url==='/api/startup/reconcile'){const r=await startup.reconcile(data);return json(res,r.statusCode||200,r);}
    assertCanStartWork();
    const r=await orchestratorLauncher.launch('ui',{beforeTrigger:()=>assertCanStartWork()});
@@ -674,7 +682,7 @@ turbo=new Turbo({root,getState:state,command,audit,isManualBusy:()=>mutationLock
 sustain=new Sustain({root,getState:state,turbo,command,audit,isManualBusy:()=>mutationLock||!!master?.locked()||!!master?.drainState.enabled||!!master?.restore.state.active||!!quota?.dispatchBlockReason()||!!startupBlockReason(),projectId});
 turbo.sustain=sustain;sustain.deliveryLedger=dispatchLedger;turbo.deliveryLedger=dispatchLedger;
 master=new MasterControls({root,sustain,turbo,command,audit,getState:state,getAllSessions:getLiveSessions,projectId,
- restoreOptions:{snapshotFrozen:()=>!!startup?.status().active||!!startup?.status().reconciliationRequired,
+ restoreOptions:{requireSelection:true,snapshotFrozen:()=>!!startup?.status().active||!!startup?.status().reconciliationRequired,
  launchAO:()=>orchestratorLauncher.launch('daemon',{beforeTrigger:()=>{
   if(!master.restore.state.active||master.locked()||quota.dispatchBlockReason()||startupBlockReason({allowRestore:true}))throw Error('Restore was stopped before Orchestrator could launch');
  }}),runtimeHealth:runtimeHealthy,controllerStopped},
@@ -682,7 +690,7 @@ master=new MasterControls({root,sustain,turbo,command,audit,getState:state,getAl
  startBlockReason:()=>startupBlockReason({allowRestore:true})||(!startup?.status().active&&!manualRestoreAuthorized?'Restoration awaits an explicit Startup or Restore request after this dashboard launch':null)});
 quota=new QuotaControl({root,audit,locked:()=>master.locked()});
 master.quota=quota;
-startupAdapter=new StartupAdapter({root,master,quota,launcher:orchestratorLauncher,providers:providerRuntime,
+startupAdapter=new StartupAdapter({root,master,quota,launcher:orchestratorLauncher,providers:providerRuntime,defaultProjectId:projectId,requireSelection:true,
  verifyCodex:verifyCodexExecutable,getSessions:getLiveSessions,runtimeHealth:runtimeHealthy,
  operationBusy:()=>mutationLock||sustain.running||turbo.running||!!findWork?.running});
 startup=new StartupController({root,deps:startupAdapter.deps(),audit,timeouts:{readMs:30000,actionMs:35000}});

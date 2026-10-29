@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { randomUUID, createHash } = require('node:crypto');
+const { validLegacyEvidence } = require('./legacy-startup-evidence');
 
 const POLICY = Object.freeze({ thresholdPercent: 7, pollSeconds: 5, window: 'any', enabled: true, brakePercent: 15 });
 const DEFAULT_TIMEOUTS = Object.freeze({ readMs: 30000, actionMs: 15000, watchdogMs: 45000, guardAckMs: 25000, restoreMs: 600000, readinessMs: 90000, totalMs: 900000 });
@@ -282,6 +283,12 @@ class StartupController {
       this._transition('starting_restore');
       this.state.restoreStartAttempted = true; this._persist();
       const receipt = await this._call('start existing RestoreFleet', ctx => this.deps.restore.start(ctx), { mutates: true, timeoutMs: this.timeouts.actionMs });
+      if(receipt?.rejectedBeforeSubmit===true){
+        if(receipt.runId!==this.state.runId||!receipt.ledger||!/^[a-f0-9]{64}$/.test(receipt.ledger.bytesFingerprint||'')||!/^[a-f0-9]{64}$/.test(receipt.ledger.stateFingerprint||''))
+          throw new StartupError('RESTORE_REJECTION_UNVERIFIED','Restore rejection did not provide a bound durable ledger',true);
+        this.state.restoreRejectedBeforeSubmit=clone(receipt);this._persist();
+        throw new StartupError('RESTORE_VALIDATION_FAILED',receipt.reason||'Restore validation rejected the request before native submission');
+      }
       if (typeof receipt?.startedAt === 'string' && Number.isFinite(Date.parse(receipt.startedAt)) && receipt.total === boot.targetCount) this.state.restoreReceipt = { startedAt: receipt.startedAt, total: receipt.total };
       this.state.restoreStarted = true; this._persist();
       await this._wait('fleet restoration', 'restoring', this.timeouts.restoreMs, async ctx => {
@@ -341,7 +348,7 @@ class StartupController {
       return;
     }
     const wasCancelled = this.state.error?.code === 'CANCELLED';
-    const uncertain = error.uncertain === true || !!this.state.actionPending || this.state.restoreStartAttempted || this.state.reconciliationRequired;
+    const uncertain = error.uncertain === true || !!this.state.actionPending || (this.state.restoreStartAttempted && !this.state.restoreRejectedBeforeSubmit) || this.state.reconciliationRequired;
     this.state.active = false;
     this.state.phase = uncertain ? 'uncertain' : wasCancelled ? 'cancelled' : 'failed';
     this.state.reconciliationRequired = uncertain; this.state.finishedAt = this._iso();
@@ -398,7 +405,11 @@ class StartupController {
         let outcome = null;
         const guard = proof.guard;
         const validGuard = guard?.fresh === true && guard.armed === true && guard.tripped === false && Number.isFinite(guard.remainingPercent) && (guard.minimumRemainingPercent===undefined||(Number.isInteger(guard.minimumRemainingPercent)&&guard.minimumRemainingPercent>=7&&guard.minimumRemainingPercent<=99)) && guard.remainingPercent > (guard.minimumRemainingPercent??POLICY.brakePercent) && guard.remainingPercent <= 100 && guard.ordinaryUsageAllowed !== false && guard.thresholdPercent === POLICY.thresholdPercent && guard.pollSeconds === POLICY.pollSeconds && guard.window === POLICY.window && typeof guard.revision === 'string' && guard.revision.length > 0 && guard.acknowledgedRevision === guard.revision;
-        if (proof.outcome === 'ready_paused') {
+        if (proof.outcome === 'rejected_before_submit') {
+          if (!validLegacyEvidence(original, proof.legacyEvidence) || proof.legacyEvidence.startupSha256 !== fingerprint)
+            return pending('Historical rejection evidence does not bind this exact startup revision. Nothing was cleared.');
+          outcome = 'rejected_before_submit';
+        } else if (proof.outcome === 'ready_paused') {
           const expected = original.bootstrap?.targetCount;
           const count = proof.expectedTargetCount;
           if (proof.emergencyLatched !== false || !validGuard || proof.expectedTargetsMatch !== true || proof.allExpectedControllersHealthy !== true || proof.allExpectedRuntimesHealthy !== true || !Number.isInteger(count) || count <= 0 || (Number.isInteger(expected) && count !== expected) || proof.verifiedTargetCount !== count) return pending(proof.reason || 'Current guard acknowledgment and every expected controller/runtime have not all been positively verified. Nothing was cleared.');
@@ -443,11 +454,12 @@ class StartupController {
         if (this._stateFingerprint() !== fingerprint || this.pendingMutations.size || this.state.active || this.task) throw new StartupError('RECONCILE_REVISION_CHANGED', 'Startup changed before the reconciliation result could be committed', true);
         this.state = {
           ...original, ownerId: this.ownerId, ownerPid: process.pid, active: false,
-          phase: outcome, reconciliationRequired: false, actionPending: null,
+          phase: outcome === 'rejected_before_submit' ? 'idle' : outcome, reconciliationRequired: false, actionPending: null,
           finishedAt: this._iso(), stageDeadlineAt: null, error: null,
           cleanup: { ...(original.cleanup || {}), active: false },
           reconciliation: { at: this._iso(), outcome, inspectedRevision: expectedStateRevision, previousError: original.error || null, previousAction: original.actionPending || null },
         };
+        if (outcome === 'rejected_before_submit') this.state.reconciliation.evidence = clone(proof.legacyEvidence);
         if (outcome === 'ready_paused') {
           this.state.dispatchHeld = true; this.state.guardAcknowledged = true;
           this.state.guardReceipt = { token: guard.revision, armedAt: guard.armedAt || proof.observedAt };
@@ -463,7 +475,7 @@ class StartupController {
         }
         this._persist(false);
         this._log('reconciled', { runId, outcome, inspectedRevision: expectedStateRevision });
-        return { statusCode: 200, reconciled: true, pending: false, note: outcome === 'ready_paused' ? 'Current protected runtimes verified. Automatic dispatch remains paused; no agents were launched by this recheck.' : outcome === 'resumable' ? 'The partial fleet is accounted for: every preserved target is healthy or verified stopped, with no unresolved native submission. Use a new explicit Startup to continue. Recheck launched no agents and preserved the restore ledger.' : 'No pending launch, running expected agent or submitted resume was found. A new explicit Startup request is allowed; no agents were launched by this recheck.', run: this.status() };
+        return { statusCode: 200, reconciled: true, pending: false, note: outcome === 'rejected_before_submit' ? 'Historical pre-commit rejection verified against preserved archives and the unchanged restore ledger. A new protected Startup is allowed. Existing runtime health and quota still require verification; no work was submitted by this recheck.' : outcome === 'ready_paused' ? 'Current protected runtimes verified. Automatic dispatch remains paused; no agents were launched by this recheck.' : outcome === 'resumable' ? 'The partial fleet is accounted for: every preserved target is healthy or verified stopped, with no unresolved native submission. Use a new explicit Startup to continue. Recheck launched no agents and preserved the restore ledger.' : 'No pending launch, running expected agent or submitted resume was found. A new explicit Startup request is allowed; no agents were launched by this recheck.', run: this.status() };
       } finally { clearTimeout(timer); controller.abort(); }
     };
     this.reconcileTask = inspect().finally(() => { this.reconcileTask = null; });

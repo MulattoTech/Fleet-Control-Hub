@@ -612,3 +612,15 @@ test('cancellation interrupts a poll pause without another readiness read or lau
   assert.equal(f.events.includes('current-readiness'), false);
   assert.equal(f.events.filter(event => event === 'restore-start').length, 1);
 });
+
+
+test('durably proven validation rejection stays retryable while preserving the attempted-start evidence',async t=>{
+ const f=fixture(t);
+ f.deps.restore.start=async ctx=>({rejectedBeforeSubmit:true,runId:ctx.runId,reason:'Scoped selection changed before commit',ledger:{bytesFingerprint:'a'.repeat(64),stateFingerprint:'b'.repeat(64)}});
+ const controller=f.make();
+ controller.start(request('safe-rejection-001'));
+ await controller.task;
+ const state=controller.status();
+ assert.equal(state.phase,'failed');assert.equal(state.reconciliationRequired,false);assert.equal(state.restoreStartAttempted,true);
+ assert.equal(state.restoreStarted,false);assert.equal(state.actionPending,null);assert.equal(state.error.code,'RESTORE_VALIDATION_FAILED');
+});

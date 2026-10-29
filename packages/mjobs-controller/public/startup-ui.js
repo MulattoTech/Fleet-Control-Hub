@@ -174,7 +174,7 @@ const FleetStartupUI = (() => {
     const remaining = quota?.remainingPercent ?? quota?.remaining;
     const quotaText = Number.isFinite(remaining) && quota?.fresh === true ? remaining + '% currently reported remaining.' : 'Fresh allowance is verified again by the server before launch.';
     openModal('<h2>Start the preserved fleet?</h2><p>This explicitly authorizes releasing the current emergency lock, arming the <strong>7% emergency stop</strong>, and restoring the saved primary and workers. Restored agents may resume work and consume usage. Choose whether to start automatic work after every runtime is verified. No duplicate fleet is created.</p>' +
-      '<div class="startup-modal-note"><strong>' + escape(quotaText) + '</strong><p>' + (count === null ? 'The server validates the saved recovery manifest before starting.' : escape(count) + ' preserved session targets reported by the preview.') + '</p><p>No worker restoration is allowed before the stop watcher is disarmed and the quota monitor acknowledges the guard.</p></div>' +
+      '<div class="startup-modal-note"><strong>' + escape(quotaText) + '</strong><p>' + (count === null ? 'The server validates the saved recovery manifest before starting.' : escape(count) + ' preserved MJobs session targets reported by the preview.') + '</p><p>No worker restoration is allowed before the stop watcher is disarmed and the quota monitor acknowledges the guard.</p></div>' +
       (retry ? '<p class="startup-modal-warning">The previous request has an unconfirmed response. Retrying reuses its original request ID and options; it does not authorize a duplicate startup.</p>' : '') +
       '<label class="startup-check"><input id="startupWorkOption" type="checkbox" ' + ((retry ? pendingRequest.startWorkAfter === true : true) ? 'checked' : '') + (retry ? ' disabled' : '') + '> Start working after verification (enable Sustained at the saved target)</label>' +
       '<label class="startup-check"><input id="startupOpenUiOption" type="checkbox" ' + ((retry ? pendingRequest.openUi : true) ? 'checked' : '') + (retry ? ' disabled' : '') + '> Open the Orchestrator desktop UI after verification</label>' +
@@ -187,12 +187,12 @@ const FleetStartupUI = (() => {
   }
   async function submitStartup() {
     if (actionBusy || !fresh() || run?.active || uncertain() || quotaBlocked() || alreadyStarted() || byId('startupConfirmText')?.value.trim() !== 'STARTUP') return;
-    if (!pendingRequest?.uncertain) pendingRequest = { requestId: requestId(), openUi: !!byId('startupOpenUiOption').checked, startWorkAfter: !!byId('startupWorkOption')?.checked, uncertain: false, acknowledged: false };
+    if (!pendingRequest?.uncertain) pendingRequest = { requestId: requestId(), openUi: !!byId('startupOpenUiOption').checked, startWorkAfter: !!byId('startupWorkOption')?.checked, expectedProjectId: 'mjobs-luna', expectedManifestRevision: preview?.manifestRevision, uncertain: false, acknowledged: false };
     pendingRequest.uncertain = true; savePending();
     actionBusy = true; mutationEpoch++; render();
     setText('startupConfirmButton', 'Submitting protected startup…');
     try {
-      const response = await api('/api/startup', { confirm: 'STARTUP', requestId: pendingRequest.requestId, openUi: pendingRequest.openUi, startWorkAfter: pendingRequest.startWorkAfter === true });
+      const response = await api('/api/startup', { confirm: 'STARTUP', requestId: pendingRequest.requestId, openUi: pendingRequest.openUi, startWorkAfter: pendingRequest.startWorkAfter === true, expectedProjectId: pendingRequest.expectedProjectId, expectedManifestRevision: pendingRequest.expectedManifestRevision });
       accept(response, false); pendingRequest.uncertain = false; pendingRequest.acknowledged = true; savePending();
       closeModal(); modalOpen = false;
       notify(response.idempotent ? 'Existing Startup request recovered. No duplicate launch was requested.' : (pendingRequest.startWorkAfter ? 'Protected Startup accepted. Sustained will start only after all runtimes are verified.' : 'Restore-only Startup accepted. Automatic dispatch will remain paused.'));

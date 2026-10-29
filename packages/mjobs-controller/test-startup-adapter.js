@@ -1251,3 +1251,84 @@ test('completed-operation recovery still requires exact durable completion, curr
  for(const [name,change]of Object.entries(cases))await t.test(name,async t=>{const f=fixture(t),x=completedThenStoppedRecovery(f);change(f);x.persist();const proof=await x.adapter.reconcile(x.ctx);assert.notEqual(proof.outcome,'resumable');assert.deepEqual(f.state.effects,[]);});
  await t.test('disk differs from memory',async t=>{const f=fixture(t),x=completedThenStoppedRecovery(f);fs.writeFileSync(x.file,JSON.stringify({...f.master.restore.state,completedAt:null}));const proof=await x.adapter.reconcile(x.ctx);assert.notEqual(proof.outcome,'resumable');});
 });
+
+
+function reviewedLegacyRejection(t) {
+ const f=fixture(t);f.state.now+=60000;
+ const x=boundedPrecommitRejection(f);
+ delete x.previous.restoreBefore;
+ x.previous.revision=x.ctx.expectedStateRevision;
+ x.previous.cleanup={active:false,outcomes:[{name:'hold dispatch',ok:true},{name:'pause restore',ok:true}]};
+ const archive=path.join(f.root,'backups','historical');fs.mkdirSync(archive,{recursive:true});
+ const startup=JSON.stringify(x.previous,null,2);
+ fs.writeFileSync(path.join(f.root,'startup-state.json'),startup);
+ fs.writeFileSync(path.join(archive,'startup-state.json'),startup);
+ fs.writeFileSync(path.join(archive,'restore-snapshot.json'),JSON.stringify(f.state.saved));
+ fs.copyFileSync(x.file,path.join(archive,'restore-state.json'));
+ const hash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+ const item=name=>({path:'backups/historical/'+name,sha256:hash(path.join(archive,name))});
+ const review={version:1,runId:x.previous.runId,stateRevision:x.previous.revision,startupSha256:hash(path.join(f.root,'startup-state.json')),
+  archivedStartup:item('startup-state.json'),snapshot:item('restore-snapshot.json'),ledger:item('restore-state.json')};
+ fs.writeFileSync(path.join(f.root,'startup-legacy-review.json'),JSON.stringify(review));
+ const events=[{event:'startup_requested',time:x.previous.startedAt},{event:'startup_phase',phase:'starting_restore',time:x.previous.events.at(-1).at},
+  {event:'startup_failed',phase:'uncertain',code:'STARTUP_FAILED',time:x.previous.finishedAt}].map(e=>({...e,runId:x.previous.runId}));
+ fs.writeFileSync(path.join(f.root,'audit.jsonl'),events.map(e=>JSON.stringify(e)).join('\n')+'\n');
+ return {f,x,archive,review};
+}
+test('legacy rejection uses existing archives without claiming an empty fleet or changing its restore ledger',async t=>{
+ const {f,x}=reviewedLegacyRejection(t),bytes=fs.readFileSync(x.file);
+ // Current primary has since been replaced; the archived request stays bound to 40.
+ f.state.saved.sessions[0].id='mjobs-luna-41';
+ f.state.sessions.push({id:'mjobs-luna-41',projectId:'mjobs-luna',kind:'orchestrator',activity:{state:'idle'},controllerRunning:true});
+ f.state.config.autoKillArmed=false;f.state.quota.selectedRemainingPercent=0;f.state.quota.ordinaryUsageAllowed=false;
+ const proof=await x.adapter.reconcile(x.ctx);
+ assert.equal(proof.outcome,'rejected_before_submit');assert.equal(proof.legacyEvidence.startCommitted,false);
+ assert.equal(proof.runningExpectedAgents,undefined,'Existing runtimes are not mislabeled as absent');
+ assert.deepEqual(fs.readFileSync(x.file),bytes);assert.deepEqual(f.state.effects,[]);
+ const controller=new StartupController({root:f.root,deps:x.adapter.deps(),now:()=>f.state.now});
+ const result=await controller.reconcile({confirm:'RECHECK STARTUP',runId:x.previous.runId});
+ assert.equal(result.reconciled,true);assert.equal(result.run.phase,'idle');assert.equal(result.run.reconciliation.outcome,'rejected_before_submit');
+ assert.equal(result.run.reconciliation.evidence.ledgerSha256,proof.legacyEvidence.ledgerSha256);
+ assert.equal(result.run.guardAcknowledged,false);assert.deepEqual(fs.readFileSync(x.file),bytes);assert.deepEqual(f.state.effects,[]);
+});
+test('legacy archive review fails closed on changed, missing, or contradictory evidence',async t=>{
+ const cases={
+  'changed historical ledger':v=>fs.appendFileSync(path.join(v.archive,'restore-state.json'),' '),
+  'changed current ledger':v=>{v.f.master.restore.state.completedAt=new Date(v.f.state.now-1).toISOString();v.x.persist();},
+  'wrong historical manifest':v=>fs.appendFileSync(path.join(v.archive,'restore-snapshot.json'),' '),
+  'missing archive':v=>fs.unlinkSync(path.join(v.archive,'startup-state.json')),
+  'missing audit':v=>fs.writeFileSync(path.join(v.f.root,'audit.jsonl'),''),
+  'audit shows submitted restore':v=>fs.appendFileSync(path.join(v.f.root,'audit.jsonl'),JSON.stringify({runId:v.x.previous.runId,event:'startup_phase',phase:'restoring'})+'\n'),
+  'native submission fence':v=>{v.f.master.restore.state.inflight['mjobs-luna-3']={command:'resume-agent'};v.x.persist();},
+  'enabled dispatch':v=>{v.f.master.sustain.config.enabled=true;},
+  'active restore':v=>{v.f.master.restore.state.active=true;v.x.persist();},
+  'pending launch':v=>{v.f.state.launch.pending=true;},
+ };
+ for(const [name,change]of Object.entries(cases))await t.test(name,async st=>{
+  const v=reviewedLegacyRejection(st);change(v);
+  const controller=new StartupController({root:v.f.root,deps:v.x.adapter.deps(),now:()=>v.f.state.now});
+  const result=await controller.reconcile({confirm:'RECHECK STARTUP',runId:v.x.previous.runId});
+  assert.equal(result.reconciled,false,name);assert.equal(result.run.reconciliationRequired,true,name);assert.deepEqual(v.f.state.effects,[]);
+ });
+});
+test('configured MJobs default scopes readiness and recovery without dropping the other project archive',async t=>{
+ const f=fixture(t);f.state.saved.sessions=f.state.saved.sessions.map(s=>({...s,projectId:'mjobs-luna'}));
+ const baby={id:'babytracker-1',projectId:'babytracker',kind:'orchestrator',harness:'codex',activity:'idle'};
+ f.state.saved.sessions.push(baby);
+ const adapter=new StartupAdapter({...f.options,defaultProjectId:'mjobs-luna'});
+ assert.equal(adapter.manifest().targets.length,3);assert.equal(adapter.manifest(null).targets.length,4);
+ assert.equal(adapter.scopeManifest().targets.some(s=>s.projectId==='babytracker'),false);
+ assert.equal(f.master.restore.getSnapshot().sessions.at(-1).id,baby.id);
+});
+
+
+test('synchronous restore validation rejection carries unchanged durable evidence without resubmission',async t=>{
+ const f=fixture(t),x=boundedPrecommitRejection(f);f.protect();
+ f.master.restore.start=()=>{throw Error('Exact project selection changed');};
+ const manifest=x.adapter.manifest('mjobs-luna','mjobs-luna-40');
+ const ctx=f.context({expectedProjectId:'mjobs-luna',expectedManifestRevision:manifest.revision,boundedPrimaryId:'mjobs-luna-40',startWorkAfter:false,bootstrap:{manifestRevision:manifest.revision}});
+ const result=await x.adapter.restoreStart(ctx);
+ assert.equal(result.rejectedBeforeSubmit,true);assert.equal(result.runId,ctx.runId);assert.equal(result.ledger.bytesFingerprint,x.adapter.durableRestoreState().bytesFingerprint);
+ f.master.restore.start=()=>{f.master.restore.state.active=true;throw Error('Failure after commitment');};
+ await assert.rejects(x.adapter.restoreStart(ctx),/Failure after commitment/);
+});

@@ -4,6 +4,7 @@ const path=require('node:path');
 const os=require('node:os');
 const {attachExitedHostEvidence,runtimeExitedHostEvidence}=require('./exited-host-evidence');
 const {retainStoppedTargets}=require('./snapshot-retention');
+const {selectRecoverySnapshot}=require('./recovery-selection');
 const {execFile}=require('node:child_process');
 const {promisify,isDeepStrictEqual}=require('node:util');
 const {attachWindowsStoppedEvidence,runtimeAbsentEvidence,createRestorationScope}=require('./windows-runtime-evidence');
@@ -82,8 +83,8 @@ function validConfig(c){
 class RestoreFleet {
  constructor({root,command,audit,locked=()=>false,dispatchOff=()=>{},
     getGlobalSessions=null,now=()=>Date.now(),launchAO=null,resourceReader=null,runtimeInspector=null,onComplete=null,snapshotFrozen=()=>false,watchdogInspector=null,
-    autoSchedule=true,startBlockReason=()=>null,runtimeHealth=null,controllerStopped=()=>false,workspaceVerifier=null,reviewedRuntimeVerifier=null}){
-  this.root=root;this.command=command;this.audit=audit;this.startBlockReason=startBlockReason;
+    autoSchedule=true,requireSelection=false,startBlockReason=()=>null,runtimeHealth=null,controllerStopped=()=>false,workspaceVerifier=null,reviewedRuntimeVerifier=null}){
+  this.root=root;this.requireSelection=requireSelection;this.command=command;this.audit=audit;this.startBlockReason=startBlockReason;
   this.locked=locked;this.dispatchOff=dispatchOff;this.now=now;
   this.snapshotPath=path.join(root,'restore-snapshot.json');
   this.statePath=path.join(root,'restore-state.json');
@@ -272,6 +273,7 @@ class RestoreFleet {
        !eligible.some(s=>s.id===source.boundedPrimaryId&&s.kind==='orchestrator'))return null;
    }
    snapshot={...global,sessions:projectSessions.filter(s=>!source.boundedPrimaryId||s.id===source.boundedPrimaryId).map(s=>structuredClone(s))};
+   if(!source.boundedPrimaryId){try{snapshot=selectRecoverySnapshot(this.root,snapshot,source.projectScope,{required:this.requireSelection});}catch{return null;}}
   }else snapshot=this.getSnapshot();
   const targets=this.targets(snapshot);
   const exactIds=(left,right)=>Array.isArray(left)&&Array.isArray(right)&&left.length===right.length&&new Set(left).size===left.length&&new Set(right).size===right.length&&left.every(id=>typeof id==='string'&&right.includes(id));
@@ -469,6 +471,7 @@ class RestoreFleet {
    if(!Array.isArray(global.sessions))throw Error('Original preserved manifest is invalid');
    const projectSessions=global.sessions.filter(s=>s.projectId===projectScope);
    let canonical={...global,sessions:projectSessions.map(s=>structuredClone(s))};
+   if(boundedPrimaryId===null)canonical=selectRecoverySnapshot(this.root,canonical,projectScope,{required:this.requireSelection});
    if(boundedPrimaryId!==null){
     const eligible=this.targets({...global,sessions:projectSessions});
     if(autoDispatchAfter||typeof boundedPrimaryId!=='string'||!/^mjobs-luna-[0-9]+$/.test(boundedPrimaryId)||

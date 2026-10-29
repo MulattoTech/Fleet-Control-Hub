@@ -2,6 +2,8 @@
 
 const fs=require('node:fs');
 const {runtimeExitedHostEvidence}=require('./exited-host-evidence');
+const {inspectLegacyEvidence}=require('./legacy-startup-evidence');
+const {selectRecoverySnapshot}=require('./recovery-selection');
 const path=require('node:path');
 const {isDeepStrictEqual}=require('node:util');
 const {createHash}=require('node:crypto');
@@ -23,10 +25,12 @@ function verifiedStopped(session,counts,now,restorationScope){
 // creates a second scheduler and never treats saved completion as live health.
 class StartupAdapter {
  constructor({root,master,quota,launcher,providers,verifyCodex,getSessions,
-  runtimeHealth,operationBusy=()=>false,now=Date.now,readinessWaitMs=1000,stabilityMs=15000}) {
+  runtimeHealth,operationBusy=()=>false,now=Date.now,readinessWaitMs=1000,stabilityMs=15000,defaultProjectId=null,requireSelection=false}) {
   if(!Number.isFinite(readinessWaitMs)||readinessWaitMs<1||readinessWaitMs>5000)throw Error('Readiness response wait must be between 1 and 5000 ms');
   if(!Number.isInteger(stabilityMs)||stabilityMs<0||stabilityMs>60000)throw Error('Invalid runtime stability interval');
   Object.assign(this,{root,master,quota,launcher,providers,verifyCodex,getSessions,runtimeHealth,operationBusy,now,stabilityMs});
+  if(defaultProjectId!==null&&defaultProjectId!=='mjobs-luna')throw Error('Invalid default Startup project');
+  this.defaultProjectId=defaultProjectId;this.requireSelection=requireSelection;
   this.live=null;this.liveAt=0;this.reading=null;this.inspectionSerial=0;this.readinessWaitMs=readinessWaitMs;
  }
  check(ctx){if(ctx?.signal?.aborted)throw Error('Startup operation was cancelled before the next action');}
@@ -56,8 +60,8 @@ class StartupAdapter {
   }
   return s;
  }
- manifest(projectId=null,boundedPrimaryId=null){
-  const original=this.master.restore.getSnapshot();
+ manifest(projectId=this.defaultProjectId,boundedPrimaryId=null,snapshot=null){
+  const original=snapshot||this.master.restore.getSnapshot();
   if(!Array.isArray(original.sessions)||!original.sessions.length)throw Error('No preserved fleet manifest is available');
   const ids=new Set();
   for(const s of original.sessions){
@@ -66,6 +70,7 @@ class StartupAdapter {
   }
   if(projectId!==null&&projectId!=='mjobs-luna')throw Error('Only the MJobs project preview is supported');
   let saved=projectId===null?original:{...original,sessions:original.sessions.filter(s=>s.projectId===projectId).map(s=>structuredClone(s))};
+  if(projectId==='mjobs-luna'&&boundedPrimaryId===null&&!snapshot)saved=selectRecoverySnapshot(this.root,saved,projectId,{required:this.requireSelection});
   let targets=this.master.restore.targets(saved);
   if(!targets.length)throw Error('No supported preserved sessions can be restored');
   if(boundedPrimaryId!==null){
@@ -86,7 +91,7 @@ class StartupAdapter {
   return {saved,targets,revision};
  }
  projectPreview(projectId){
-  const global=this.manifest();
+  const global=this.manifest(null);
   const scoped=this.manifest(projectId);
   return {projectId,sourceManifestRevision:global.revision,manifestRevision:scoped.revision,
    preservedCount:scoped.saved.sessions.length,targetCount:scoped.targets.length,
@@ -100,7 +105,7 @@ class StartupAdapter {
   const bounded=this.manifest('mjobs-luna',primary[0].id);
   return {projectId:'mjobs-luna',primaryId:primary[0].id,targetCount:1,manifestRevision:bounded.revision,dispatchAfter:false,boundedStartSupported:true};
  }
- scopeManifest(ctx){return this.manifest(ctx?.expectedProjectId||null,ctx?.boundedPrimaryId||null);}
+ scopeManifest(ctx){return this.manifest(ctx?.expectedProjectId||this.defaultProjectId,ctx?.boundedPrimaryId||null);}
  assertProjectScope(ctx,manifest){
   if(!ctx?.expectedProjectId)return;
   if(ctx.expectedProjectId!=='mjobs-luna'||manifest.revision!==ctx.expectedManifestRevision||
@@ -189,7 +194,16 @@ class StartupAdapter {
   if(this.master.restore.state.active||this.master.restore.running)throw Error('A restore operation is already running');
   this.safeForMutation(ctx,{requireGuard:true});
   this.master.disableAutomaticDispatch();
-  return this.master.restore.start({autoDispatchAfter:false,manifest:saved,...(ctx?.expectedProjectId?{projectScope:ctx.expectedProjectId}:{}),...(ctx?.boundedPrimaryId?{boundedPrimaryId:ctx.boundedPrimaryId}:{}),fromEmergency:true,startupRunId:ctx.runId,branchAdoptionsRevision});
+  const before=this.durableRestoreState();
+  try {
+   return this.master.restore.start({autoDispatchAfter:false,manifest:saved,...(ctx?.expectedProjectId?{projectScope:ctx.expectedProjectId}:{}),...(ctx?.boundedPrimaryId?{boundedPrimaryId:ctx.boundedPrimaryId}:{}),fromEmergency:true,startupRunId:ctx.runId,branchAdoptionsRevision});
+  } catch(error) {
+   const after=this.durableRestoreState();
+   if(before&&after&&isDeepStrictEqual(before,after)&&this.master.restore.state.active===false&&!this.master.restore.running&&
+      this.master.restore.state.source?.startupRunId!==ctx.runId&&!unresolvedNativeReason(this.master.restore.state))
+    return {rejectedBeforeSubmit:true,runId:ctx.runId,reason:String(error.message).slice(0,450),ledger:after};
+   throw error;
+  }
  }
  restoreStatus(ctx){this.check(ctx);return this.master.restore.status();}
  restorePause(ctx){this.check(ctx);return this.master.restore.pause();}
@@ -327,6 +341,8 @@ class StartupAdapter {
    // Only its absent/empty default may be normalized; ledgers never default.
    if(!Object.hasOwn(value,'branchAdoptionReceipts')&&this.master.restore.state.branchAdoptionReceipts&&
     !Array.isArray(this.master.restore.state.branchAdoptionReceipts)&&Object.keys(this.master.restore.state.branchAdoptionReceipts).length===0)value.branchAdoptionReceipts={};
+   if(!Object.hasOwn(value,'postRestoreReviewReceipts')&&this.master.restore.state.postRestoreReviewReceipts&&
+    !Array.isArray(this.master.restore.state.postRestoreReviewReceipts)&&Object.keys(this.master.restore.state.postRestoreReviewReceipts).length===0)value.postRestoreReviewReceipts={};
    if(!isDeepStrictEqual(value,this.master.restore.state))return null;
    return {stateFingerprint:stateFingerprint(this.master.restore.state),bytesFingerprint:createHash('sha256').update(bytes).digest('hex')};
   }catch{return null}
@@ -404,6 +420,19 @@ class StartupAdapter {
   const restoreBefore=stateFingerprint(this.master.restore.state);
   const durableBefore=this.durableRestoreState();
   const restoreWasInactive=this.master.restore.state.active===false&&!this.master.restore.running;
+  const legacyEvidence=inspectLegacyEvidence({root:this.root,previous:ctx.previousRun,restoreState:this.master.restore.state,
+   manifestFromSnapshot:(snapshot,project,bounded)=>this.manifest(project,bounded,snapshot),now:this.now()});
+  if(legacyEvidence){
+   const launch=this.launcher.reconcile({acceptCompletedCancellation:true});this.check(ctx);
+   const launchActive=launch.requiresReconciliation===true||launch.pending===true;
+   const submitted=unresolvedNativeOperations(this.master.restore.state);
+   return {runId:ctx.runId,stateRevision:ctx.expectedStateRevision,observedAt:new Date(this.now()).toISOString(),
+    outcome:'rejected_before_submit',legacyEvidence,
+    noOperationInFlight:restoreWasInactive&&!launchActive&&submitted.length===0&&restoreBefore===stateFingerprint(this.master.restore.state),
+    dispatchPaused:!this.master.sustain.config.enabled&&!this.master.turbo.config.enabled,
+    restoreActive:!!this.master.restore.state.active,launchActive,
+    reason:'The archived attempt and original manifest match, and the older durable restore ledger is unchanged. This attempt was rejected before native restoration was scheduled. Existing runtimes were not stopped or reclassified.'};
+  }
   const current=await this.readiness(ctx,{force:true});
   this.check(ctx);
   // Only the controller's explicit RECHECK STARTUP path calls this method.
