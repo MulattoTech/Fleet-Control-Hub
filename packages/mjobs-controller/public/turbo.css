@@ -105,3 +105,16 @@
 .turbo-panel.sustaining .turbo-settings,.turbo-panel.sustaining #turboToggle,.turbo-panel.sustaining #turboPreview{display:none}
 .turbo-panel.sustaining .turbo-body{grid-template-columns:minmax(0,1fr)}
 .turbo-panel.sustaining #turboPlan{max-height:230px}
+
+/* The selector replaces the two competing automation toggles. */
+#turboToggle[hidden],#sustainToggle[hidden],#turboStatus[hidden]{display:none!important}
+.dispatch-mode-control{margin:20px 0;padding:20px;border:1px solid #35566b;border-radius:14px;background:#0b1927}
+.dispatch-mode-options{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.dispatch-mode-options button{border:1px solid #37586b;border-radius:8px;background:#122536;color:#c5d5df;font:inherit;font-weight:700;padding:11px 24px;cursor:pointer}
+.dispatch-mode-options button.selected{background:#5bd1c5;color:#08232b;border-color:#5bd1c5}
+.dispatch-mode-options button:focus-visible{outline:3px solid #e8c37c;outline-offset:3px}
+.dispatch-mode-options button:disabled{cursor:wait;opacity:.6}
+.dispatch-mode-control p{margin:12px 0;color:#c5d5df;line-height:1.5}
+.dispatch-mode-control p.helper{font-size:13px;color:#91a9b8}
+#dispatchModeNotice{color:#f0c27d}#dispatchModeNotice:empty{display:none}
+@media(max-width:600px){.dispatch-mode-control{padding:14px}.dispatch-mode-options button{flex:1;padding:11px 15px}}

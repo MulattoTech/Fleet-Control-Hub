@@ -1,6 +1,7 @@
 'use strict';
 const FleetTurboUI=(()=>{
  let last=null, busy=false, configured=false, settingsDirty=false, previewed=false, refreshInFlight=false;
+ let mutationRevision=0,readRevision=0;
  const el=id=>document.getElementById(id);
  const integer=id=>Number.parseInt(el(id).value,10);
  const stamp=iso=>{
@@ -9,6 +10,8 @@ const FleetTurboUI=(()=>{
   if(!Number.isFinite(date.getTime()))return 'Unknown';
   return date.toLocaleTimeString();
  };
+ function beginBusy(){busy=true;mutationRevision++;if(last)updateBadge(last.config.enabled,last.lastPlan?.pausedReason);}
+ function finishBusy(){busy=false;if(last)updateBadge(last.config.enabled,last.lastPlan?.pausedReason);}
  function fillSettings(c){
   el('tTarget').value=c.targetWorking;
   el('tActions').value=c.maxActionsPerCycle;
@@ -52,23 +55,25 @@ const FleetTurboUI=(()=>{
   if(!configured||!settingsDirty){fillSettings(data.config);configured=true}
   el('turboTarget').textContent=data.config.targetWorking+' agents';
   el('turboHour').textContent=data.sentThisHour+' / '+data.config.maxActionsPerHour;
-  const pausedReason=data.lastPlan?.pausedReason || (data.running?'Cycle running':null);
+  const pausedReason=data.lastPlan?.pausedReason || null;
   updateBadge(data.config.enabled,pausedReason);
   if(data.lastPlan?.ready!==undefined)setPlan(data.lastPlan);
   if(data.lastError)el('turboHint').title='Latest scheduler error: '+data.lastError;
  }
  async function fetchState(){
   if(refreshInFlight||busy)return;
-  refreshInFlight=true;
+  refreshInFlight=true;const revision=mutationRevision,read=++readRevision;
   try{
-   const data=await api('/api/turbo');draw(data);
+   const data=await api('/api/turbo');if(revision!==mutationRevision||read!==readRevision||busy)return;draw(data);
    if(!previewed){previewed=true;await preview(false);}
-  }catch(e){el('turboStatus').textContent='UNKNOWN';el('turboStatus').className='turbo-status paused';el('turboGuard').textContent='Unavailable';el('turboGuard').classList.add('warning');el('turboHint').textContent=e.message}
+  }catch(e){if(revision!==mutationRevision||busy)return;el('turboStatus').textContent='UNKNOWN';el('turboStatus').className='turbo-status paused';el('turboGuard').textContent='Unavailable';el('turboGuard').classList.add('warning');el('turboHint').textContent=e.message}
   finally{refreshInFlight=false}
  }
  async function preview(notify=true){
+  const revision=mutationRevision;
   try{
    const d=await api('/api/turbo/preview');
+   if(revision!==mutationRevision)return;
    setPlan(d.preview);
    if(last){last.lastPlan=d.preview;updateBadge(last.config.enabled,d.preview.pausedReason);}
    if(notify)toast('Dry-run preview refreshed. No agent messages sent.');
@@ -84,21 +89,21 @@ const FleetTurboUI=(()=>{
    pollingSeconds:integer('tPoll'),
    minFreeRamGiB:integer('tRam')
   };
-  busy=true;
+  beginBusy();
   try{
    const d=await api('/api/turbo/config',change);
    configured=false;settingsDirty=false;draw(d);toast('Turbo safety limits saved.');
    await preview(false);
   }catch(e){toast('Settings rejected: '+e.message,true)}
-  finally{busy=false}
+  finally{finishBusy()}
  }
  async function toggle(){
   if(busy||!last)return;
   const now=last.config.enabled;
   if(now){
-   busy=true;
+   beginBusy();
    try{const d=await api('/api/turbo/toggle',{enabled:false});draw(d);toast('Turbo paused. Existing agent work continues.')}
-   catch(e){toast(e.message,true)}finally{busy=false}
+   catch(e){toast(e.message,true)}finally{finishBusy()}
    return;
   }
   openModal(
@@ -108,32 +113,34 @@ const FleetTurboUI=(()=>{
    '<div class="modal-actions"><button class="ghost-button" data-modal="cancel">Cancel</button><button class="primary-button" id="enableTurboConfirmed">Enable automation</button></div>'
   );
   el('enableTurboConfirmed').addEventListener('click',async()=>{
-   if(busy)return;busy=true;el('enableTurboConfirmed').disabled=true;
+   if(busy)return;beginBusy();el('enableTurboConfirmed').disabled=true;
    try{
+    el('turboToggleLabel').textContent='Switching to Turbo...';
     const d=await api('/api/turbo/toggle',{enabled:true});
+    if(d.config?.enabled!==true)throw Error('Turbo enable was not verified; refreshing current state is required');
     closeModal();draw(d);window.FleetSustainUI?.refresh();toast('Turbo enabled under the configured limits. Sustained Mode is off.');
     await preview(false);
-   }catch(e){closeModal();toast(e.message,true)}finally{busy=false}
+   }catch(e){closeModal();toast(e.message,true)}finally{finishBusy()}
   });
  }
  async function runOnce(){
   if(!last?.config.enabled||busy)return;
   openModal('<h2>Run a Turbo dispatch cycle now?</h2><p>This may send up to '+esc(last.config.maxActionsPerCycle)+' new agent instructions, subject to cooldowns, resource guards and the hourly action limit. It will not spawn new agents or merge PRs.</p><div class="modal-actions"><button class="ghost-button" data-modal="cancel">Cancel</button><button class="primary-button" id="runTurboConfirmed">Run dispatch</button></div>');
   el('runTurboConfirmed').addEventListener('click',async()=>{
-   if(busy)return;busy=true;el('runTurboConfirmed').disabled=true;
+   if(busy)return;beginBusy();el('runTurboConfirmed').disabled=true;
    try{
     const d=await api('/api/turbo/run',{dryRun:false});
     closeModal();
     const total=d.executed?.length||0;
     toast(total?'Submitted '+total+' dispatch(es). Check agent activity for their responses.':'No dispatch sent: '+(d.reason||'No eligible work'));
-    await fetchStateNow();
-   }catch(e){closeModal();toast(e.message,true)}finally{busy=false}
+    await fetchStateNow({duringAction:true});
+   }catch(e){closeModal();toast(e.message,true)}finally{finishBusy()}
   });
  }
- async function fetchStateNow(){try{const d=await api('/api/turbo');draw(d)}catch(e){toast(e.message,true)}}
+ async function fetchStateNow({duringAction=false}={}){if(busy&&!duringAction)return;const revision=mutationRevision,read=++readRevision;try{const d=await api('/api/turbo');if(revision===mutationRevision&&read===readRevision&&(!busy||duringAction))draw(d)}catch(e){if(revision===mutationRevision)toast(e.message,true)}}
  async function allHands(){
   if(busy)return;
-  busy=true;
+  beginBusy();
   const button=el('turboAllHands');
   button.disabled=true;
   button.textContent='Checking idle agents…';
@@ -154,7 +161,7 @@ const FleetTurboUI=(()=>{
    );
    el('confirmAllHands').addEventListener('click',async()=>{
     if(busy)return;
-    busy=true;
+    beginBusy();
     const confirm=el('confirmAllHands');
     confirm.disabled=true;confirm.textContent='Sending requests…';
     try{
@@ -168,15 +175,16 @@ const FleetTurboUI=(()=>{
       '<div class="modal-actions"><button class="primary-button" data-modal="cancel">Return to fleet</button></div>'
      );
      toast(r.submitted+' agent instructions submitted. Automatic mode settings were unchanged.');
-     await fetchStateNow();
+     await fetchStateNow({duringAction:true});
      if(typeof refresh==='function')await refresh(true);
     }catch(e){closeModal();toast('All Hands failed: '+e.message,true)}
-    finally{busy=false}
+    finally{finishBusy()}
    });
   }catch(e){toast(e.message,true)}
-  finally{busy=false;button.disabled=false;button.innerHTML='<span class="all-hands-icon">âš¡</span> ALL HANDS · START IDLE AGENTS'}
+  finally{finishBusy();button.disabled=false;button.innerHTML='<span class="all-hands-icon">âš¡</span> ALL HANDS · START IDLE AGENTS'}
  }
  function bind(){
+  el('turboToggle').disabled=true;el('turboToggleLabel').textContent='Checking controller...';
   ['tTarget','tActions','tRam','tCooldown','tPoll','tHourly'].forEach(id=>el(id).addEventListener('input',()=>{settingsDirty=true}));
   el('turboAllHands').addEventListener('click',allHands);
   el('turboToggle').addEventListener('click',toggle);
@@ -193,4 +201,54 @@ const FleetTurboUI=(()=>{
  }
  bind();
  return {refresh:fetchStateNow,preview};
+})();
+
+// Unified automatic dispatch mode. Existing guarded routes own all mutations.
+window.FleetDispatchModeUI=(()=>{
+ const el=id=>document.getElementById(id);
+ if(!el('dispatchModeControl'))return {refresh:async()=>{}};
+ const labels={paused:'Paused',steady:'Steady',turbo:'Turbo'};
+ const detail={paused:'No new automatic assignments. Running agents can finish.',steady:'Refills idle agents with ready work.',turbo:'Refills work and coordinates priorities, CI repairs, and reviews.'};
+ let current=null,busy=false,target=null,epoch=0,sequence=0,reading=false,readError='',actionError='';
+ const buttons=Object.keys(labels).map(mode=>({mode,node:el('dispatchMode'+labels[mode])}));
+ function render(){
+  const unknown=!current||Boolean(readError),mode=current?.mode;
+  el('dispatchModeBadge').textContent=busy?'SWITCHING':unknown?'CHECK CONNECTION':labels[mode].toUpperCase();
+  el('dispatchModeBadge').className='turbo-status '+(busy||unknown?'paused':mode==='paused'?'off':'on');
+  el('dispatchModeControl').setAttribute('aria-busy',String(busy));
+  for(const {mode:choice,node}of buttons){node.disabled=busy||(unknown&&choice!=='paused');node.setAttribute('aria-pressed',String(!unknown&&choice===mode));node.classList.toggle('selected',!unknown&&choice===mode);}
+  el('dispatchModeDetail').textContent=busy?'Switching to '+labels[target]+'; finishing the current dispatch cycle.':unknown?'Waiting for the current mode.':detail[mode]+(current.blocked?' New assignments are waiting: '+current.blocked:'');
+  el('dispatchModeNotice').textContent=readError||actionError;
+  el('dispatchModeRefresh').disabled=busy;
+ }
+ function accept(value){
+  if(typeof value?.turboEnabled!=='boolean'||typeof value?.sustainedEnabled!=='boolean')throw Error('Incomplete controller mode status');
+  if(value.turboEnabled&&value.sustainedEnabled)throw Error('Conflicting modes reported. Pause dispatch before choosing a mode.');
+  current={mode:value.turboEnabled?'turbo':value.sustainedEnabled?'steady':'paused',blocked:value.dispatchBlockedReason||''};readError='';render();
+ }
+ async function read(duringAction=false){
+  if(busy&&!duringAction)return false;
+  const revision=epoch,readId=++sequence;
+  try{const value=await api('/api/health');if(revision!==epoch||readId!==sequence||busy&&!duringAction)return false;accept(value);return true;}
+  catch(error){if(revision===epoch&&readId===sequence){readError='Mode status unavailable: '+error.message;render();}return false;}
+ }
+ async function refresh(){if(reading||busy)return;reading=true;try{await read();}finally{reading=false;}}
+ async function select(mode){
+  if(!Object.hasOwn(labels,mode)||busy)return;
+  if(!readError&&current?.mode===mode)return;
+  busy=true;target=mode;epoch++;actionError='';render();let failure=null;
+  try{if(mode==='paused')await api('/api/master/pause',{});else await api(mode==='turbo'?'/api/turbo/toggle':'/api/sustain/toggle',{enabled:true});}catch(error){failure=error;}
+  // Reconcile even a failed or timed-out write. Never resend automatically.
+  const verified=await read(true);
+  if(failure)actionError='Could not confirm '+labels[mode]+': '+failure.message;
+  else if(verified&&current.mode!==mode)actionError='Controller is '+labels[current.mode]+'. The requested mode was not applied.';
+  else if(verified)toast(mode==='paused'?'Dispatch paused. Running agents continue.':labels[mode]+' is active. Your usage and resource limits still apply.');
+  busy=false;target=null;render();
+  if(typeof FleetTurboUI!=='undefined')void FleetTurboUI.refresh();
+  if(window.FleetSustainUI)void window.FleetSustainUI.refresh();
+ }
+ for(const {mode,node}of buttons)node.addEventListener('click',()=>select(mode));
+ el('dispatchModeRefresh').addEventListener('click',refresh);
+ render();void refresh();setInterval(()=>{if(!document.hidden)void refresh();},4000);
+ return {refresh,select,status:()=>current&&{...current}};
 })();

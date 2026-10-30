@@ -65,7 +65,7 @@
             <strong id="quotaPolicyState">Checking start / new-work limit...</strong>
             <p id="quotaPolicyReason">Quota eligibility and runtime health are separate.</p>
             <div class="quota-policy-controls"><label for="quotaMinimum">Pause starts and NEW tasks at or below (%)<input id="quotaMinimum" type="number" min="0" max="99" step="1" value="0"></label><button id="quotaMinimumSave" class="quota-save" type="button">Save start / work limit</button></div>
-            <p class="quota-policy-note" id="quotaMinimumFeedback">Saved limit applies to Startup, Sustained, Turbo and All Hands. It does not change the emergency stop. Lowering it can allow an already-enabled scheduler to resume.</p>
+            <p class="quota-policy-note" id="quotaMinimumFeedback">Saved limit applies to Startup, Steady, Turbo and All Hands. It does not change the emergency stop. Lowering it can allow an already-enabled scheduler to resume.</p>
           </div>
           <div class="quota-heading">
             <div><span class="section-kicker">CODEX ACCOUNT TELEMETRY</span><h2>Remaining usage <span class="quota-live" id="quotaLive">Connecting…</span></h2></div>
@@ -142,26 +142,38 @@
             <div class="restore-progress-details"><span id="restoreNumbers">Checking session records…</span><span id="restoreCurrent">No active restoration</span></div>
           </div>
         </section>
-        <section class="turbo-panel" id="turboSection" aria-label="Turbo Mode automation">
+        <section class="turbo-panel" id="turboSection" aria-label="Automatic dispatch mode">
           <div class="turbo-top">
             <div class="turbo-identity">
               <div class="turbo-symbol">↗</div>
-              <div><div class="section-kicker">AUTONOMOUS FLEET CONTROL</div><h2>Turbo Mode <span id="turboStatus" class="turbo-status off">OFF</span></h2>
-                <p>Keep agents supplied with the next safe task. Resolve CI blockers and coordinate PR reviews without duplicating work.</p></div>
+              <div><div class="section-kicker">AUTONOMOUS FLEET CONTROL</div><h2>Automatic dispatch <span hidden id="turboStatus" class="turbo-status off">OFF</span></h2>
+                <p>Choose how the fleet keeps working. Switching modes preserves running agents and your saved limits.</p></div>
             </div>
             <div class="turbo-header-actions">
               <button id="turboAllHands" class="all-hands-button" type="button"><span class="all-hands-icon">⚡</span> ALL HANDS · START IDLE AGENTS</button>
-              <button id="turboPreview" class="ghost-button" type="button">Preview dispatch</button>
-              <button id="turboRun" class="ghost-button" type="button">Run cycle now</button>
-              <button id="turboToggle" class="turbo-switch" type="button" aria-pressed="false"><span class="turbo-switch-dot"></span><span id="turboToggleLabel">Enable Turbo</span></button>
+              <button id="turboPreview" class="ghost-button" type="button">Preview Turbo plan</button>
+              <button id="turboRun" class="ghost-button" type="button">Run Turbo cycle</button>
+              <button id="turboToggle" hidden class="turbo-switch" type="button" aria-pressed="false"><span class="turbo-switch-dot"></span><span id="turboToggleLabel">Enable Turbo</span></button>
             </div>
           </div>
-          <div class="sustain-bar" id="sustainPanel" aria-label="Sustained production mode">
+          <div id="dispatchModeControl" class="dispatch-mode-control" role="group" aria-label="Automatic dispatch mode" aria-describedby="dispatchModeHelp">
+            <div class="dispatch-mode-options">
+              <button id="dispatchModePaused" type="button" aria-pressed="false">Paused</button>
+              <button id="dispatchModeSteady" type="button" aria-pressed="false" disabled>Steady</button>
+              <button id="dispatchModeTurbo" type="button" aria-pressed="false" disabled>Turbo</button>
+              <span id="dispatchModeBadge" class="turbo-status off">CHECKING</span>
+            </div>
+            <p id="dispatchModeDetail" role="status" aria-live="polite">Checking the current mode...</p>
+            <p id="dispatchModeHelp" class="helper">One mode runs at a time. Selecting Steady or Turbo switches automatically. Both respect your usage cutoff and resource limits.</p>
+            <p id="dispatchModeNotice" role="status" aria-live="polite"></p>
+            <button id="dispatchModeRefresh" class="link-button" type="button">Refresh mode</button>
+          </div>
+          <div class="sustain-bar" id="sustainPanel" aria-label="Steady mode activity">
             <div class="sustain-indicator"><span id="sustainPulse" class="sustain-orbit"><span></span></span></div>
             <div class="sustain-copy">
               <span class="sustain-kicker">CONTINUOUS WORK REPLENISHMENT</span>
-              <h3>Keep agents working <span id="sustainBadge" class="sustain-badge off">OFF</span></h3>
-              <p>Automatically feed eligible work back into idle agents. No ten-minute button resets, no arbitrary 18-per-hour dispatch cutoff.</p>
+              <h3>Steady activity <span id="sustainBadge" class="sustain-badge off">OFF</span></h3>
+              <p>Automatically feed eligible work back into idle agents. Your configured capacity and resource limits still apply.</p>
               <div class="sustain-facts">
                 <span id="sustainLast">Last check: —</span>
                 <span id="sustainNext">Next check: —</span>
@@ -169,7 +181,7 @@
               </div>
             </div>
             <div class="sustain-controls">
-              <button id="sustainToggle" class="sustain-action" type="button">Start sustained mode</button>
+              <button id="sustainToggle" hidden class="sustain-action" type="button">Start sustained mode</button>
               <span id="sustainFeedback" class="sustain-feedback">Ready to run continuously</span>
             </div>
           </div>
@@ -187,7 +199,7 @@
               <div class="turbo-footer"><span id="turboHint">Automatic actions are throttled and audited.</span><button id="turboRefresh" class="link-button" type="button">Refresh plan ↻</button></div>
             </div>
             <div class="turbo-settings">
-              <div class="turbo-subhead"><span>Operating envelope</span><small>Saved on this PC</small></div>
+              <div class="turbo-subhead"><span>Turbo settings</span><small>Saved on this PC</small></div>
               <div class="turbo-config-grid">
                 <label>Concurrent turns <input id="tTarget" type="number" min="1" max="25" step="1" value="12"></label>
                 <label>Dispatches / cycle <input id="tActions" type="number" min="1" max="6" step="1" value="3"></label>
