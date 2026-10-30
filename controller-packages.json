@@ -52,7 +52,7 @@
       "test/simple-start.test.js": "fda24f9b2519311acccfc61428d369b795e2feeb2897502e2dd22cfe9ebba59b"
     },
     "mjobs-controller": {
-      ".gitignore": "899aba3c428881f9d513fef32a9784bb05c602124d1fb1aadf4ab877d9a2900a",
+      ".gitignore": "79be4e534224e550bcae97dc8ea1d687d86023ffd813ae522e131e19a4a80b2c",
       "agent-observability.js": "c655c54383781d7ffd321c54487a95943dfac0206588fbef9d902377e69e765c",
       "agent-plans.js": "de73a62e96e4aa1e7441adc6721690f3b992ea5f8f71802d22c0be824fcc5aae",
       "artifact-review.js": "e740002c7ce99cdbd04fd29f95b03763546bac771ba14498cab054609247d446",
