@@ -1,6 +1,6 @@
 'use strict';
 const {classify}=require('./policy');
-const {check,digest,plainError,identity}=require('./common');
+const {check,digest,plainError,identity,assertCustodian}=require('./common');
 class Lifecycle{
  constructor({config,store,adapter,capsules,clock=Date.now}){Object.assign(this,{config,store,adapter,capsules,clock});}
  async run({dryRun=false}={}){
@@ -31,7 +31,7 @@ class Lifecycle{
   if(!job.custodyId){const custodian=plan.needsHandoff?plan.successorId:null;if(plan.needsHandoff)check(custodian,'awaiting_project_custodian');const owner=custodian||'project:'+this.config.projectId,successor=custodian?facts.sessions.find(x=>x.id===custodian):null;job.owner=owner;job.ownerIdentity=successor?identity(successor):null;job.custodyId=digest([this.config.projectId,job.key,job.bundle.manifestSha256,owner]);store.data.custody[job.custodyId]={id:job.custodyId,projectId:this.config.projectId,from:job.id,owner,ownerIdentity:job.ownerIdentity,capsule:job.bundle,openPrs:job.openPrs,tasks:job.taskIds,state:'preserved',acceptedAt:null};job.stage='handoff';store.record('custody_recorded',job.id,{custodyId:job.custodyId,owner});}
   const custody=store.data.custody[job.custodyId];check(custody&&custody.capsule.manifestSha256===job.bundle.manifestSha256,'custody_record_changed');
   if(job.ownerIdentity){
-   const observed=await this.fresh(job,{permitClaimChanges:true}),target=observed.facts.sessions.find(x=>x.id===job.owner);check(target&&!target.isTerminated&&digest(identity(target))===digest(job.ownerIdentity)&&['idle','working','active','waiting_input'].includes(target.activity?.state),'custodian_unavailable');
+   const observed=await this.fresh(job,{permitClaimChanges:true});assertCustodian(job,observed.facts.sessions);
    for(const number of job.openPrs){
     if(job.claims[number]?.verified)continue;
     if(job.operation&&job.operation.status!=='observed'){check(job.operation.name==='claim-pr'&&job.operation.target===number,'operation_outcome_unknown');check(await adapter.claimObserved(job,number),'ownership_verification_pending');store.observed(job,{number,owner:job.owner});job.claims[number]={verified:true};store.save();continue;}
@@ -44,7 +44,7 @@ class Lifecycle{
    }
   }
   custody.state='accepted';custody.acceptedAt||=new Date(this.clock()).toISOString();job.stage='retiring';store.save();const last=await this.fresh(job,{permitClaimChanges:true});
-  if(last.archived){store.observed(job);return this.finish(job);}for(const number of last.plan.openPrs)check(job.claims[number]?.verified&&await adapter.claimObserved(job,number),'ownership_verification_pending');if(job.operation&&job.operation.status!=='observed')check(false,'archive_outcome_pending');store.intent(job,'archive',job.id);await adapter.archive(job,last.session);check(await adapter.archived(job),'archive_outcome_pending');store.observed(job);this.finish(job);
+  if(last.archived){store.observed(job);return this.finish(job);}assertCustodian(job,last.facts.sessions);for(const number of last.plan.openPrs)check(job.claims[number]?.verified&&await adapter.claimObserved(job,number),'ownership_verification_pending');if(job.operation&&job.operation.status!=='observed')check(false,'archive_outcome_pending');store.intent(job,'archive',job.id);await adapter.archive(job,last.session);check(await adapter.archived(job),'archive_outcome_pending');store.observed(job);this.finish(job);
  }
  finish(job){job.stage='archived';job.archivedAt=new Date(this.clock()).toISOString();this.store.record('archived',job.id,{custodyId:job.custodyId});}
 }
