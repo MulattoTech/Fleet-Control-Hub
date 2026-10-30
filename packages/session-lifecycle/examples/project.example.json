@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "projectKey": "example",
+  "projectId": "example-project",
+  "repository": "your-account/your-project",
+  "repositoryPath": "C:\\Projects\\Example",
+  "statePath": "C:\\FleetState\\Example\\lifecycle",
+  "controllerKind": "mjobs",
+  "controllerOrigin": "http://127.0.0.1:8787",
+  "controllerStatePath": "C:\\FleetState\\Example\\controller",
+  "aoOrigin": "http://127.0.0.1:3001",
+  "aoDataPath": "C:\\Users\\YourName\\.ao\\data",
+  "aoExecutable": "C:\\Users\\YourName\\AppData\\Local\\Programs\\agent-orchestrator\\resources\\daemon\\ao.exe",
+  "enabled": false,
+  "transferToPrimary": true,
+  "emergencyStopPercent": 7,
+  "features": {
+    "fleetControl": true,
+    "missionControl": true,
+    "sessionLifecycle": true
+  },
+  "limits": {
+    "minAgeHours": 24,
+    "maxBatch": 2,
+    "intervalMinutes": 60,
+    "retryMinutes": 15
+  }
+}

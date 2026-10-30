@@ -8,7 +8,8 @@
     "test": "node --test test/*.test.js",
     "test:babytracker": "node --test packages/babytracker-controller/test/*.test.js",
     "test:mjobs": "node packages/mjobs-controller/check-fleet.js",
-    "verify:packages": "node scripts/controller-package.js verify babytracker-controller && node scripts/controller-package.js verify mjobs-controller"
+    "verify:packages": "node scripts/controller-package.js verify babytracker-controller && node scripts/controller-package.js verify mjobs-controller && node scripts/controller-package.js verify session-lifecycle",
+    "test:lifecycle": "node --test packages/session-lifecycle/test/*.test.js"
   },
   "engines": {
     "node": ">=22"

@@ -1,0 +1,31 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path');
+const {check,digest,atomic,readJson,safePath,within}=require('./common');
+// Git objects/index are preserved through bundles and staged/unstaged binary patches.
+const OMIT=new Set(['.git']);
+function fileInventory(directory,limit,prefix=''){
+ check(fs.existsSync(directory)&&fs.lstatSync(directory).isDirectory()&&!fs.lstatSync(directory).isSymbolicLink(),'source_directory_unavailable');const rows=[];
+ function visit(dir,rel){for(const name of fs.readdirSync(dir).sort()){check(name!=='..'&&!name.includes(':'),'unsafe_archive_path');if(OMIT.has(name))continue;const file=path.join(dir,name),child=rel?rel+'/'+name:name,st=fs.lstatSync(file);check(!st.isSymbolicLink(),'source_contains_links');if(st.isDirectory())visit(file,child);else{check(st.isFile(),'unsupported_source_file');rows.push({relative:prefix+child,source:file,bytes:st.size,mtime:st.mtimeMs});check(rows.length<=limit,'archive_file_budget');}}}
+ visit(directory,'');return rows;
+}
+async function copyFileVerified(row,destination){const before=fs.lstatSync(row.source);check(before.isFile()&&!before.isSymbolicLink()&&before.size===row.bytes&&before.mtimeMs===row.mtime,'source_changed_during_backup');fs.mkdirSync(path.dirname(destination),{recursive:true});const src=fs.readFileSync(row.source),hash=digest(src);fs.writeFileSync(destination,src,{flag:'wx',mode:0o600});const after=fs.lstatSync(row.source);check(before.size===after.size&&before.mtimeMs===after.mtimeMs&&digest(fs.readFileSync(row.source))===hash&&digest(fs.readFileSync(destination))===hash,'source_changed_during_backup');return {path:row.relative,bytes:src.length,sha256:hash};}
+class Capsules{
+ constructor(cfg,adapter){this.cfg=cfg;this.adapter=adapter;this.root=path.join(cfg.statePath,'capsules');fs.mkdirSync(this.root,{recursive:true});}
+ async capture(session,job,facts){
+  const id=job.key+'-'+Date.now(),directory=path.join(this.root,id);fs.mkdirSync(directory,{recursive:true});const initialFingerprint=await this.adapter.contentFingerprint(session);const rows=[];let bytes=0;
+  const add=(relative,value)=>{const b=Buffer.from(JSON.stringify(value,null,2)+'\n');bytes+=b.length;check(bytes<=this.cfg.limits.maxArchiveBytes,'archive_byte_budget');const dest=safePath(directory,relative);fs.mkdirSync(path.dirname(dest),{recursive:true});fs.writeFileSync(dest,b,{flag:'wx',mode:0o600});rows.push({path:relative,bytes:b.length,sha256:digest(b)});};
+  const history=await this.adapter.history(session.id,this.cfg.limits.maxTurns);check(history.complete&&history.turns.length===history.total,'history_incomplete');add('history.json',history);add('session.json',session);add('ownership.json',{projectId:this.cfg.projectId,repository:this.cfg.repository,openPrs:job.openPrs,taskIds:job.taskIds,ledgerEvidence:facts.ledgerEvidence,sourceIdentity:job.identity});
+  const workspace=await this.adapter.workspace(session);check(workspace.verified&&workspace.root&&Array.isArray(workspace.worktrees)&&workspace.worktrees.length,'workspace_identity_unverified');let fileCount=0;
+  for(let i=0;i<workspace.worktrees.length;i++){
+   const wt=workspace.worktrees[i],meta=await this.adapter.gitProof(wt);check(meta.verified,'git_identity_unverified');add('git/'+i+'/identity.json',meta);const bundle=path.join(directory,'git',String(i),'history.bundle');await this.adapter.gitBundle(wt,bundle);const stat=fs.lstatSync(bundle);bytes+=stat.size;check(bytes<=this.cfg.limits.maxArchiveBytes,'archive_byte_budget');rows.push({path:'git/'+i+'/history.bundle',bytes:stat.size,sha256:digest(fs.readFileSync(bundle))});
+   const inventory=fileInventory(wt,this.cfg.limits.maxFiles).filter(row=>!workspace.worktrees.some(other=>other!==wt&&within(other,row.source)));fileCount+=inventory.length;check(fileCount<=this.cfg.limits.maxFiles,'archive_file_budget');
+   for(const row of inventory){bytes+=row.bytes;check(bytes<=this.cfg.limits.maxArchiveBytes,'archive_byte_budget');const relative='workspaces/'+i+'/'+row.relative;rows.push(await copyFileVerified({...row,relative},safePath(directory,relative)));}
+   check(digest(meta)===digest(await this.adapter.gitProof(wt)),'source_changed_during_backup');
+  }
+  const artifacts=await this.adapter.artifactDirectories(session);for(let i=0;i<artifacts.length;i++){for(const row of fileInventory(artifacts[i],this.cfg.limits.maxFiles)){bytes+=row.bytes;fileCount++;check(bytes<=this.cfg.limits.maxArchiveBytes&&fileCount<=this.cfg.limits.maxFiles,'archive_byte_budget');const relative='artifacts/'+i+'/'+row.relative;rows.push(await copyFileVerified({...row,relative},safePath(directory,relative)));}}
+  const sourceFingerprint=await this.adapter.contentFingerprint(session);check(sourceFingerprint===initialFingerprint,'source_changed_during_backup');const manifest={version:1,id,projectId:this.cfg.projectId,sessionId:session.id,createdAt:session.createdAt,capturedAt:new Date().toISOString(),historyTotal:history.total,complete:true,sourceFingerprint,omittedReproducibleDirectories:[...OMIT],bytes,files:rows};atomic(path.join(directory,'manifest.json'),manifest);const receipt={id,manifestSha256:digest(manifest),sourceFingerprint,historyTotal:history.total,bytes};this.verify(receipt);return receipt;
+ }
+ verify(receipt){check(receipt&&/^[a-f0-9]{64}-\d+$/.test(receipt.id)&&/^[a-f0-9]{64}$/.test(receipt.manifestSha256),'invalid_capsule_receipt');const directory=safePath(this.root,receipt.id),manifest=readJson(path.join(directory,'manifest.json'));check(manifest.projectId===this.cfg.projectId&&manifest.complete===true&&digest(manifest)===receipt.manifestSha256&&manifest.files.length<=this.cfg.limits.maxFiles+100,'capsule_manifest_changed');let bytes=0;const seen=new Set();for(const row of manifest.files){check(!seen.has(row.path),'duplicate_capsule_file');seen.add(row.path);const file=safePath(directory,row.path),st=fs.lstatSync(file);check(st.isFile()&&!st.isSymbolicLink()&&st.size===row.bytes&&digest(fs.readFileSync(file))===row.sha256,'capsule_checksum_failed');bytes+=st.size;}check(bytes===manifest.bytes,'capsule_checksum_failed');return manifest;}
+ handoffPath(receipt){this.verify(receipt);return path.join(this.root,receipt.id,'manifest.json');}
+}
+module.exports={Capsules,fileInventory};
