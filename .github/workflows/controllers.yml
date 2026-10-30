@@ -24,6 +24,13 @@ jobs:
       - run: npm test
       - run: npm run test:babytracker
       - run: npm run test:mjobs
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Install preserved Python test dependency
+        run: python -m pip install --disable-pip-version-check pytest==9.1.1
+      - name: Test preserved analytics and Mission runtime contracts
+        run: python -m pytest -q -p no:cacheprovider test/python/test_fleet_analytics.py test/python/test_fleet_mission_runtime.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -1,0 +1,121 @@
+# Productive fleet operation and observability — 27 October 2026 UTC
+
+## Delivered outcome
+
+This continues the user's interrupted request to make Startup actually begin work, keep all existing workers usefully occupied, explain legitimate waits and provide detailed visual reporting. The implementation is installed on the workstation and its sanitized reporting is available through the existing owner-protected hub.
+
+On re-entry at **2026-10-27T00:16Z**, all **31 runtimes were healthy**, but both automatic dispatchers were off. The earlier interrupted deployment had intentionally paused dispatch and had not re-enabled it. The existing policy also targeted only 12 active turns, two deliveries per minute, with productive discovery disabled. This was not an empty provider allowance or a missing fleet.
+
+The explicit protected Startup submitted in this continuation completed at **00:33:31.193Z** as `ready_dispatching`. All 31 targets were verified; no new agent or conversation restart was needed. The user-authorized saved policy is:
+
+| Setting | Saved value |
+| --- | --- |
+| Concurrent turn target | 31 current runtimes |
+| Explicit worker reserves | 0 |
+| Productive maintenance discovery | Enabled |
+| Scheduler interval | 30 seconds |
+| Maximum dispatch batch | 4 |
+| Minimum completed-turn settling | 60 seconds |
+| Stop guard | 7%, five-second polling, acknowledged |
+| New-work quota brake | 15% |
+| Resource envelope | Existing 6 GiB free-RAM floor, 25 GiB disk floor, CPU pacing at 92%, two heavy-test lanes |
+
+At **00:33:45Z**, four agents were executing and 27 had queued work. At **00:35:44Z**, thirteen agents were executing, fourteen were queued, three were settling and one was waiting for a changed outcome. Twelve distinct maintenance tasks had been submitted. Quota was 93%, with no dispatcher hold and the guard armed/acknowledged. These are native activity observations, not an assertion that all workers execute at every instant.
+
+## Scheduling useful work without manufacturing activity
+
+Priority issue/file reservations, concrete CI remediation and exact-head independent reviews retain precedence. When those do not supply a worker with a new action, the fallback draws from **219 deterministic documentation opportunities** found in actual public definitions without docstrings at main revision `2f01b876762fcbdd70f11e69865a48257503af93`.
+
+A missing docstring is explicitly an opportunity, **not proof of a defect**. The worker reads the exact immutable source and adjacent tests/documentation. It produces a bounded maintainer reference with real line citations, interfaces, dependencies, error behavior and examples, or reports `no_new_gap` when equivalent documentation already exists. No fabricated bugs, repeat CI runs, duplicate tests or filler are requested.
+
+Each source blob is globally reserved once, including across restarts; each worker has at most one outstanding maintenance assignment. The original issue/PR ownership is preserved. Exclusive draft paths are outside the worker Git checkout, under the private productive-work artifact directory. No fallback instruction creates a PR, commits, merges, changes production files or starts extra agents. The primary receives pointers to completed drafts for review. `artifact_ready` means a structured draft receipt exists and basic source/scope checks passed; it does **not** mean independently accepted documentation.
+
+Unknown native delivery outcomes remain fenced and are never blindly repeated. An exhausted evidence catalog is reported as awaiting useful work rather than causing invented tasks. The source catalog can be rebuilt with `Build-Productive-Catalog.py`; unchanged blobs remain deduplicated. The initial automated discovery category is documentation, not unrestricted autonomous rewriting of the repository.
+
+## Workflow states and estimates
+
+Native execution is separate from work scheduling. Labels include Executing, Queued for work, Assignment submitted, Turn settling, Waiting for CI, Waiting for a change, On-call reserve, Delivery needs review, Awaiting task receipt, Resource-limited, Quota protection, Needs a decision, Stopped and Dispatch paused.
+
+Only native active turns count as executing. An explicitly reserved reviewer remains nonexecuting; reserve count is currently zero. A queued task has a real source/issue or review identity, queue position, conditional start estimate and next scheduler evaluation. Pending deliveries count against concurrency before activity is observed. CPU throttling reduces the effective dispatch batch and changes ETA pacing. A full capacity pool or unknown prerequisite results in an unavailable job-start estimate, not a made-up completion time. Future or stale plans cannot establish current queue readiness.
+
+The local policy panel now targets an actual page element. The interrupted implementation had attached it to nonexistent `sustainSection`, so no controls appeared. **Use all current workers** stages the live count and zero reserves without starting work; **Save capacity policy** persists it. Protected Startup defaults to **Start working after verification**, with a restore-only opt-out. Its existing quota checks, idempotent request IDs, cancellation and uncertain-outcome handling remain. It waits for stable native readiness before enabling Sustained. An old successful startup is not treated as proof that dispatch is still on later.
+
+## Visual reporting
+
+**Fleet Atlas:** `https://m-techlabs.com/mission-control/analytics/`
+
+**Grafana:** `https://m-techlabs.com/mission-control/grafana/`
+
+Both views use the same sanitized native observations. Atlas provides live execution/queue scorecards, token flow, a workflow-state allocation chart, a 31-agent completed-turn occupancy heatmap, maintenance pipeline, observed model usage, task/ETA flight board and clickable per-agent turn ledger. The mobile drawer was tested for every current agent. Grafana has **18 data-backed panels**, with an agent selector, workflow-state history, turn wall-time percentiles, tokens/cache measurements, dispatch and freshness receipts.
+
+The collector reads AO SQLite in query-only mode and maintains its own seven-day cache. Public statistics cover the last 24 hours and refresh every 30 seconds. Data older than 90 seconds expires in the frontend and Grafana queries. Token totals use native last-event measurements rather than repeatedly summing cumulative conversation counters; inspected events matched their native `last_token_usage`, and duplicate native source-event keys were absent in the inspected window.
+
+Per-turn metrics include recorded start/end, wall time, state, interface, observed models and token fields only where the native conversation/time interval uniquely attributes them. Ambiguous or absent attribution stays unavailable, not zero. Historical occupancy unions completed intervals; a long-open prompt is not counted as continuous execution. Token use is not a productivity score, accepted work or a billing amount. Internal provider subagents lacking an AO identity are not fabricated as separately measured workers.
+
+No prompt, response, native conversation identifier, credential, raw terminal text or absolute private artifact path is exported. The Grafana data source is restricted to the internal sanitized-data host. Grafana is loopback-bound and provisioned as Viewer for the existing protected hub, with separate local-file admin credentials excluded from Git. Container CPU/memory limits and persistent storage are configured. The Limited collector sign-in task was installed and verified; both containers use restart policies. The PC, Docker Desktop, hub and signed-in collector account must be available for fresh remote reporting.
+
+## Safety and validation evidence
+
+| Executed check | Result |
+| --- | --- |
+| Source regression runner | 45/45 groups passed, zero failed/unexecuted groups, stable source |
+| Installed regression runner | 45/45 groups passed |
+| Isolated real-browser controls | 38 scenarios passed; 35 inert fixture POSTs, zero production requests/native commands/JavaScript exceptions |
+| Python telemetry/dashboard/proxy tests | 38 tests + 31 subtests passed |
+| Ruff on new Python collector/catalog/dashboard generator/tests | Passed |
+| Live Atlas/Grafana/local UI | All 31 Atlas agent drawers opened; desktop/mobile layout passed; local productive controls visible; zero mutating requests or JavaScript errors |
+| Actual Grafana data queries | 18 panels queried successfully with frames and no query errors; legitimately empty selected-turn tables are not invented |
+| Canonical deployment | 135 installed Fleet files/assets byte-compared against source; no native agents stopped |
+| Analytics task installer | Limited task installation completed with exit zero; no agent commands |
+| Protected Startup | Successful explicit start-work completion; subsequent native execution and fresh dispatch observed |
+| External unauthenticated access | Atlas HTML/data and Grafana HTML/search redirected to Cloudflare Access login |
+
+The deploy completed at **00:32:06.083607Z**. Live UI checks completed at **00:32:48.918Z**. Source fingerprint:
+
+```text
+828a51bc2a8221cd4f18ca9c7218d5b81a96b9b76559113cb3ae9593f1f289ba
+```
+
+The resumed work first preserved all interrupted source in an owned backup and scoped stash, fast-forwarded to `057fc55b1f6aa9a5391a51912a9fd18ab85c0385`, and reconciled the browser fixture while preserving its newer safe-argument/injection check. Existing lifecycle revalidation and fail-closed identity fixes were not overwritten. The retained recovery copy is private, not a source artifact.
+
+The additional native exited-host probe only sends AO's read-only status request. It can distinguish a verified exited provider from its still-present terminal host without falsifying process counts or killing the host. Exact generation, listener ownership, stable process/registry observations and absent provider children remain required. That path has fixture coverage; this continuation's successful startup used already healthy runtimes and did not require a live stopped-host recovery.
+
+## Remaining boundaries
+
+Remote fleet commands remain disabled. This delivery provides online reporting and local guarded control, not a new Internet command API. The hub's Access policy was checked as owner-only with no everyone/bypass rule, and its tunnel was healthy. A signed-in external browser session was **not** independently exercised.
+
+Native AO configuration-override and hook-trust warnings were not suppressed or removed. No unrelated process, BIOS/driver/network configuration, host reboot, credential or protected-main setting was changed. No additional agents were created. Maintenance outputs still need review; accepted merges and passing application CI are separate from utilization. No promise of permanent 100% activity or a guaranteed job-start time is made.
+
+Operational source, setup and recovery instructions are in `tools/fleet_control/observability/README.md`. Hosted CI must be checked on the eventual published head; local tests and earlier-head checks do not substitute for new-head verification. Keep PR #825's existing protected integration and draft state unless separately authorized.
+
+## Final live-data corrections
+
+A live comparison found that terminal-turn timestamps use Go's local-offset form, such as `2026-10-26 19:41:35.9196868 -0500 CDT`, while Chat turns often use UTC. The original collector recognized UTC only. The correction honors the explicit numeric offset, handles daylight-saving/monotonic forms, widens the SQL wall-clock prefilter and applies the real UTC window after parsing. Invalid or future turn timestamps are not accepted as completed; parse gaps are reported. Two fresh SQLite/parser regressions cover the local-day boundary and ensure prompt/response columns are never read into telemetry.
+
+After installing that correction, the **00:48:40.609858Z** telemetry snapshot reported **413 completed native turns**, with zero unreadable turn records, rather than silently omitting local-time terminal rows. This recovered historical observations; it does not claim that 413 new turns ran during this repair. The expanded Python run passed **40 tests and 31 subtests**.
+
+A second live-data issue affected rapid maintenance turns: a worker could produce a valid draft and return to idle between activity samples, leaving an `unverified_delivery` cooldown. The controller now accepts only the exact agent/task-key/source-bound completed maintenance receipt, observed after that assignment, as evidence of delivery. It clears only that matching delivery cooldown. An active native turn, approval decision, uncertain task receipt, wrong agent/key, future receipt or unrelated operator hold is not overridden. Newly discovered drafts remain unreviewed; this is delivery evidence, not acceptance. Existing once-per-blob reservations still prevent reissuing the same work.
+
+The final controller source regression runner again passed **45/45 groups**, including targeted receipt recovery and rejection cases. These changes preserve resource pacing and native agent processes. The successful original work-after-Startup test and the frontend/browser evidence remain valid for their stated observations; final head/installation fingerprints are recorded separately in the publication receipt and PR.
+
+## Verified terminal submission and final operating checkpoint
+
+A further native-terminal inspection identified why some accepted assignments never ran: AO pasted the task, but Codex kept it in the composer instead of submitting a new turn. Native CLI success was not proof of a turn. An informational security-setup notice remained visible, but it explicitly permitted continued use. A one-shot Escape made no change; a separately verified Enter-only canary submitted the exact pre-existing maintenance message and native activity/history confirmed it. No security enrollment, approval, authentication or hook setting was changed.
+
+The permanent delivery check waits briefly for native activity, then—only for the exact receptive Codex TUI generation—checks the real AO listener/process birth and two stable rendered composer observations against the known just-sent message. It handles wrapped and split pasted-content blocks and a trailing newline swallowed by paste detection. Existing quota/emergency/startup guards and ownership are rechecked before a single Enter. A durable per-message reservation prevents repeating that Enter after an uncertain outcome. It never resends text, selects a menu item, answers an approval, or changes account security. A changed or unmatched composer is left untouched.
+
+Paced repair batches confirmed **20 existing pending composers** started natively with Enter only, in addition to the original one-agent canary. No task text was resent. The unmatched worker29 case and the uncertain Chat delivery were not forced through. Those states remain honestly visible rather than counted as execution.
+
+Three completed documentation pairs used full-blob filenames rather than the assigned 16-character names. The observer now recognizes only these exact full-blob alternatives within the same owned agent directory, with matching source identity and unchanged draft validation. Conflicting aliases, redirected paths and wrong source commits fail closed; worker files are neither renamed nor rewritten. Draft acceptance remains unreviewed.
+
+Final local source and installed runners passed **46/46 groups**; targeted terminal cases include stale/changed identity, listener ownership, decision states, stop races, unknown delivery fencing, wrapped paste matching and local-registry rejection. The final live UI again opened all31 Atlas agent dialogs, passed mobile layout, and observed no mutating requests. All18 Grafana panel queries succeeded. Source fingerprint: `0b01285abe1eed51956e9ca708ce05e4494f5c676663e30f6b07fd7b0e5445e3`.
+
+At **2026-10-27T01:49:11.311010+00:00**, native activity reported **14 executing of31**, with workflow distribution `{"cooldown": 1, "dispatching": 3, "executing": 14, "receipt_wait": 4, "review_wait": 2, "settling": 7}`. The controller had **94 review-required drafts**, 11 outstanding assignments, and 77% allowance. Sustained was enabled; reserve count remained0; the working target remained31. The maximum batch was increased from4 to**12** while retaining the30-second cadence,60-second settling interval, and resource/quota protection. These are time-bound observations, not a guarantee that every worker executes continuously.
+
+Deployment restarted dashboard services only, not native agents. Signed-in external browser verification remains NOT_RUN; remote command APIs remain disabled. The source and operating evidence are published on the existing protected PR, not directly to main.
+
+### Concurrent safety-fix reconciliation
+
+Before the final terminal-delivery publication, PR825 advanced to `799e89897fe2ae01f3f15d77477d84a62a525d0d`. The eight-file local delta was preserved in an owned ZIP and retained scoped stash, the worktree was fast-forwarded, and the delta reapplied without conflict. The upstream fresh lifecycle-state reads, atomic analytics writes, stable native-database identity and strict legacy-identity migration were retained. The combined revision passed **46/46 Fleet groups** and **46 Python tests plus31 subtests**. Publication is an ordinary same-branch update after a fresh head-bound preflight, never a force push.
+
+The final deployment pauses new dispatch and waits for in-flight scheduler cycles to settle before restarting the dashboard. Native workers are not stopped. The analytics collector alone restarts to adopt the newer identity-safe importer; automatic dispatch resumes only after current runtime readiness is verified. Earlier exact fingerprints and timestamps above remain historical checkpoints, not substitutes for the final published-head evidence.
