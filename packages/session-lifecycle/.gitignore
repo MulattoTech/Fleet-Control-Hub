@@ -1,0 +1,7 @@
+capsules/
+*.jsonl
+lifecycle.json
+lifecycle.lock*
+summary.json
+preview.json
+service-status.json

@@ -84,3 +84,13 @@ Graceful stop can cause idle sessions to exit and sends a wind-down instruction 
 4. Add a migration tool that imports configuration without copying runtime transcripts or private data into Git.
 
 No existing controller installation is replaced by this release. See [architecture](docs/ARCHITECTURE.md) for the safety boundary and [parity](docs/PARITY.md) for the verified gaps.
+
+## Versioned session lifecycle
+
+The optional [session-lifecycle package](packages/session-lifecycle/README.md) contains
+complete-history preservation, verified ownership handoffs and per-session retry
+transactions. [Project component registration](docs/SESSION_LIFECYCLE.md) keeps
+Fleet Control, Mission Control and maintenance preferences project scoped. This
+delivery is source-only for lifecycle automation; the existing workstation task
+has not been switched to it. The separate Turbo toggle repair is installed and
+verified through the live Mission Control fleet page.

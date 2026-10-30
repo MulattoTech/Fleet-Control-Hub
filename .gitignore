@@ -17,3 +17,9 @@ scope-staging/
 **/*.log
 **/*.jsonl
 **/runtime-state/
+
+# Private lifecycle evidence never belongs in the public source repository.
+**/capsules/
+**/retirement/
+**/project-components.json
+**/lifecycle.lock*
