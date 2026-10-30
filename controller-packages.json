@@ -256,11 +256,11 @@
       "src/native-adapter.js": "106dfd4b49ceb4663f27c62953d66d9e935a6280d17bc3daaaf36a12e17e2553",
       "src/policy.js": "8bc440e4c28fa7bf524bb50ce3595f40971c6620c2aed76806f445c1c565f510",
       "src/store.js": "e84fbfdf676d26f0af430ee5ce2494d5a2a9f371b1e7dadf7ee660dfcea14c46",
-      "test/capsules.test.js": "383c3b455e4294dfab7be703a5511933061c5c64f768ce5fd88fe6d211d5e790",
-      "test/lifecycle.test.js": "5e6e31e1d6b3c6fb7b804a3f6353171a410eac6ae39076056c06b556642ab9cf",
+      "test/capsules.test.js": "f0a7cfadf0cc7e38d8635e992b218802b5d25d14e99d0a6f57306d340c7d0c8f",
+      "test/lifecycle.test.js": "5a2cd83b91d666dd5cef93ad0dc845df3524828f4c47ac560e8823303aea0efd",
       "test/native-adapter.test.js": "52ed74ecb5832f468e120132f2dfd199e3950a35c82bb3b4a16c5d0769204ad6",
       "windows/Run-Lifecycle.vbs": "632f45fa895dd20249aa5ec150311af3ded0892e4578eebc5204d73f28c9bd23",
-      "test/safety-regressions.test.js": "6daa4fae5a73e283ffbb427cee3d2ac0aa9968503454da256d25c99d4dcfc95d"
+      "test/safety-regressions.test.js": "d3b53f5e3959f22c739fa4f0425dd6533eb7c944fb8d13c962f8f16b82a514e1"
     }
   }
 }

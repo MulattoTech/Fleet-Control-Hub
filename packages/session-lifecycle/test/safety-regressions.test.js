@@ -4,7 +4,7 @@ const test=require('node:test'),assert=require('node:assert/strict'),fs=require(
 const {Store}=require('../src/store'),{Lifecycle}=require('../src/engine'),{classify}=require('../src/policy'),{Deferred,config,identity,readJson}=require('../src/common');
 const NOW=Date.parse('2026-10-30T04:00:00Z');
 function session(p={}){return {id:'example-7',projectId:'example',kind:'worker',mode:'chat',harness:'codex',model:'fixture',createdAt:'2026-10-20T00:00:00Z',updatedAt:'2026-10-27T00:00:00Z',activity:{state:'exited',lastActivityAt:'2026-10-27T00:00:00Z'},isTerminated:false,isPinned:false,provisionState:'ready',statusReadiness:'ready',branch:'ao/worker/root',branchState:{commits:0,unpushed:0},prs:[],artifactFiles:[],...p};}
-function fixture(t,patch={},prs=[]){const root=fs.mkdtempSync(path.join(os.tmpdir(),'lifecycle-test-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));let now=NOW,claimOK=true,handoffOK=true,guardOK=true;const cfg={projectId:'example',enabled:true,transferToPrimary:true,statePath:root,limits:{minAgeHours:24,maxBatch:2,retryMinutes:15}};const s=session(patch),primary=session({id:'example-primary',kind:'orchestrator',activity:{state:'active',lastActivityAt:'2026-10-30T03:59:00Z'}}),facts={projectId:'example',complete:true,sessions:[s,primary],openPrs:prs,protectedIds:[],uncertainIds:[],replacingIds:[],taskOwners:{},ledgerEvidence:{}},calls=[];
+function fixture(t,patch={},prs=[]){const root=fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()),'lifecycle-test-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));let now=NOW,claimOK=true,handoffOK=true,guardOK=true;const cfg={projectId:'example',enabled:true,transferToPrimary:true,statePath:root,limits:{minAgeHours:24,maxBatch:2,retryMinutes:15}};const s=session(patch),primary=session({id:'example-primary',kind:'orchestrator',activity:{state:'active',lastActivityAt:'2026-10-30T03:59:00Z'}}),facts={projectId:'example',complete:true,sessions:[s,primary],openPrs:prs,protectedIds:[],uncertainIds:[],replacingIds:[],taskOwners:{},ledgerEvidence:{}},calls=[];
  const adapter={inspect:async()=>facts,guard:async()=>{if(!guardOK)throw new Deferred('control_operation_active');},contentFingerprint:async()=>'content-1',claimAllowed:async()=>true,claim:async(j,n)=>calls.push(['claim',n]),claimObserved:async()=>claimOK,handoffMessage:j=>'HANDOFF '+j.custodyId,handoff:async()=>calls.push(['handoff']),handoffObserved:async()=>handoffOK,archive:async()=>{calls.push(['archive']);s.isTerminated=true;},archived:async()=>s.isTerminated};const capsules={capture:async()=>{calls.push(['capture']);return {id:'capsule',manifestSha256:'abc',sourceFingerprint:'content-1'};},verify:()=>true,handoffPath:()=>path.join(root,'capsule','manifest.json')};const store=new Store(root,'example',()=>now),engine=new Lifecycle({config:cfg,store,adapter,capsules,clock:()=>now});return {root,cfg,s,primary,facts,calls,adapter,capsules,store,engine,job:()=>Object.values(store.data.jobs)[0],claim:v=>{claimOK=v;},handoff:v=>{handoffOK=v;},guard:v=>{guardOK=v;},advance:()=>{now+=16*60000;}};}
 
 test('receiver lost after handoff prevents artifacts-only retirement',async t=>{
@@ -28,7 +28,7 @@ test('BabyTracker guard enforces configured emergency threshold even before trip
 });
 test('capsule root symlink must not redirect private history into source',async t=>{
  const {Capsules}=require('../src/capsule');
- const root=fs.mkdtempSync(path.join(os.tmpdir(),'capsule-root-review-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const root=fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()),'capsule-root-review-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  const repo=path.join(root,'public-repo'),state=path.join(root,'private-state'),workspace=path.join(root,'workspace');
  for(const p of [repo,state,workspace])fs.mkdirSync(p);
  fs.writeFileSync(path.join(workspace,'note.txt'),'SYNTHETIC-PRIVATE-CONTENT');
@@ -43,14 +43,14 @@ test('capsule root symlink must not redirect private history into source',async 
 
 test('parent junction or symlink cannot redirect a newly created private state path',t=>{
  const {privateDirectory}=require('../src/common');
- const root=fs.mkdtempSync(path.join(os.tmpdir(),'lifecycle-parent-link-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const root=fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()),'lifecycle-parent-link-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  const repo=path.join(root,'repo'),alias=path.join(root,'external-alias');fs.mkdirSync(repo);fs.symlinkSync(repo,alias,process.platform==='win32'?'junction':'dir');
  assert.throws(()=>privateDirectory(path.join(alias,'new-private'),{repositoryPath:repo,create:true}),/redirected_state/);
  assert.deepEqual(fs.readdirSync(repo),[]);
 });
 test('capsule root replacement after construction is rejected before any native or private read',async t=>{
  const {Capsules}=require('../src/capsule');
- const root=fs.mkdtempSync(path.join(os.tmpdir(),'lifecycle-root-replaced-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const root=fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()),'lifecycle-root-replaced-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  const state=path.join(root,'private'),repo=path.join(root,'repo');fs.mkdirSync(repo);let reads=0;
  const capsule=new Capsules({statePath:state,repositoryPath:repo},{contentFingerprint:async()=>{reads++;throw Error('must not read');}});
  fs.rmdirSync(capsule.root);fs.symlinkSync(repo,capsule.root,process.platform==='win32'?'junction':'dir');
@@ -58,7 +58,7 @@ test('capsule root replacement after construction is rejected before any native 
 });
 test('repository aliases cannot hide state physically inside public source',t=>{
  const {privateDirectory}=require('../src/common');
- const root=fs.mkdtempSync(path.join(os.tmpdir(),'lifecycle-repo-alias-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
+ const root=fs.mkdtempSync(path.join(fs.realpathSync.native(os.tmpdir()),'lifecycle-repo-alias-'));t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
  const repo=path.join(root,'repo'),alias=path.join(root,'repo-alias');fs.mkdirSync(repo);fs.symlinkSync(repo,alias,process.platform==='win32'?'junction':'dir');
  assert.throws(()=>privateDirectory(path.join(repo,'private'),{repositoryPath:alias,create:true}),/outside_source/);assert.deepEqual(fs.readdirSync(repo),[]);
 });
