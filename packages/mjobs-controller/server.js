@@ -57,6 +57,7 @@ const MODEL_OPTIONS = [
 const EFFORT_OPTIONS=['low','medium','high','xhigh'];
 const providerRuntime=createProviderRuntime({codexModels:MODEL_OPTIONS,codexEfforts:EFFORT_OPTIONS,codexExe:CODEX_EXE});
 let mutationLock=false;
+let dispatcherModeEpoch=0,dispatcherModePending=null;
 let dispatchLedger=null;
 let agentPlans=null;
 let stateInFlight=null;
@@ -119,6 +120,34 @@ function dispatchHealthBlockReason(){
 function assertCanStartWork(options){
  const reason=workBlockReason(options);
  if(reason)throw Error(reason);
+}
+// Mode transitions reserve the existing manual lane; running model turns are untouched.
+async function switchDispatcherMode(mode,enabled,{wait=ms=>new Promise(resolve=>setTimeout(resolve,ms)),clock=Date.now,maxWaitMs=30000}={}){
+ if(!['turbo','sustain'].includes(mode)||typeof enabled!=='boolean')throw Error('Exact dispatcher and boolean enabled state required');
+ const target=mode==='turbo'?turbo:sustain,other=mode==='turbo'?sustain:turbo;
+ if(!enabled){dispatcherModeEpoch++;return target.enable(false);}
+ if(target.config.enabled&&!other.config.enabled&&!dispatcherModePending)return target.summary();
+ if(mutationLock||findWork?.running)throw Error('Another manual control operation is finishing; no dispatcher mode was changed');
+ assertCanStartWork();
+ const epoch=++dispatcherModeEpoch,previous=other.config.enabled;
+ mutationLock=true;dispatcherModePending={mode,startedAt:new Date(clock()).toISOString(),phase:'finishing_previous_cycle'};
+ let pausedPrevious=false;
+ try{
+  if(previous){other.enable(false);pausedPrevious=true;}
+  const deadline=clock()+maxWaitMs;
+  while(turbo.running||sustain.running){
+   if(epoch!==dispatcherModeEpoch)throw Error('Dispatcher switch cancelled by a newer pause or stop');
+   assertCanStartWork();
+   if(clock()>=deadline)throw Error('Previous dispatch cycle has not settled; the prior mode is retained when safe');
+   await wait(100);
+  }
+  if(epoch!==dispatcherModeEpoch)throw Error('Dispatcher switch cancelled by a newer pause or stop');
+  assertCanStartWork();
+  const result=target.enable(true);audit('dispatcher_mode_changed',{mode,previousMode:previous?(mode==='turbo'?'sustain':'turbo'):'paused'});return result;
+ }catch(e){
+  if(epoch===dispatcherModeEpoch&&pausedPrevious&&!target.config.enabled){try{assertCanStartWork();other.enable(true);}catch{}}
+  audit('dispatcher_mode_change_failed',{mode,message:e.message});throw e;
+ }finally{dispatcherModePending=null;mutationLock=false;}
 }
 async function command(args,ms=30000,{windDown=false,startupRestore=false,runStart=false}={}){
  const startsWork=['send','spawn'].includes(args[0])||(args[0]==='review'&&args[1]==='trigger')||(args[0]==='session'&&['resume-agent','restore'].includes(args[1]));
@@ -481,7 +510,7 @@ async function main(req,res){
   let owns=false;
   try{
    checkWrite(req);const data=await body(req);
-   if(req.url==='/api/startup/cancel'){const r=startup.cancel(data);master.disableAutomaticDispatch();master.restore.pause();return json(res,r.statusCode,r);}
+   if(req.url==='/api/startup/cancel'){dispatcherModeEpoch++;const r=startup.cancel(data);master.disableAutomaticDispatch();master.restore.pause();return json(res,r.statusCode,r);}
    if(mutationLock||sustain.running||turbo.running||findWork.running)return json(res,409,{error:'Another control operation is running; Startup did not submit work'});
    mutationLock=true;owns=true;
    if(req.url==='/api/startup'){const policy=quota.status().policy;if(policy?.blocked)return json(res,409,{error:policy.reason,code:'QUOTA_BLOCKED',quotaPolicy:policy});const r=startup.start(data);return json(res,r.statusCode,r);}
@@ -546,6 +575,7 @@ async function main(req,res){
     if(data.confirm!=='ARM AUTO STOP')throw Error('Automatic stop confirmation required');
     return json(res,200,quota.arm());
    }
+   if(req.url==='/api/quota/disarm'){dispatcherModeEpoch++;}
    if(req.url==='/api/quota/disarm')return json(res,200,quota.disarm());
    return json(res,404,{error:'Unknown quota operation'});
   }catch(e){audit('quota_control_error',{route:req.url,message:e.message});return json(res,400,{error:e.message})}
@@ -560,6 +590,7 @@ async function main(req,res){
   try{
    checkWrite(req);
    const data=await body(req);
+   if(['/api/master/pause','/api/master/drain','/api/master/emergency','/api/master/restore/pause'].includes(req.url))dispatcherModeEpoch++;
    if(['/api/master/pause','/api/master/drain','/api/master/restore/pause','/api/master/emergency'].includes(req.url)&&startup?.status().active){
     if(req.url==='/api/master/drain'&&data.confirm!=='GRACEFUL STOP')throw Error('Graceful stop confirmation missing');
     if(req.url==='/api/master/emergency'&&data.confirm!=='KILL ALL CODEX')throw Error('Explicit emergency confirmation missing');
@@ -617,14 +648,8 @@ async function main(req,res){
   try{
    checkWrite(req);
    const data=await body(req);
-   if(req.url==='/api/sustain/toggle'&&data.enabled===false){currentRun?.pause();return json(res,200,sustain.enable(false));}
+   if(req.url==='/api/sustain/toggle'){if(data.enabled===false)currentRun?.pause();return json(res,200,await switchDispatcherMode('sustain',data.enabled));}
    if(mutationLock||turbo.running||sustain.running)return json(res,409,{error:'Another controller operation is running'});
-   if(req.url==='/api/sustain/toggle'){
-    if(data.enabled)assertCanStartWork();
-    const outcome=sustain.enable(data.enabled);
-    if(data.enabled&&turbo.config.enabled)turbo.enable(false);
-    return json(res,200,outcome);
-   }
    if(req.url==='/api/sustain/config')return json(res,200,sustain.update(data));
     if(req.url==='/api/sustain/approve-issue')return json(res,200,sustain.approveIssue(data.issue,data.session));
     if(req.url==='/api/sustain/complete-issue')return json(res,200,sustain.completeIssue(data.issue,data.evidence));
@@ -634,7 +659,7 @@ async function main(req,res){
    if(req.url==='/api/sustain/tick')return json(res,200,await sustain.tick({forced:false,dryRun:!!data.dryRun}));
   }catch(e){audit('sustain_control_error',{route:req.url,message:e.message});return json(res,400,{error:e.message})}
  }
- if(req.method==='GET'&&req.url==='/api/turbo'){return json(res,200,turbo.summary())}
+ if(req.method==='GET'&&req.url==='/api/turbo'){return json(res,200,{...turbo.summary(),modeChange:dispatcherModePending})}
  if(req.method==='GET'&&req.url==='/api/turbo/all-hands/preview'){
   try{return json(res,200,await turbo.previewAllHands())}catch(e){return json(res,409,{error:e.message})}
  }
@@ -645,9 +670,8 @@ async function main(req,res){
   try{
    checkWrite(req);
    const data=await body(req);
-   if(req.url==='/api/turbo/toggle'&&data.enabled===false)return json(res,200,turbo.enable(false));
+   if(req.url==='/api/turbo/toggle')return json(res,200,await switchDispatcherMode('turbo',data.enabled));
    if(mutationLock||sustain?.running)return json(res,409,{error:'Another dashboard operation or sustained dispatch is running'});
-   if(req.url==='/api/turbo/toggle'){if(data.enabled){assertCanStartWork();if(sustain.config.enabled)sustain.enable(false);}return json(res,200,turbo.enable(data.enabled));}
    if(req.url==='/api/turbo/config'){
     if(turbo.running)return json(res,409,{error:'Wait for the active cycle to finish before editing settings'});
     return json(res,200,turbo.update(data));
