@@ -185,7 +185,15 @@ class Turbo {
    return {freeRamGiB:+freeMem.toFixed(1),freeDiskGiB:diskFree===null?null:+diskFree.toFixed(1),cpuPercent:cpu??null,pausedReason:pause};
  }
  validRoot(s){
-   return s&&s.kind==='orchestrator'&&!s.isTerminated&&!s.replacedBy&&s.activity!=='exited'&&s.status!=='emergency_stopped';
+   return s&&typeof s.id==='string'&&/^[A-Za-z0-9][A-Za-z0-9_.-]{1,127}$/.test(s.id)&&s.kind==='orchestrator'&&!s.isTerminated&&!s.replacedBy&&s.activity!=='exited'&&s.status!=='emergency_stopped';
+ }
+ currentRoot(sessions){
+   const roots=(sessions||[]).filter(s=>this.validRoot(s));
+   return roots.length===1?roots[0]:null;
+ }
+ availableForDispatch(session,now=this.clock()){
+   return canReceiveInstruction(session)&&session.frozen!==true&&session.dispatchPaused!==true&&
+    !this.deliveryLedger?.holdFor(session.id,now);
  }
  withinCooldown(target,type,now){
    const minutes=(type==='primary'?this.config.orchestratorCooldownMinutes:this.config.perAgentCooldownMinutes);
@@ -196,7 +204,7 @@ class Turbo {
  }
  previewTextPlan(snapshot,gh,now){
    const sessions=snapshot.sessions||[];
-   const root=sessions.find(x=>this.validRoot(x));
+   const root=this.currentRoot(sessions);
    const plan=[];
    const graph=graphSignal(sessions,gh?.open||[]);
    const actions=[];
@@ -204,13 +212,13 @@ class Turbo {
    const refs=extractRefs(snapshot);
    const openPRs=gh?refs.filter(p=>fromGH.has(p.number)):refs;
    const candidate=(priority,kind,session,message,reason,key)=>{
-    if(!canReceiveInstruction(session))return;
+    if(!this.availableForDispatch(session,now))return;
     if(this.withinCooldown(session.id,kind==='primary'?'primary':kind,now))return;
     if(!session.id||!message||!key||this.dispatchSignals.seen(key))return;
-    actions.push({priority,kind,id:session.id,name:session.name,mode:session.mode,message:(message+REPORT_POLICY).replaceAll('mjobs-luna-34',root?.id||'mjobs-luna-35'),reason,key});
+    actions.push({priority,kind,id:session.id,name:session.name,mode:session.mode,message:message+REPORT_POLICY,reason,key});
    };
-   if(!this.validRoot(root)){return {plan:[],blocked:'No active primary orchestrator',rootId:root?.id||null,openPRs:openPRs.length}}
-   const available=sessions.filter(s=>canReceiveInstruction(s)&&!s.openPRs&&!s.blocked&&s.kind==='worker');
+   if(!root){return {plan:[],blocked:'No active primary orchestrator or primary identity is ambiguous',rootId:null,openPRs:openPRs.length}}
+   const available=sessions.filter(s=>this.availableForDispatch(s,now)&&!s.openPRs&&!s.blocked&&s.kind==='worker');
    const fail=openPRs.filter(p=>{
     const full=fromGH.get(p.number);
     if(gh&&full)return (full.statusCheckRollup||[]).some(x=>x.conclusion==='FAILURE'||x.conclusion==='TIMED_OUT');
@@ -224,10 +232,10 @@ class Turbo {
    for(const p of fail){
     const owner=sessions.find(s=>s.id===p.owner);
     if(!canReceiveInstruction(owner)||owner.kind==='orchestrator')continue;
-    const msg='TURBO CI RECOVERY for your existing PR #'+p.number+'. Diagnose current exact-head failing checks without blind reruns. Use the existing PR and branch you own. Only modify your already-authorized files; coordinate any shared test or new file ownership with primary mjobs-luna-34. Fix proven failures, run focused checks, and publish an updated exact-head PR only when appropriate. Do not force-push, change dirty main, merge, or bypass CI. Report the root cause and CI evidence to the primary.';
+    const msg='TURBO CI RECOVERY for your existing PR #'+p.number+'. Diagnose current exact-head failing checks without blind reruns. Use the existing PR and branch you own. Only modify your already-authorized files; coordinate any shared test or new file ownership with primary '+root.id+'. Fix proven failures, run focused checks, and publish an updated exact-head PR only when appropriate. Do not force-push, change dirty main, merge, or bypass CI. Report the root cause and CI evidence to the primary.';
     candidate(1,'ci',owner,msg,'Repair failing CI on owned PR #'+p.number,prSignal(fromGH.get(p.number))?.key);
    }
-   const reviewers=sessions.filter(s=>canReceiveInstruction(s)&&s.role.toLowerCase().includes('review'));
+   const reviewers=sessions.filter(s=>this.availableForDispatch(s,now)&&s.role.toLowerCase().includes('review'));
    for(const p of openPRs){
     const full=fromGH.get(p.number);
     if(!full?.headRefOid||full.headRefOid.length<35)continue;
@@ -240,17 +248,17 @@ class Turbo {
     if(full.reviewDecision==='APPROVED')continue;
     const reviewer=reviewers.find(r=>r.id!==p.owner&&!actions.some(a=>a.id===r.id));
     if(!reviewer)break;
-    const msg='TURBO READ-ONLY REVIEW: Inspect MJobs PR #'+p.number+' at exact GitHub head '+full.headRefOid+' independently. Review the diff, negative tests, boundaries and acceptance evidence. Do not edit files, trigger additional agents, merge, or claim ownership. Send actionable blocker/high-confidence findings and current-head verification to primary mjobs-luna-34, and report any outdated head. No duplicate review of unchanged head.';
+    const msg='TURBO READ-ONLY REVIEW: Inspect MJobs PR #'+p.number+' at exact GitHub head '+full.headRefOid+' independently. Review the diff, negative tests, boundaries and acceptance evidence. Do not edit files, trigger additional agents, merge, or claim ownership. Send actionable blocker/high-confidence findings and current-head verification to primary '+root.id+', and report any outdated head. No duplicate review of unchanged head.';
     candidate(2,'review',reviewer,msg,'Review PR #'+p.number+' @ '+hash,'review:'+claimKey);
    }
-   const coordinators=sessions.filter(s=>canReceiveInstruction(s)&&s.role==='Orchestration'&&s.kind==='worker');
+   const coordinators=sessions.filter(s=>this.availableForDispatch(s,now)&&s.role==='Orchestration'&&s.kind==='worker');
    for(const coordinator of coordinators){
-    const msg='TURBO COORDINATION CHECKPOINT. Report a concise list of concrete unclaimed P0/P1 issues or failing PRs to primary mjobs-luna-34 in your assigned lane. Avoid duplicating coordinator reports. You may assign work only if the primary has explicitly delegated exclusive ownership. Do not independently spawn agents or merge.';
+    const msg='TURBO COORDINATION CHECKPOINT. Report a concise list of concrete unclaimed P0/P1 issues or failing PRs to primary '+root.id+' in your assigned lane. Avoid duplicating coordinator reports. You may assign work only if the primary has explicitly delegated exclusive ownership. Do not independently spawn agents or merge.';
     candidate(3,'coord',coordinator,msg,'Refresh '+coordinator.name+' lane plan','coord:'+coordinator.id+':'+graph);
    }
    const workAvailable=available.filter(s=>s.role!=='Orchestration'&&!s.role.toLowerCase().includes('review'));
    for(const worker of workAvailable){
-    const msg='TURBO TASK REFILL: Your agent turn is idle. Check prior assignments and owned branches first. If you have no unfinished task or uncommitted work, request a new bounded P0/P1 issue with acceptance criteria and exclusive file ownership from primary orchestrator mjobs-luna-34. Do not self-assign, duplicate existing file scope, run heavy tests or modify dirty main until delegated. When assigned, focus on completing a tested PR with exact-head CI evidence.';
+    const msg='TURBO TASK REFILL: Your agent turn is idle. Check prior assignments and owned branches first. If you have no unfinished task or uncommitted work, request a new bounded P0/P1 issue with acceptance criteria and exclusive file ownership from primary orchestrator '+root.id+'. Do not self-assign, duplicate existing file scope, run heavy tests or modify dirty main until delegated. When assigned, focus on completing a tested PR with exact-head CI evidence.';
     candidate(4,'refill',worker,msg,'Ask for scoped implementation work','refill:'+worker.id);
    }
    actions.sort((a,b)=>a.priority-b.priority||a.id.localeCompare(b.id));
@@ -321,10 +329,13 @@ class Turbo {
       if(!this.config.enabled&&!manual)break;
       if(this.isManualBusy())break;
       const current=await this.getState(true);
+      if(this.currentRoot(current.sessions)?.id!==detail.rootId)break;
       const live=current.sessions.find(s=>s.id===action.id);
-       if(current.offline||!canReceiveInstruction(live))continue;
+      if(current.offline||!this.availableForDispatch(live))continue;
       const resource=await this.signals(current);
       if(resource.pausedReason||current.summary.working>=this.config.targetWorking)break;
+      // Holds may appear during resource reads. Skip before recording an attempt.
+      if(!this.availableForDispatch(live))continue;
       // Persist reservation before sending. If the CLI times out, do not retry blindly.
       if(!this.dispatchSignals.reserve(action.key,action.id,this.clock()))continue;
       const stamp=new Date(this.clock()).toISOString();
@@ -376,10 +387,10 @@ Turbo.prototype.makeAllHandsPlan=async function(){
  const open=Array.isArray(gh?.open)?gh.open:[];
  const ghMap=new Map(open.map(p=>[Number(p.number),p]));
  if(snap.offline||!gh||gh.fresh===false)throw Error('Fresh Orchestrator and GitHub snapshots are required');
- const root=snap.sessions.find(s=>this.validRoot(s));
+ const root=this.currentRoot(snap.sessions);
  if(!root)throw Error('Primary orchestrator missing. No All Hands dispatch permitted.');
  const now=this.clock();
- const people=(snap.sessions||[]).filter(canReceiveInstruction);
+ const people=(snap.sessions||[]).filter(s=>canReceiveInstruction(s)&&s.frozen!==true&&s.dispatchPaused!==true);
  const working=(snap.sessions||[]).filter(s=>s.busy);
  const plans=[],skips=[],assignedPR=new Set();
  const sessionSent=(s)=>this.session.actions.some(a=>a.id===s.id&&a.kind==='allhands'&&recent(a.at,allHandsHoldMs,now));
@@ -389,7 +400,7 @@ Turbo.prototype.makeAllHandsPlan=async function(){
   const deliveryHold=this.deliveryLedger?.holdFor(s.id,now);if(deliveryHold){skips.push({id:s.id,reason:deliveryHold.reason});return;}
   if(signalKey&&this.dispatchSignals.seen(signalKey)){skips.push({id:s.id,reason:'Exact-head action already delivered'});return;}
   if(sessionSent(s)){skips.push({id:s.id,reason:'All Hands already sent within 10 minutes'});return}
-  plans.push({id:s.id,name:s.name,model:s.model,kind:s.kind,mode:s.mode,role:s.role,reason,signalKey,message:(message+REPORT_POLICY).replaceAll('mjobs-luna-34',root?.id||'mjobs-luna-35')});
+  plans.push({id:s.id,name:s.name,model:s.model,kind:s.kind,mode:s.mode,role:s.role,reason,signalKey,message:message+REPORT_POLICY});
  };
  for(const s of people){
   if(s.id===root.id){
@@ -402,20 +413,20 @@ Turbo.prototype.makeAllHandsPlan=async function(){
   if(failing.length){
    const nums=failing.map(x=>'#'+x.number).join(', ');
    push(s,'Repair CI on '+nums,
-    'ALL HANDS—existing PR ownership: investigate and fix the current-head failing checks for your PR(s) '+nums+'. Work only inside your already-owned branch/files, root-cause the failure, run focused tests, publish a normal non-force update only when verified, and notify mjobs-luna-34. Do not touch modified local main or merge yourself.');
+    'ALL HANDS—existing PR ownership: investigate and fix the current-head failing checks for your PR(s) '+nums+'. Work only inside your already-owned branch/files, root-cause the failure, run focused tests, publish a normal non-force update only when verified, and notify '+root.id+'. Do not touch modified local main or merge yourself.');
    continue;
   }
   if(prs.length&&prs.every(p=>!prSignal(ghMap.get(Number(p.number))))){skips.push({id:s.id,reason:'Hosted checks still running; no repeat audit'});continue;}
   if(prs.length){
    const nums=prs.map(x=>'#'+x.number).join(', ');
    push(s,'Advance existing PR(s) '+nums,
-    'ALL HANDS—PR integration: check your existing '+nums+' against current base and exact-head CI. Resolve concrete review feedback, validate disjoint scope, and provide the Sol primary mjobs-luna-34 the exact next action to get these merged. If refresh or fixes are within your approved file ownership, implement, test and update without force pushing. Do not create a new overlapping PR or merge.');
+    'ALL HANDS—PR integration: check your existing '+nums+' against current base and exact-head CI. Resolve concrete review feedback, validate disjoint scope, and provide the Sol primary '+root.id+' the exact next action to get these merged. If refresh or fixes are within your approved file ownership, implement, test and update without force pushing. Do not create a new overlapping PR or merge.');
    continue;
   }
   if(s.role==='Orchestration' && s.kind==='worker'){
    const area=s.name.toLowerCase().includes('quality')?'quality, failing CI, and acceptance verification':s.name.toLowerCase().includes('p0')?'remaining original P0 implementation':'P1 features and end-to-end delivery';
    push(s,'Coordinate '+area,
-    'ALL HANDS—lane coordination: immediately inventory '+area+' in existing MJobs issues and PRs. Send mjobs-luna-34 a short prioritized ledger of 3-5 disjoint, specifically identified GitHub issues, acceptance tests and file scopes. Do not independently assign files or merge; once delegated, direct the existing workers on your assigned lane. Avoid duplicate investigations.');
+    'ALL HANDS—lane coordination: immediately inventory '+area+' in existing MJobs issues and PRs. Send '+root.id+' a short prioritized ledger of 3-5 disjoint, specifically identified GitHub issues, acceptance tests and file scopes. Do not independently assign files or merge; once delegated, direct the existing workers on your assigned lane. Avoid duplicate investigations.');
    continue;
   }
   if(s.role.toLowerCase().includes('review')){
@@ -429,17 +440,17 @@ Turbo.prototype.makeAllHandsPlan=async function(){
    if(p){
     assignedPR.add(p.number);
     push(s,'Independent PR #'+p.number+' review',
-      'ALL HANDS—read-only review: independently inspect MJobs PR #'+p.number+' at exact commit '+p.headRefOid+'. Focus on behavioral correctness, negative testing, security regressions and acceptance proof. Summarize blockers to mjobs-luna-34. Never merge, force-push, claim the author branch, edit source or rerun tests repeatedly. If head moved, validate the new head first.','review:'+p.number+':'+p.headRefOid);
+      'ALL HANDS—read-only review: independently inspect MJobs PR #'+p.number+' at exact commit '+p.headRefOid+'. Focus on behavioral correctness, negative testing, security regressions and acceptance proof. Summarize blockers to '+root.id+'. Never merge, force-push, claim the author branch, edit source or rerun tests repeatedly. If head moved, validate the new head first.','review:'+p.number+':'+p.headRefOid);
    }else{
     push(s,'Independent acceptance audit',
-      'ALL HANDS—read-only verification: inspect the currently unaccepted P0 requirements and propose concrete negative tests or missing evidence without editing any shared files. Send exact issue IDs and observations to mjobs-luna-34. Avoid duplicating a review already assigned elsewhere.');
+      'ALL HANDS—read-only verification: inspect the currently unaccepted P0 requirements and propose concrete negative tests or missing evidence without editing any shared files. Send exact issue IDs and observations to '+root.id+'. Avoid duplicating a review already assigned elsewhere.');
    }
    continue;
   }
   const name=s.name.toLowerCase();
   const specialty=s.role==='Architecture'?'architecture / integration boundaries':s.role==='Deep implementation'?'difficult P0/P1 implementation and acceptance gaps':s.role==='Complex implementation'?'complex feature implementation':'your established feature domain';
   push(s,'Obtain a scoped '+specialty+' task',
-   'ALL HANDS—implementation: resume your existing assignment if unfinished. Otherwise inspect open unclaimed original P0/P1 requirements relevant to '+specialty+' ('+compact(s.name)+'). Immediately request a SPECIFIC GitHub issue, acceptance tests and EXCLUSIVE file ownership from mjobs-luna-34, attaching your proposed bounded slice. Begin implementation and validation once ownership is confirmed; finish a focused PR. Do not merely write a status report, duplicate another agent or modify dirty local main.');
+   'ALL HANDS—implementation: resume your existing assignment if unfinished. Otherwise inspect open unclaimed original P0/P1 requirements relevant to '+specialty+' ('+compact(s.name)+'). Immediately request a SPECIFIC GitHub issue, acceptance tests and EXCLUSIVE file ownership from '+root.id+', attaching your proposed bounded slice. Begin implementation and validation once ownership is confirmed; finish a focused PR. Do not merely write a status report, duplicate another agent or modify dirty local main.');
  }
  return {
   snapshotAt:snap.timestamp,
@@ -482,10 +493,11 @@ Turbo.prototype.allHands=async function(){
    if(this.isManualBusy())break;
    const batch=preview.plan.slice(offset,offset+3);
    const current=await this.getState(true);
+   if(this.currentRoot(current.sessions)?.id!==preview.root.id)break;
    if(current.offline||(await this.signals(current)).pausedReason)break;
    const results=await Promise.all(batch.map(async agent=>{
     const live=current.sessions.find(s=>s.id===agent.id);
-    if(!canReceiveInstruction(live))return {id:agent.id,skipped:true,reason:'Agent began work, needs a decision, or is no longer available'};
+    if(!this.availableForDispatch(live))return {id:agent.id,skipped:true,reason:'Agent began work, has a delivery hold, or is no longer available'};
     if(this.session.actions.some(a=>a.id===agent.id&&a.kind==='allhands'&&recent(a.at,allHandsHoldMs,this.clock())))
      return {id:agent.id,skipped:true,reason:'Already contacted in this burst'};
     if(agent.signalKey&&!this.dispatchSignals.reserve(agent.signalKey,agent.id,this.clock()))return {id:agent.id,skipped:true,reason:'Exact-head action already reserved'};

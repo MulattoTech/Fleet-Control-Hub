@@ -15,3 +15,21 @@ All modes retain quota, resource, ownership and delivery-receipt protections. Se
 Advanced Steady capacity and Turbo settings remain separate because the two dispatchers plan different work. Mission Control links to this canonical selector rather than offering a second mode switch.
 
 Source ownership remains in Fleet-Control-Hub. The UI repair does not activate session lifecycle cleanup or mutate private conversation history.
+## Updating an installed page
+
+An installed MJobs page can have a different approved startup and quota layout
+from the current repository template. Use scripts/mjobs-mode-markup.js to apply
+only the canonical selector fragment and mode-related wording to that page.
+The utility preserves its existing scripts, quota controls and startup markup;
+its result is idempotent and rejects ambiguous duplicate fragments.
+
+## Dispatch efficiency
+
+Automatic Turbo skips recipients whose earlier delivery is still reserved or
+uncertain before selecting actions or spending dispatch budgets. It checks
+again immediately before delivery, and a held reviewer cannot block a healthy
+reviewer. Existing receipt evidence is preserved.
+
+Prompts bind to one validated current primary. If that identity changes before
+delivery, or is ambiguous, the plan is stopped. Explicit frozen/dispatch-paused
+metadata is respected without guessing from old display names.

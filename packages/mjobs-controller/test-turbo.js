@@ -93,6 +93,7 @@ const run=async()=>{
  const raceResult=await race.cycle({manual:true});
  assert.ok(raceReads>=2,'The instruction-ready primary was selected and rechecked');
  assert.equal(raceResult.executed.length,0);assert.deepEqual(raceSent,[],'A decision appearing before delivery blocks the send');
+ await require('./test-turbo-delivery-fairness')();
  console.log('PASS Turbo: budgets, cooldowns, instruction-waiting primary, decision-race rejection, resource gates, persistence and private diagnostics');
  fs.rmSync(temp,{recursive:true,force:true});
 };
