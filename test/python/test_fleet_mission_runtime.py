@@ -81,3 +81,53 @@ def test_original_namespace_repository_and_snapshot_import_in_fresh_process(tmp_
     result = subprocess.run([sys.executable, "-I", "-c", script, str(SOURCE), str(repo), str(code)],
                             capture_output=True, text=True, timeout=10, check=True)
     assert "PASS namespace overlay" in result.stdout
+
+
+def proxy_fixture(root):
+    from types import SimpleNamespace
+    fixture_code(root)
+    source = root / "tools/agent_dashboard/fleet_proxy.py"
+    source.write_text("# fixed-target proxy fixture\n", encoding="utf-8")
+    manifest = json.loads((root / "source-manifest.json").read_text())
+    manifest["files"]["tools/agent_dashboard/fleet_proxy.py"] = hashlib.sha256(source.read_bytes()).hexdigest()
+    (root / "source-manifest.json").write_text(json.dumps(manifest))
+    return SimpleNamespace(__file__=str(source), ASSETS={"index.html", "app.js"},
+                           READS={"api/health", "api/startup"},
+                           WRITES={"api/master/pause", "api/startup"})
+
+
+def test_current_run_routes_are_exact_and_idempotent(tmp_path):
+    proxy = proxy_fixture(tmp_path)
+    before = {name: set(getattr(proxy, name)) for name in ("ASSETS", "READS", "WRITES")}
+    for _ in range(2):
+        module.configure_current_run_proxy(proxy, tmp_path)
+    assert proxy.ASSETS == before["ASSETS"] | {"run-ui.js"}
+    assert proxy.READS == before["READS"] | {"api/run"}
+    assert proxy.WRITES == before["WRITES"] | {"api/run/start"}
+    assert "api/run/start" not in proxy.READS
+    assert "api/run" not in proxy.WRITES
+
+
+def test_current_run_routes_require_verified_proxy(tmp_path):
+    proxy = proxy_fixture(tmp_path)
+    Path(proxy.__file__).write_text("# changed\n")
+    with pytest.raises(RuntimeError, match="manifest"):
+        module.configure_current_run_proxy(proxy, tmp_path)
+    assert "run-ui.js" not in proxy.ASSETS
+
+
+def test_current_run_routes_reject_foreign_module(tmp_path):
+    proxy = proxy_fixture(tmp_path)
+    proxy.__file__ = str(tmp_path / "outside.py")
+    with pytest.raises(RuntimeError, match="snapshot"):
+        module.configure_current_run_proxy(proxy, tmp_path)
+    assert "run-ui.js" not in proxy.ASSETS
+
+
+def test_changed_route_contract_cannot_partially_register(tmp_path):
+    proxy = proxy_fixture(tmp_path)
+    proxy.WRITES = ["api/master/pause", "api/startup"]
+    with pytest.raises(RuntimeError, match="contract"):
+        module.configure_current_run_proxy(proxy, tmp_path)
+    assert "run-ui.js" not in proxy.ASSETS
+    assert "api/run" not in proxy.READS

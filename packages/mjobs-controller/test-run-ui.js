@@ -9,10 +9,11 @@ const idle = { projectId: 'mjobs-luna', phase: 'paused', active: false, running:
 const response = value => ({ ok: true, json: async () => value });
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const flush = async () => { for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve)); };
-function fixture(handler) {
+function fixture(handler, pathname = '/') {
   const elements = new Map(), storage = new Map(), calls = [], timers = [];
   const element = id => { if (!elements.has(id)) elements.set(id, { textContent: '', disabled: false, classList: { add() {} }, setAttribute() {}, addEventListener(type, fn) { this[type] = fn; } }); return elements.get(id); };
   const context = vm.createContext({
+    location: { pathname },
     document: { getElementById: element }, sessionStorage: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) },
     fetch: async (url, options) => { calls.push({ url, body: options.body ? JSON.parse(options.body) : null }); return handler(url, options); },
     crypto: { randomUUID: () => 'stable-request-001' }, AbortSignal: { timeout: () => undefined }, structuredClone,
@@ -76,4 +77,12 @@ test('quota-held Start retains its visible identity and never posts', async () =
 test('missing quota is not ready and refresh alone never starts',async()=>{
  const f=fixture(()=>response({...idle,quota:{fresh:false}}));await flush();assert.equal(f.element('runStart').disabled,true);await f.timers[0]();
  assert.equal(f.calls.filter(x=>x.body).length,0);f.ui.dispose();
+});
+
+test('embedded Mission view routes status, Start and Pause under its own prefix', async () => {
+ const f=fixture(url=>url==='/fleet/api/run/start'?response({run:{...idle,phase:'starting',active:true}}):response(idle),'/fleet/');await flush();
+ assert.equal(f.calls[0].url,'/fleet/api/run');await f.element('runStart').click();await f.element('runPause').click();
+ assert.equal(f.calls.filter(x=>x.url==='/fleet/api/run/start').length,1);
+ assert.equal(f.calls.filter(x=>x.url==='/fleet/api/master/pause').length,1);
+ assert.equal(f.calls.some(x=>x.url.startsWith('/api/')),false);f.ui.dispose();
 });

@@ -33,3 +33,7 @@ Deploy only reviewed UI files into the existing native runtime, with exact-byte 
 ## Reuse in future projects
 
 The UI package and normalized presentation example are reusable now. A future project needs an adapter providing its own verified status, quota, capabilities and idempotent Start/Pause operations. The present release does not make arbitrary projects automatically controllable and does not collapse MJobs' machine-level emergency scope into BabyTracker's project-level scope. See `packages/fleet-ui/README.md` for the contract and deliberate limits.
+
+## Embedded Mission Control routing
+
+The final origin check found that the legacy snapshot proxy did not register the ordinary run UI or APIs. The maintained Mission Control launcher now adds only `run-ui.js`, GET `api/run`, and POST `api/run/start` after validating the proxy's source-manifest hash and its expected route-set contract. All existing loopback, same-origin, action-header, JSON and body-size checks remain in the original proxy. Native `run-ui.js` selects `/fleet` only when embedded under that route, so status, Start and Pause reach the same controller. Direct Fleet URLs remain unchanged. These routes must be tested with mocked native actions; no paid launch is required to verify routing.

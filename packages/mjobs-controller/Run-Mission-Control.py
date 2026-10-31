@@ -35,6 +35,36 @@ def prepend_runtime_path(package, code: Path) -> None:
     package.__path__ = [str(code / "tools"), *original]
 
 
+
+def configure_current_run_proxy(proxy, code: Path) -> None:
+    """Register three fixed current-run routes in the verified legacy proxy.
+
+    The existing proxy retains its loopback, origin, action-header, body-size,
+    fixed-upstream and no-retry checks. No arbitrary API prefix is admitted.
+    """
+    relative = "tools/agent_dashboard/fleet_proxy.py"
+    expected_path = (code / relative).resolve()
+    manifest = json.loads((code / "source-manifest.json").read_text(encoding="utf-8"))
+    expected_hash = manifest.get("files", {}).get(relative)
+    if Path(getattr(proxy, "__file__", "")).resolve() != expected_path:
+        raise RuntimeError("Mission proxy did not load from its verified snapshot")
+    if not expected_hash or hashlib.sha256(expected_path.read_bytes()).hexdigest() != expected_hash:
+        raise RuntimeError("Mission proxy is not covered by the verified source manifest")
+    required = {"ASSETS": {"index.html", "app.js"},
+                "READS": {"api/health", "api/startup"},
+                "WRITES": {"api/master/pause", "api/startup"}}
+    additions = {"ASSETS": {"run-ui.js"}, "READS": {"api/run"},
+                 "WRITES": {"api/run/start"}}
+    updated = {}
+    for name, markers in required.items():
+        current = getattr(proxy, name, None)
+        if not isinstance(current, set) or not markers.issubset(current):
+            raise RuntimeError("Mission proxy route contract has changed")
+        updated[name] = current | additions[name]
+    for name, routes in updated.items():
+        setattr(proxy, name, routes)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", required=True)
@@ -54,6 +84,8 @@ def main() -> None:
     # Git operations, shared tools, venv and persisted launcher state stay intact.
     prepend_runtime_path(tools, code)
     server = importlib.import_module("tools.agent_dashboard.server")
+    proxy = importlib.import_module("tools.agent_dashboard.fleet_proxy")
+    configure_current_run_proxy(proxy, code)
     import uvicorn
     uvicorn.run(server.create_app(repo, mission_instance=True), host="127.0.0.1", port=18729, log_level="warning")
 
