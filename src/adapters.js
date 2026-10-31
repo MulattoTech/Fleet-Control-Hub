@@ -58,10 +58,11 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
         try{master=await read(id,'/api/master')}catch{};try{sustain=await read(id,'/api/sustain')}catch{};try{quota=await read(id,'/api/quota')}catch{};
         try{const value=await read(id,'/api/run');if(value.projectId==='mjobs-luna')run=value;}catch{}
         const evidence=progressReader(),lifecycle=mjobsLifecycle(sustain),summary=summarizeMJobs(raw,master);
+        summary.start={known:!!run,phase:run?.phase,active:run?.active===true,running:run?.running===true,pendingKind:run?.pending?.kind||null,quota:run?.quota?{fresh:run.quota.fresh===true,remainingPercent:run.quota.remainingPercent,minimumRemainingPercent:run.quota.minimumRemainingPercent,blocked:run.quota.blocked===true,reason:typeof run.quota.reason==='string'?run.quota.reason.slice(0,300):null}:null,blockedReasons:Array.isArray(run?.blockedReasons)?run.blockedReasons.filter(x=>typeof x==='string').map(x=>x.slice(0,300)):[]};
         if(run){summary.mode=run.active===true?'starting':run.running===true?'running':safeMode(run.phase);if(run.error)summary.detail=String(run.error).slice(0,200);}
         return {...summary,controlUrl:urls[id],safety:mjobsSafety(master,quota),progress:{...evidence,lifecycle,pipeline:mjobsPipeline(lifecycle,evidence)}};
       }
-      if(id==='babytracker') {const raw=await read(id,'/api/state');return {...summarizeBaby(raw),controlUrl:urls[id],safety:babySafety(raw),progress:babyProgress(raw)};}
+      if(id==='babytracker') {const raw=await read(id,'/api/state');return {...summarizeBaby(raw),controlUrl:urls[id],safety:babySafety(raw),start:{known:true,phase:raw.mode==='running'?'running':raw.mode==='paused'?'paused':'blocked',running:raw.mode==='running',active:false,quota:{fresh:raw.quota?.fresh===true,remainingPercent:raw.quota?.remainingPercent,minimumRemainingPercent:raw.quotaPolicy?.minimumAllowedPercent,blocked:raw.quota?.blocked===true},blockedReasons:['pending','uncertain'].includes(raw.bootstrap?.status)?['A native launch needs reconciliation.']:raw.mode==='draining'?['Graceful stop is in progress.']:[]},progress:babyProgress(raw)};}
       throw Error('Unknown fleet');
     } catch(e) {return {id,name:id==='mjobs'?'MJobs':'BabyTracker',online:false,mode:'unavailable',total:null,working:null,idle:null,pending:null,attention:null,review:'unavailable',controlUrl:urls[id],detail:String(e.message).slice(0,130)};}
   }

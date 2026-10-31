@@ -5,13 +5,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, 'public/run-ui.js'), 'utf8');
-const idle = { projectId: 'mjobs-luna', phase: 'paused', active: false, running: false, quota: { fresh: true, remainingPercent: 80 } };
+const idle = { projectId: 'mjobs-luna', phase: 'paused', active: false, running: false, quota: { fresh: true, remainingPercent: 80, minimumRemainingPercent: 7, blocked: false } };
 const response = value => ({ ok: true, json: async () => value });
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const flush = async () => { for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve)); };
 function fixture(handler) {
   const elements = new Map(), storage = new Map(), calls = [], timers = [];
-  const element = id => { if (!elements.has(id)) elements.set(id, { textContent: '', disabled: false, classList: { add() {} }, addEventListener(type, fn) { this[type] = fn; } }); return elements.get(id); };
+  const element = id => { if (!elements.has(id)) elements.set(id, { textContent: '', disabled: false, classList: { add() {} }, setAttribute() {}, addEventListener(type, fn) { this[type] = fn; } }); return elements.get(id); };
   const context = vm.createContext({
     document: { getElementById: element }, sessionStorage: { getItem: key => storage.get(key) || null, setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) },
     fetch: async (url, options) => { calls.push({ url, body: options.body ? JSON.parse(options.body) : null }); return handler(url, options); },
@@ -52,11 +52,11 @@ test('transport retry retains the request ID and polling observes completion', a
     return response(current);
   });
   await flush(); await f.element('runStart').click();
-  assert.equal(f.element('runStart').textContent, 'Retry Start');
+  assert.equal(f.element('runStartLabel').textContent, 'Start MJobs'); assert.match(f.element('runDetail').textContent, /Retry the same Start request/);
   await f.element('runStart').click();
   const attempts = f.calls.filter(call => call.url === '/api/run/start'); assert.equal(attempts.length, 2); assert.equal(attempts[0].body.requestId, attempts[1].body.requestId);
   current = { ...current, phase: 'running', active: false, running: true }; await f.timers[0]();
-  assert.equal(f.ui.status().running, true); assert.equal(f.element('runBadge').textContent, 'RUNNING'); f.ui.dispose();
+  assert.equal(f.ui.status().running, true); assert.equal(f.element('runBadge').textContent, 'Running'); f.ui.dispose();
 });
 test('a lost POST response is reconciled by GET without another submission', async () => {
   let current = idle;
@@ -66,4 +66,14 @@ test('a lost POST response is reconciled by GET without another submission', asy
   });
   await flush(); await f.element('runStart').click();
   assert.equal(f.ui.status().running, true); assert.equal(f.storage.size, 0); assert.equal(f.calls.filter(call => call.url === '/api/run/start').length, 1); f.ui.dispose();
+});
+
+test('quota-held Start retains its visible identity and never posts', async () => {
+ const f=fixture(()=>response({...idle,quota:{fresh:true,remainingPercent:7,minimumRemainingPercent:7,blocked:true}}));await flush();
+ assert.equal(f.element('runStartLabel').textContent,'Start MJobs');assert.equal(f.element('runStart').disabled,true);await f.element('runStart').click();
+ assert.equal(f.calls.filter(x=>x.url==='/api/run/start').length,0);assert.match(f.element('runDetail').textContent,/7% remaining \/ 7% reserve/);f.ui.dispose();
+});
+test('missing quota is not ready and refresh alone never starts',async()=>{
+ const f=fixture(()=>response({...idle,quota:{fresh:false}}));await flush();assert.equal(f.element('runStart').disabled,true);await f.timers[0]();
+ assert.equal(f.calls.filter(x=>x.body).length,0);f.ui.dispose();
 });
