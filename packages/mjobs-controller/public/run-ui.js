@@ -38,8 +38,9 @@ const FleetRunUI = (() => {
   let run = null, busy = false, reading = false, refreshQueued = false, error = null, timer, disposed = false, epoch = 0;
   let pending = null; try { pending = sessionStorage.getItem(key); } catch {}
   function save(value) { pending = value; try { if (value) sessionStorage.setItem(key, value); else sessionStorage.removeItem(key); } catch {} }
+  const runPrefix = typeof location !== 'undefined' && location.pathname.startsWith('/fleet/') ? '/fleet' : '';
   async function request(url, body) {
-    const response = await fetch(url, { cache: 'no-store', ...(body === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json', 'x-ao-fleet': '1' }, body: JSON.stringify(body) }), signal: AbortSignal.timeout(10000) });
+    const response = await fetch(runPrefix + url, { cache: 'no-store', ...(body === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json', 'x-ao-fleet': '1' }, body: JSON.stringify(body) }), signal: AbortSignal.timeout(10000) });
     const value = await response.json();
     if (!response.ok) throw Object.assign(Error(value.error || 'Controller refused the action'), { definitive: value.definitive === true || (response.status >= 400 && response.status < 500) });
     return value;
