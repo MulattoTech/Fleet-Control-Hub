@@ -1,14 +1,15 @@
 (function(){
  'use strict';
- // No command proxy is installed. Do not make disabled remote controls look live.
+ // Navigation only: this publisher remains read-only and never proxies commands.
  function start(doc){
   const panel=doc.getElementById('remote-controls');if(panel){
-   const heading=doc.createElement('h2');heading.textContent='Fleet controls';
-   const note=doc.createElement('p');note.className='control-note';note.textContent='Remote command controls are not enabled. This page provides live status and clickable agent details. Use Fleet Control on the workstation for pause/resume, status requests, task delegation and model changes.';
-   const home=doc.createElement('a');home.href='/';home.textContent='Open the service hub for remote desktop access';home.className='control-note';
-   panel.replaceChildren(heading,note,home);
+   const copy=doc.createElement('div'),heading=doc.createElement('h2');heading.textContent='Ready to work on a project?';
+   const note=doc.createElement('p');note.className='control-note';note.textContent='Open the protected control dashboard, then press Start on your project. This activity monitor never launches agents.';
+   copy.append(heading,note);
+   const home=doc.createElement('a');home.href='https://fleet.m-techlabs.com';home.textContent='Open Fleet Control';home.className='fd-power';
+   panel.replaceChildren(copy,home);
   }
-  return {available:()=>false,refresh:()=>{},request:async()=>{throw Error('Remote commands are not enabled. Use the local Fleet Control dashboard.');}};
+  return {available:()=>false,refresh:()=>{},request:async()=>{throw Error('Remote commands are not enabled on this read-only monitor. Open the protected Fleet Control dashboard.');}};
  }
  if(typeof module==='object'&&module.exports)module.exports={start};else globalThis.FleetRemoteControls={start};
 })();

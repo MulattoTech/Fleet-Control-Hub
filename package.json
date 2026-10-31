@@ -1,6 +1,6 @@
 {
   "name": "fleet-control-hub",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Canonical shared Fleet UI and project-scoped controller packages",
   "scripts": {
@@ -8,7 +8,9 @@
     "test": "node --test test/*.test.js",
     "test:babytracker": "node --test packages/babytracker-controller/test/*.test.js",
     "test:mjobs": "node packages/mjobs-controller/check-fleet.js",
-    "verify:packages": "node scripts/controller-package.js verify babytracker-controller && node scripts/controller-package.js verify mjobs-controller"
+    "verify:packages": "node scripts/controller-package.js verify babytracker-controller && node scripts/controller-package.js verify mjobs-controller",
+    "build:ui": "node scripts/build-fleet-ui.js",
+    "verify:ui": "node scripts/build-fleet-ui.js --check"
   },
   "engines": {
     "node": ">=22"

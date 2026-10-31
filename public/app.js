@@ -1,3 +1,33 @@
+/* BEGIN GENERATED FLEET UI */
+/* Fleet UI 1.0: pure presentation, never execution authority. */
+var FleetPower = (() => {
+  'use strict';
+  const finite = n => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 100;
+  function present(input = {}) {
+    const name = typeof input.name === 'string' && input.name.trim() ? input.name.slice(0, 80) : 'project';
+    const result = { label: 'Start ' + name, state: 'unavailable', status: 'Controller unavailable',
+      detail: 'Connect the project controller to read its current state.', canStart: false, remaining: null, reserve: null };
+    const q = input.quota || {};
+    if (q.fresh === true && finite(q.remainingPercent)) result.remaining = q.remainingPercent;
+    if (finite(q.minimumRemainingPercent)) result.reserve = q.minimumRemainingPercent;
+    if (input.online !== true || input.known !== true) return result;
+    if (input.error) return { ...result, status: 'Status unavailable', detail: String(input.error).slice(0, 300) };
+    const reasons = Array.isArray(input.blockedReasons) ? input.blockedReasons.filter(x => typeof x === 'string' && x).join('; ').slice(0, 400) : '';
+    if (input.active === true || input.busy === true) return { ...result, state: 'starting', status: 'Starting', detail: 'Preparing the project. This operation is already in progress; no second launch is needed.' };
+    if (input.running === true) return { ...result, state: 'running', status: 'Running', detail: 'Automatic work is enabled. Pause stops new assignments; running turns may finish.' };
+    if (input.phase === 'uncertain' && !['spawn', 'resume'].includes(input.pendingKind)) return { ...result, state: 'attention', status: 'Needs reconciliation', detail: reasons || 'A previous delivery is unverified. Inspect its receipt before sending more work.' };
+    if (reasons) return { ...result, state: 'attention', status: 'Start blocked', detail: reasons };
+    if (q.fresh !== true || result.remaining === null || result.reserve === null) return { ...result, state: 'checking', status: 'Waiting for usage', detail: 'A fresh usage reading and the saved reserve are required. Status updates automatically.' };
+    if (q.blocked === true || result.remaining <= result.reserve) return { ...result, state: 'held', status: result.remaining === 0 ? 'Allowance exhausted' : 'Quota hold', detail: result.remaining <= result.reserve ? `${result.remaining}% remaining / ${result.reserve}% reserve. Start becomes available above the reserve; a reset never launches agents automatically.` : String(q.reason || 'The provider currently blocks new work.').slice(0, 300) };
+    if (!['idle', 'paused', 'blocked', 'uncertain'].includes(input.phase)) return { ...result, state: 'attention', status: 'State needs review', detail: 'The controller reported an unrecognized run state. No launch is offered.' };
+    if (input.phase === 'uncertain') return { ...result, state: 'attention', status: 'Verify pending launch', canStart: true, detail: 'Start checks the existing launch receipt. It must not create a duplicate operation.' };
+    return { ...result, state: 'ready', status: input.phase === 'paused' ? 'Paused · ready to start' : 'Ready to start', canStart: true,
+      detail: input.retry ? 'Retry the same Start request. The controller verifies its original outcome before continuing.' : 'One click resumes the project mission with your saved limits. No prompt to write.' };
+  }
+  return Object.freeze({ present });
+})();
+if (typeof module === 'object' && module.exports) module.exports = FleetPower;
+/* END GENERATED FLEET UI */
 'use strict';
 const $=id=>document.getElementById(id);
 let token=null;
@@ -58,29 +88,60 @@ function confirmAction(message,exact){
 }
 function count(x){return Number.isInteger(x)?x:'—';}
 function metric(label,value){const node=el('div','metric');node.append(el('b','',count(value)),el('span','',label));return node;}
-function render(fleets){const holder=$('fleets');holder.replaceChildren();let active=0;
-  for(const fleet of fleets){if(Number.isInteger(fleet.total))active+=fleet.total;
-    const row=el('article','fleet'+(fleet.online?'':' offline'));
-    const title=el('div','fleet-title');title.append(el('h2','',fleet.name),el('span','state',fleet.online?'Controller online':'Controller unavailable'),el('p','',fleet.mode));
-    const metrics=el('div','metrics');metrics.append(metric('Sessions',fleet.total),metric('Working',fleet.working),metric('Available',fleet.idle),metric('Needs attention',fleet.attention));
-    const actions=el('div','fleet-actions');const open=el('a','action','Full controls');open.href=fleet.controlUrl;open.rel='noopener';
-    const start=el('button','start','Start fleet');start.type='button';start.disabled=!fleet.online||pendingActions.has(fleet.id+':start');start.addEventListener('click',()=>startFleet(fleet.id,fleet.name,start));
-    const one=el('button','','Start one session');one.type='button';one.disabled=!fleet.online||pendingActions.has(fleet.id+':one-session');one.addEventListener('click',()=>startOneMJobs(one));
-    const pause=el('button','','Pause dispatch');pause.type='button';pause.disabled=!fleet.online||pendingActions.has(fleet.id+':pause');pause.addEventListener('click',()=>controlFleet(fleet.id,fleet.name,'pause',pause));
-    const stop=el('button','stop','Graceful stop');stop.type='button';stop.disabled=!fleet.online||pendingActions.has(fleet.id+':graceful-stop');stop.addEventListener('click',()=>controlFleet(fleet.id,fleet.name,'graceful-stop',stop));
-    const reviews=el('button','','Review queue');reviews.type='button';reviews.disabled=!fleet.online;reviews.addEventListener('click',()=>{if(openReviews.has(fleet.id)){openReviews.delete(fleet.id);reviewPanel.replaceChildren();}else{openReviews.set(fleet.id,0);loadReviewQueue(fleet.id,reviewPanel,0);}});
-    const limits=el('button','','Limits');limits.type='button';limits.disabled=!fleet.online;limits.addEventListener('click',()=>{if(openLimits.has(fleet.id)){openLimits.delete(fleet.id);limitPanel.replaceChildren();}else loadLimits(fleet.id,limitPanel);});
-    actions.append(start);actions.append(pause,stop,limits,reviews);if(fleet.id==='mjobs'){const advanced=el('details','advanced-controls'),summary=el('summary','','Advanced');advanced.append(summary,one);actions.append(advanced);}if(['127.0.0.1','localhost'].includes(location.hostname))actions.append(open);
-    const detail=el('div','detail');detail.append(el('strong','','Controls: '),document.createTextNode(safetyText(fleet.safety)),el('br'),el('strong','','Progress: '),document.createTextNode(progressText(fleet)+(fleet.detail?'  •  '+fleet.detail:'')));
-    const reviewPanel=el('section','review-panel');reviewPanel.setAttribute('aria-label',fleet.name+' review candidates');
-    const limitPanel=el('section','limit-panel');limitPanel.setAttribute('aria-label',fleet.name+' limits');
-    row.append(title,metrics,actions,detail,limitPanel,reviewPanel);holder.append(row);
-    if(openLimits.has(fleet.id))renderLimits(fleet.id,limitPanel,openLimits.get(fleet.id));
-    if(openReviews.has(fleet.id))loadReviewQueue(fleet.id,reviewPanel,openReviews.get(fleet.id));
+const fleetViews = new Map();
+function render(fleets) {
+  const holder = $('fleets');
+  for (const fleet of fleets) {
+    let v = fleetViews.get(fleet.id);
+    if (!v) {
+      const row = el('article', 'fleet'); row.setAttribute('data-project', fleet.id);
+      const title = el('div','fleet-title'), name = el('h2','',fleet.name), identity = el('div','');
+      identity.append(name,el('span','project-id',fleet.id)); const kind=el('span','project-kind','Project controller'); title.append(identity,kind);
+      const content=el('div','fleet-content'), power=el('div','power-column'), telemetry=el('div','telemetry-column');
+      const start=el('button','fd-power'), icon=el('span','fd-power-icon'), label=el('span','','Start '+fleet.name);
+      icon.setAttribute('aria-hidden','true');start.type='button';start.append(icon,label);start.setAttribute('aria-label','Start '+fleet.name);
+      const state=el('div','fd-status','Checking'), reason=el('p','fd-reason','Reading project state.'); reason.id='start-reason-'+fleet.id;
+      start.setAttribute('aria-describedby',reason.id);state.setAttribute('role','status');start.addEventListener('click',()=>startFleet(fleet.id,fleet.name,start));
+      power.append(start,state,reason);const metrics=el('div','metrics'), nums={};
+      for(const [field,caption] of [['total','Sessions'],['working','Working'],['idle','Available'],['attention','Needs attention']]){
+        const item=el('div','metric'),value=el('b','fd-num','—');nums[field]=value;item.append(value,el('span','',caption));metrics.append(item);
+      }
+      const allowance=el('div','allowance'), heading=el('div','allowance-heading'), value=el('strong','fd-num','—'), meter=el('meter','fd-meter');
+      meter.min=0;meter.max=100;meter.value=0;meter.setAttribute('aria-label','Reported Codex allowance remaining');
+      heading.append(el('span','','Codex allowance'),value);const caption=el('div','allowance-caption'), reserve=el('span','','Reserve unavailable'), freshness=el('span','','Waiting for telemetry');caption.append(reserve,freshness);allowance.append(heading,meter,caption);telemetry.append(metrics,allowance);content.append(power,telemetry);
+      const actions=el('div','fleet-actions'), pause=el('button','','Pause dispatch'), stop=el('button','stop','Graceful stop'), limits=el('button','','Limits'), reviews=el('button','','Review queue');
+      for(const b of [pause,stop,limits,reviews])b.type='button';
+      pause.addEventListener('click',()=>controlFleet(fleet.id,fleet.name,'pause',pause));stop.addEventListener('click',()=>controlFleet(fleet.id,fleet.name,'graceful-stop',stop));
+      const reviewPanel=el('section','review-panel'),limitPanel=el('section','limit-panel');reviewPanel.setAttribute('aria-label',fleet.name+' review candidates');limitPanel.setAttribute('aria-label',fleet.name+' limits');
+      reviews.addEventListener('click',()=>{if(openReviews.has(fleet.id)){openReviews.delete(fleet.id);reviewPanel.replaceChildren();}else{openReviews.set(fleet.id,0);loadReviewQueue(fleet.id,reviewPanel,0);}});
+      limits.addEventListener('click',()=>{if(openLimits.has(fleet.id)){openLimits.delete(fleet.id);limitPanel.replaceChildren();}else loadLimits(fleet.id,limitPanel);});
+      actions.append(pause,stop,limits,reviews);
+      if(fleet.id==='mjobs'){const advanced=el('details','advanced-controls'),summary=el('summary','','Advanced recovery'),one=el('button','','Restore one saved session');one.type='button';one.addEventListener('click',()=>startOneMJobs(one));advanced.append(summary,one);actions.append(advanced);}
+      if(['127.0.0.1','localhost'].includes(location.hostname)){const open=el('a','action','Full controls');open.href=fleet.controlUrl;actions.append(open);}
+      const detail=el('div','detail');row.append(title,content,actions,detail,limitPanel,reviewPanel);holder.append(row);
+      v={row,start,label,state,reason,nums,value,meter,reserve,freshness,detail,kind,pause,stop,limits,reviews};fleetViews.set(fleet.id,v);
+    }
+    const model=FleetPower.present({...fleet.start,name:fleet.name,online:fleet.online,known:fleet.start?.known===true,busy:pendingActions.has(fleet.id+':start')});
+    v.row.className='fleet'+(fleet.online?'':' offline');v.row.setAttribute('data-power-state',model.state);
+    v.start.disabled=!model.canStart;v.start.setAttribute('aria-busy',String(model.state==='starting'));
+    v.label.textContent=model.label;v.state.textContent=model.status;v.reason.textContent=model.detail;
+    v.kind.textContent=fleet.online?'Controller connected':'Controller unavailable';
+    for(const key of Object.keys(v.nums))v.nums[key].textContent=fleet.online&&Number.isInteger(fleet[key])?fleet[key].toLocaleString():'—';
+    v.value.textContent=model.remaining===null?'—':model.remaining+'%';v.meter.hidden=model.remaining===null;v.meter.value=model.remaining??0;
+    v.reserve.textContent=model.reserve===null?'Reserve unavailable':model.reserve+'% saved reserve';v.freshness.textContent=fleet.start?.quota?.fresh===true?'Fresh provider reading':'Usage unavailable';
+    for(const [button,action] of [[v.pause,'pause'],[v.stop,'graceful-stop']])button.disabled=!fleet.online||pendingActions.has(fleet.id+':'+action);
+    v.limits.disabled=v.reviews.disabled=!fleet.online;
+    v.detail.textContent=safetyText(fleet.safety)+'. '+progressText(fleet);
   }
-  $('totals').replaceChildren(el('b','',active),el('span','','tracked sessions across both fleets'));
+  const missing=Array.from(fleetViews.keys()).filter(id=>!fleets.some(f=>f.id===id));
+  for(const id of missing){const v=fleetViews.get(id);v.start.disabled=true;v.state.textContent='Project unavailable';v.reason.textContent='This controller was not present in the latest response.';}
+  const available=fleets.filter(f=>f.online&&Number.isInteger(f.total));
+  const total=available.reduce((sum,f)=>sum+f.total,0);
+  $('totals').replaceChildren(el('b','',available.length?total.toLocaleString():'—'),el('span','',available.length===fleets.length?'Tracked sessions':'Sessions in connected fleets'));
 }
-async function refresh(){const button=$('refresh');button.disabled=true;try{const r=await fetch('/api/status',{cache:'no-store'});if(!r.ok)throw Error('Hub returned '+r.status);const data=await r.json();render(data.fleets);$('notice').textContent=(lastActionMessage?lastActionMessage+' ':'')+'Observed '+new Date(data.observedAt).toLocaleTimeString()+'. Status reads do not dispatch work.';}catch(e){$('notice').textContent=(lastActionMessage?lastActionMessage+' ':'')+'Status unavailable: '+e.message;}finally{button.disabled=false;}}
+
+let refreshInFlight=false;
+async function refresh(){if(refreshInFlight)return;refreshInFlight=true;const button=$('refresh');button.disabled=true;try{const r=await fetch('/api/status',{cache:'no-store'});if(!r.ok)throw Error('Hub returned '+r.status);const data=await r.json();render(data.fleets);$('notice').textContent=(lastActionMessage?lastActionMessage+' ':'')+'Observed '+new Date(data.observedAt).toLocaleTimeString()+'. Status reads do not dispatch work.';}catch(e){for(const v of fleetViews.values()){v.start.disabled=true;v.state.textContent='Status unavailable';v.reason.textContent='Controller status could not be refreshed. No new launch is offered.';} $('notice').textContent=(lastActionMessage?lastActionMessage+' ':'')+'Status unavailable: '+e.message;}finally{button.disabled=false;refreshInFlight=false;}}
 function safetyText(s){if(!s)return 'Unavailable';const scope=s.emergencyScope==='machine'?'machine-wide Codex/AO':s.emergencyScope==='project'?'project sessions':'unknown';return (s.emergency?'Emergency latched':s.gracefulStop?'Graceful stop in progress':s.dispatchEnabled?'Dispatch enabled':'Dispatch paused')+'; Codex remaining '+(s.codexQuotaFresh&&s.codexRemaining!=null?s.codexRemaining+'%':'unavailable')+'; emergency scope: '+scope;}
 function progressText(fleet){const p=fleet.progress;if(!p?.pipeline?.available)return 'Work stage unavailable';
   const fields=[['proposed','proposed'],['approved','approved'],['active','active'],['completed','completed'],['accepted','accepted'],['blocked','blocked'],['unassessed','unassessed']];

@@ -17,3 +17,5 @@ scope-staging/
 **/*.log
 **/*.jsonl
 **/runtime-state/
+
+.taste-skill/

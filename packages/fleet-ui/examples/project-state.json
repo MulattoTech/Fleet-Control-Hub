@@ -1,0 +1,14 @@
+{
+  "name": "Research Lab",
+  "online": false,
+  "known": false,
+  "phase": "unavailable",
+  "quota": {
+    "fresh": false,
+    "remainingPercent": null,
+    "minimumRemainingPercent": null
+  },
+  "blockedReasons": [
+    "No controller adapter has been registered."
+  ]
+}

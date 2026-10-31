@@ -1,5 +1,9 @@
 # Fleet Control Hub
 
+## Fleet UI 1.0
+
+The shared Hub, native MJobs page and remote monitor now share the Flight Deck design. The power action keeps its **Start MJobs** label; quota holds and recovery states are explained separately. See [design and validation](docs/FLIGHT_DECK_DESIGN.md) and the [reusable UI package](packages/fleet-ui/README.md). `npm run build:ui` synchronizes assets; `npm run verify:ui` checks drift. New project execution still requires a project-specific adapter.
+
 **Canonical shared Fleet source:** the hub plus both project-scoped controllers now
 live in this repository. BabyTracker and MJobs contain application code, not separate
 maintained controller implementations. See [controller packages](docs/CONTROLLER_PACKAGES.md).

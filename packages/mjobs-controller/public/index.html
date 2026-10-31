@@ -23,7 +23,8 @@
   <link rel="stylesheet" href="/find-work.css">
   <link rel="stylesheet" href="/master.css">
 </head>
-<body>
+<body class="flight-deck">
+  <a class="fd-skip" href="#runSection">Skip to Start MJobs</a>
   <div class="app-shell">
     <aside class="sidebar">
       <a class="brand" href="/" aria-label="MJobs Fleet Control">
@@ -56,10 +57,17 @@
       </header>
       <div class="main-content">
         <section class="headline">
-          <div><div class="eyebrow"><span class="dot inline"></span> FLEET CONTROL <span class="slash">/</span> MJOBS</div><h1>Your agent fleet, <em>under control.</em></h1><p>Monitor activity, find idle capacity, and adjust the right agent without losing its work.</p></div>
+          <div><div class="eyebrow"><span class="dot inline"></span> Fleet Control <span class="slash">/</span> MJOBS</div><h1>MJobs fleet</h1><p>Start your saved mission. Keep quota, activity and work ownership in view.</p></div>
           <div class="headline-side"><span class="live-label"><span class="pulse"></span> <span id="connectionText">CONNECTING</span></span><span class="small-muted">Automatic refresh every 8 seconds</span></div>
         </section>
         <section id="runSection" aria-label="Start and pause MJobs"></section>
+        <section class="metrics-grid" aria-label="Fleet metrics">
+          <article class="metric-card"><div class="metric-heading"><span>Tracked sessions</span><span class="metric-icon">▦</span></div><div class="metric-number" id="mTotal">—</div><div class="metric-footer">Across all model classes</div></article>
+          <article class="metric-card"><div class="metric-heading"><span>Working now</span><span class="metric-icon cyan">↗</span></div><div class="metric-number" id="mWorking">—</div><div class="metric-footer"><span class="mini-dot cyan"></span> Executing an agent turn</div></article>
+          <article class="metric-card"><div class="metric-heading"><span>Available</span><span class="metric-icon gold">◷</span></div><div class="metric-number" id="mIdle">—</div><div class="metric-footer" id="idleFoot">No outstanding PR or CI blocker</div></article>
+          <article class="metric-card"><div class="metric-heading"><span>CI attention</span><span class="metric-icon coral">⚑</span></div><div class="metric-number" id="mAttention">—</div><div class="metric-footer">Agents with failing checks</div></article>
+        </section>
+        <details class="fd-disclosure"><summary>Usage and reserve settings</summary>
         <section id="quotaSection" class="quota-section" aria-label="Codex usage and automatic quota protection">
           <div class="quota-policy-panel" id="quotaPolicyPanel" role="status" aria-live="polite">
             <strong id="quotaPolicyState">Checking start / new-work limit...</strong>
@@ -94,13 +102,10 @@
             </details>
           </div>
         </section>
+        </details>
         <details class="startup-panel"><summary>Advanced: restore a saved fleet</summary><section id="startupSection" aria-label="Preserved fleet recovery"></section></details>
-        <section class="metrics-grid" aria-label="Fleet metrics">
-          <article class="metric-card"><div class="metric-heading"><span>TRACKED SESSIONS</span><span class="metric-icon">▦</span></div><div class="metric-number" id="mTotal">—</div><div class="metric-footer">Across all model classes</div></article>
-          <article class="metric-card"><div class="metric-heading"><span>WORKING NOW</span><span class="metric-icon cyan">↗</span></div><div class="metric-number" id="mWorking">—</div><div class="metric-footer"><span class="mini-dot cyan"></span> Executing an agent turn</div></article>
-          <article class="metric-card"><div class="metric-heading"><span>IDLE CAPACITY</span><span class="metric-icon gold">◷</span></div><div class="metric-number" id="mIdle">—</div><div class="metric-footer" id="idleFoot">No outstanding PR or CI blocker</div></article>
-          <article class="metric-card"><div class="metric-heading"><span>CI ATTENTION</span><span class="metric-icon coral">⚑</span></div><div class="metric-number" id="mAttention">—</div><div class="metric-footer">Agents with failing checks</div></article>
-        </section>
+
+        <details class="fd-disclosure"><summary>Recovery and emergency controls</summary>
         <section id="masterSection" class="master-section" aria-label="Master fleet controls">
           <div class="master-heading">
             <div><span class="section-kicker">COMMAND & SAFETY</span><h2>Master controls <span id="masterState" class="master-status-badge">MONITORING</span></h2></div>
@@ -142,11 +147,12 @@
             <div class="restore-progress-details"><span id="restoreNumbers">Checking session records…</span><span id="restoreCurrent">No active restoration</span></div>
           </div>
         </section>
+        </details>
         <section class="turbo-panel" id="turboSection" aria-label="Automatic dispatch mode">
           <div class="turbo-top">
             <div class="turbo-identity">
               <div class="turbo-symbol">↗</div>
-              <div><div class="section-kicker">AUTONOMOUS FLEET CONTROL</div><h2>Automatic dispatch <span hidden id="turboStatus" class="turbo-status off">OFF</span></h2>
+              <div><div class="section-kicker">Automatic work</div><h2>Automatic dispatch <span hidden id="turboStatus" class="turbo-status off">OFF</span></h2>
                 <p>Choose how the fleet keeps working. Switching modes preserves running agents and your saved limits.</p></div>
             </div>
             <div class="turbo-header-actions">
@@ -215,20 +221,20 @@
         </section>
         <section class="intelligence">
           <div class="capacity-panel panel">
-            <div class="panel-header"><div><span class="section-kicker">FLEET INTELLIGENCE</span><h2>Activity distribution</h2></div><span class="muted-right">Real-time</span></div>
+            <div class="panel-header"><div><span class="section-kicker">Fleet intelligence</span><h2>Activity distribution</h2></div><span class="muted-right">Real-time</span></div>
             <div class="distribution"><div class="donut" id="donut"><div class="donut-hole"><strong id="dTotal">—</strong><small>SESSIONS</small></div></div>
               <div class="legend"><div><span class="legend-line"><i class="legend-dot working"></i>Working</span><strong id="lWorking">—</strong></div><div><span class="legend-line"><i class="legend-dot ready"></i>Idle · available</span><strong id="lReady">—</strong></div><div><span class="legend-line"><i class="legend-dot pending"></i>Idle · PR pending</span><strong id="lPending">—</strong></div><div><span class="legend-line"><i class="legend-dot other"></i>Other / attention</span><strong id="lOther">—</strong></div></div>
             </div>
           </div>
           <div class="resources-panel panel">
-            <div class="panel-header"><div><span class="section-kicker">LOCAL RESOURCES</span><h2>Host telemetry</h2></div><span class="muted-right" id="cores">— cores</span></div>
+            <div class="panel-header"><div><span class="section-kicker">Local resources</span><h2>Host telemetry</h2></div><span class="muted-right" id="cores">— cores</span></div>
             <div class="resource-lines"><div class="resource-head"><span>CPU utilization</span><strong id="cpuValue">—%</strong></div><div class="meter"><div id="cpuBar" class="meter-fill"></div></div><div class="resource-head"><span>Memory utilized</span><strong id="ramValue">—%</strong></div><div class="meter"><div id="ramBar" class="meter-fill teal"></div></div><p id="memoryDetail" class="resource-footer">Reading physical memory…</p></div>
           </div>
         </section>
         <section class="roster-section">
-          <div class="section-heading"><div><span class="section-kicker">LIVE ROSTER</span><h2>Agent operations <span class="subcount" id="rosterCount"></span></h2></div><div class="section-heading-actions"><button class="find-work-all-button" id="findWorkAll" type="button">⚡ Find Work · All Idle</button><button class="ghost-button" id="showIdleBtn">Show idle only</button><button class="primary-button" id="refreshRoster">↻ Refresh fleet</button></div></div>
+          <div class="section-heading"><div><span class="section-kicker">Live roster</span><h2>Agent operations <span class="subcount" id="rosterCount"></span></h2></div><div class="section-heading-actions"><button class="find-work-all-button" id="findWorkAll" type="button">⚡ Find Work · All Idle</button><button class="ghost-button" id="showIdleBtn">Show idle only</button><button class="primary-button" id="refreshRoster">↻ Refresh fleet</button></div></div>
           <div class="toolbar"><div class="search-box"><span>⌕</span><input id="search" type="search" placeholder="Search agents, IDs, or model…" autocomplete="off" aria-label="Search agents"></div><div class="select-wrap"><select id="roleFilter" aria-label="Filter role"><option value="all">All roles</option></select></div><div class="select-wrap"><select id="modelFilter" aria-label="Filter model"><option value="all">All models</option></select></div><div class="select-wrap"><select id="activityFilter" aria-label="Filter activity"><option value="all">All activity</option><option value="idle">Idle</option><option value="working">Working</option><option value="attention">CI attention</option><option value="pending">PR pending</option></select></div></div>
-          <div class="table-wrap"><table class="agent-table"><thead><tr><th>AGENT / SESSION</th><th>ROLE</th><th>MODEL</th><th>ACTIVITY</th><th>PRs / CI</th><th>LAST SEEN</th><th class="right">ACTIONS</th></tr></thead><tbody id="tableRows"><tr><td colspan="7" class="loading-cell">Connecting to your Orchestrator.inc fleet…</td></tr></tbody></table></div>
+          <div class="table-wrap"><table class="agent-table"><thead><tr><th>Agent / session</th><th>Role</th><th>Model</th><th>Activity</th><th>PRs / CI</th><th>Last seen</th><th class="right">Actions</th></tr></thead><tbody id="tableRows"><tr><td colspan="7" class="loading-cell">Connecting to your Orchestrator.inc fleet…</td></tr></tbody></table></div>
           <div class="table-footer"><span id="tableCaption">Live state from local Orchestrator.inc API</span><span>Actions recorded locally</span></div>
         </section>
         <div class="disclaimer"><span>◎</span><p><strong>Understanding idle:</strong> An idle agent has no active turn. It may still own a draft PR, be waiting on CI, or deliberately be available. Nudge intentionally; idle does not always indicate a problem.</p></div>
