@@ -6,9 +6,10 @@ const {randomBytes,timingSafeEqual}=require('node:crypto');
 const {createAdapters}=require('./adapters');
 const {configuredRemote,createRemoteAuth}=require('./remote-auth');
 const {createServiceLaunchpad}=require('./service-launchpad');
+const {createLunaStartup}=require('./luna-startup');
 const root=path.join(__dirname,'..','public');
 
-function makeServer({adapters=createAdapters(),services=createServiceLaunchpad(),port=Number(process.env.FLEET_HUB_PORT||4320),remote=configuredRemote(),verifyRemote=remote?createRemoteAuth(remote):null}={}) {
+function makeServer({adapters=createAdapters(),services=createServiceLaunchpad(),luna=createLunaStartup(),port=Number(process.env.FLEET_HUB_PORT||4320),remote=configuredRemote(),verifyRemote=remote?createRemoteAuth(remote):null}={}) {
   if(!Number.isInteger(port)||port<1||port>65535)throw Error('Invalid port');
   const token=randomBytes(32).toString('hex');
   const serviceNonces=new Map();
@@ -28,6 +29,7 @@ function makeServer({adapters=createAdapters(),services=createServiceLaunchpad()
         if(url.pathname==='/api/session')return json(200,{token});
         if(url.pathname==='/api/status')return json(200,{observedAt:new Date().toISOString(),fleets:await Promise.all(['mjobs','babytracker'].map(adapters.status))});
         if(url.pathname==='/api/services')return json(200,await services.status());
+        if(url.pathname==='/api/luna/preview')return json(200,await luna.preview());
         if(url.pathname==='/api/services/nonce'){
           for(const [key,expires] of serviceNonces)if(expires<Date.now())serviceNonces.delete(key);
           if(serviceNonces.size>=64)return json(429,{error:'Too many pending actions'});
@@ -40,13 +42,17 @@ function makeServer({adapters=createAdapters(),services=createServiceLaunchpad()
         const file=files[url.pathname];if(!file)return json(404,{error:'Not found'});
         res.writeHead(200,{'Content-Type':file[1]});return res.end(fs.readFileSync(path.join(root,file[0])));
       }
-        if(req.method!=='POST'||!['/api/pause','/api/control','/api/start','/api/bounded-start','/api/limits','/api/review-assessment','/api/services/action'].includes(url.pathname))return json(405,{error:'Method not allowed'});
+        if(req.method!=='POST'||!['/api/pause','/api/control','/api/start','/api/bounded-start','/api/limits','/api/review-assessment','/api/services/action','/api/luna/start'].includes(url.pathname))return json(405,{error:'Method not allowed'});
       if(![...allowed.map(x=>'http://'+x),...(remoteRequest?['https://'+remote.hostname]:[])].includes(req.headers.origin))return json(403,{error:'Same origin required'});
       const candidate=String(req.headers['x-fleet-hub']||'');
       if(candidate.length!==token.length||!timingSafeEqual(Buffer.from(candidate),Buffer.from(token)))return json(403,{error:'Invalid action token'});
       if(!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))return json(415,{error:'JSON required'});
       let bytes=0,parts=[];for await(const part of req){bytes+=part.length;if(bytes>1024)return json(413,{error:'Request too large'});parts.push(part);}
       const input=JSON.parse(Buffer.concat(parts).toString('utf8'));
+      if(url.pathname==='/api/luna/start'){
+        if(!input||typeof input.confirmation!=='string'||Object.keys(input).some(k=>k!=='confirmation'))return json(400,{error:'Exact Luna start confirmation required'});
+        return json(202,await luna.start(input.confirmation));
+      }
       if(url.pathname==='/api/services/action'){
         if(!input||!['plex-start','rustdesk-restart','tailscale-restart','docker-start','docker-restart','monai-start'].includes(input.action)||input.confirmation!=='RUN '+input.action||typeof input.nonce!=='string'||Object.keys(input).some(k=>!['action','confirmation','nonce'].includes(k)))return json(400,{error:'Invalid service action'});
         const expiry=serviceNonces.get(input.nonce);if(!expiry||expiry<Date.now())return json(409,{error:'Action nonce expired or already used'});

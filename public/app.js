@@ -149,6 +149,31 @@ async function serviceAction(action){
     if(!r.ok)throw Error(data.error||'Action refused');showActionMessage(data.note);
   }catch(e){showActionMessage('Action outcome uncertain; check service status before retrying: '+e.message);}finally{await refreshServices();}
 }
+async function refreshLuna(){
+  const button=$('luna-start');
+  try{
+    const response=await fetch('/api/luna/preview',{cache:'no-store'}),state=await response.json();
+    if(!response.ok)throw Error(state.error||'Preview unavailable');
+    button.disabled=state.blocked===true;
+    const quota=Number.isFinite(state.remainingPercent)?state.remainingPercent+'% remaining':'quota unavailable';
+    $('luna-status').textContent=state.blocked?
+      'Launch paused ('+quota+'): '+(state.blockedReasons||[]).join('; ')+'.':
+      'Ready: Codex Luna, '+quota+'. The launch only enables the bounded scheduled loop.';
+  }catch(e){button.disabled=true;$('luna-status').textContent='Luna launch unavailable: '+e.message;}
+}
+async function startLuna(){
+  const button=$('luna-start');button.disabled=true;
+  const confirmation='START BabyTracker Master Luna';
+  try{
+    if(!await confirmAction('Enable the BabyTracker-Master Codex Luna loop? Up to four implementation agents, one reviewer and one orchestrator may use your Codex allowance. The other project controllers will not be started.\nType '+confirmation+' to confirm.',confirmation))return;
+    const response=await postAction('/api/luna/start',{confirmation}),result=await response.json();
+    if(!response.ok)throw Error(result.error||'Luna launch refused');
+    showActionMessage(result.note);
+  }catch(e){showActionMessage('Luna Start not confirmed; inspect AO before retrying: '+e.message);}
+  finally{await refreshLuna();}
+}
+$('luna-start').addEventListener('click',startLuna);
+refreshLuna();setInterval(refreshLuna,15000);
 $('plex-start').addEventListener('click',()=>serviceAction('plex-start'));
 $('rustdesk-restart').addEventListener('click',()=>serviceAction('rustdesk-restart'));
 $('tailscale-restart').addEventListener('click',()=>serviceAction('tailscale-restart'));
