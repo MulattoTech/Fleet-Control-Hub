@@ -1,0 +1,218 @@
+{
+  "schema_version": 1,
+  "run_id": "webpro-20261103T073112Z-bbbb6d",
+  "recorded_at": "2026-11-03T10:25:59.831Z",
+  "baseline_hub": "0258903984e7e3f54124be93a1f6b2988300e65b",
+  "mjobs_audit_merge": "fe409d409ecee66af1e06d55de203370f72225c9",
+  "claims": {
+    "MJobs": {
+      "owner": "c28b89ab49127e2240ec9e836388314ab24837ab",
+      "base": "fe409d409ecee66af1e06d55de203370f72225c9"
+    },
+    "Fleet-Control-Hub": {
+      "owner": "b66c925e8e8fe61a203bfe2ac33f922bec8a98ab",
+      "base": "0258903984e7e3f54124be93a1f6b2988300e65b"
+    }
+  },
+  "baseline_probe": {
+    "observed_at": "2026-11-03T10:08:43.257Z",
+    "api_scope": "100 recently updated closed MJobs pull requests",
+    "invocation_matches_deployed_githubRead": true,
+    "max_buffer_bytes": 2000000,
+    "elapsed_ms": 1054,
+    "error_code": "ERR_CHILD_PROCESS_STDIO_MAXBUFFER",
+    "killed": false,
+    "stdout_bytes": 2000000,
+    "content_published": false
+  },
+  "projected_probe": {
+    "run_id": "webpro-20261103T073112Z-bbbb6d",
+    "started_at": "2026-11-03T10:19:49.598Z",
+    "executed_source_sha256": "eec0491fc15b63c651fa01b81d38c8c62ddd8311a98141ec5ed606325b48c139",
+    "node": "v27.0.0-alpha.0.0.0",
+    "contents_published": false,
+    "error_code": null,
+    "stdout_bytes": 440284,
+    "elapsed_ms": 1019,
+    "max_buffer_bytes": 2000000,
+    "request_timeout_ms": 10000,
+    "stdout_sha256": "7fcd0b6be357aab807b97c813761ebd772ef1401accb31e57aa551ef7f84cdda",
+    "status": "PASS",
+    "records": 100,
+    "window_complete": false,
+    "all_required_fields_present": true,
+    "audit_merge_link_preserved": true,
+    "unneeded_repository_and_user_fields_absent": true,
+    "completed_at": "2026-11-03T10:19:50.620Z"
+  },
+  "api_collection_check": {
+    "closed_records": 100,
+    "serialized_character_count": 2012000,
+    "unique_catalog_issues": 22,
+    "related_closed": 11,
+    "related_open": 2,
+    "core_budget_remaining": 4090,
+    "core_budget_limit": 5000
+  },
+  "scope": "Only closed-PR transport metadata projection, its tests and this evidence. All100 records and complete body/reference/merge fields retained; byte/deadline/page/backoff/privacy/Access/7-percent/native controls unchanged. This is not HAR traffic or application deployment.",
+  "failure_boundary": "Live reader remained stale with GITHUB_EVIDENCE_UNAVAILABLE and nextRefreshAt10:17:28.114Z; no service reset or backoff override was used for diagnosis. A single owned bounded before/after subprocess probe is separate from the live reader.",
+  "validation": {
+    "run_id": "webpro-20261103T073112Z-bbbb6d",
+    "source_base": "0258903984e7e3f54124be93a1f6b2988300e65b",
+    "started_at": "2026-11-03T10:18:34.683822+00:00",
+    "fixture_correction": {
+      "retained_failure_log_sha256": "2362ccc23bff19289e4f2aee5e5c01f7bbcdbc9e0de55bd05276c40bdebf5f86",
+      "error": "Two new synthetic success responses omitted the real HTTP header block required by the preserved parser. Four headerless 200 fixtures were corrected; production parser unchanged.",
+      "corrected_fixtures": 4
+    },
+    "harness_corrections": [
+      "The edit guard expected five headerless fixtures; actual count was four. It stopped before rewriting and was corrected.",
+      "After the focused command passed, Windows terminal encoding rejected a test-report glyph. The complete UTF-8 log was already saved. This continuation verifies that log and resumes at the next command; no focused test result is fabricated or relabeled."
+    ],
+    "commands": [
+      {
+        "argv": [
+          "node",
+          "--test",
+          "test/parity.test.js"
+        ],
+        "exit_code": 0,
+        "log_sha256": "2c8850665063e89fad3dd67bc94c8aa4d1334c376311263de4a4de188a31033e",
+        "tests_passed": 26,
+        "tests_failed": 0,
+        "tail": "stdout while preserving every record (0.5514ms)\n\u2714 projection is route-specific and refused paths never execute a command (0.1495ms)\n\u2714 projected transport retains server retry headers and masks diagnostics (0.094ms)\n\u2714 overflow and malformed projected data cannot be reported as successful reads (0.1573ms)\n\u2714 projected hundredth row keeps its merge linkage without claiming complete history (0.3273ms)\n\u2714 a non-array projected response remains an unavailable refresh rather than an empty board (0.1689ms)\n\u2139 tests 26\n\u2139 suites 0\n\u2139 pass 26\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 75.9582\n"
+      },
+      {
+        "argv": [
+          "cmd.exe",
+          "/d",
+          "/c",
+          "npm ci --ignore-scripts --no-audit --no-fund"
+        ],
+        "exit_code": 0,
+        "log_sha256": "6d8ca663278d6ec3be4631880b4e53285b32947e165bc1a55e0d37d061c1bae5",
+        "tail": "\nadded 1 package in 811ms\nnpm warn cli npm v12.2.1 does not support Node.js v27.0.0-alpha.0.0.0. This version of npm supports the following node versions: `^22.22.2 || ^24.15.0 || >=26.0.0`. You can find the latest version at https://nodejs.org/.\n"
+      },
+      {
+        "argv": [
+          "cmd.exe",
+          "/d",
+          "/c",
+          "npm run verify:packages"
+        ],
+        "exit_code": 0,
+        "log_sha256": "4f3bec9686bcfe340ab1f7e2877e902a3d56d501c0e8bc2ae5f38377a4968b67",
+        "tail": "{\"package\":\"babytracker-controller\",\"verified\":48}\n{\"package\":\"mjobs-controller\",\"verified\":193}\nnpm warn cli npm v12.2.1 does not support Node.js v27.0.0-alpha.0.0.0. This version of npm supports the following node versions: `^22.22.2 || ^24.15.0 || >=26.0.0`. You can find the latest version at https://nodejs.org/.\nnpm notice run fleet-control-hub@0.2.0 verify:packages\nnpm notice run node scripts/controller-package.js verify babytracker-controller && node scripts/controller-package.js verify mjobs-controller\n"
+      },
+      {
+        "argv": [
+          "cmd.exe",
+          "/d",
+          "/c",
+          "npm run verify:ui"
+        ],
+        "exit_code": 0,
+        "log_sha256": "5dbaa9b31e99241c264b3c6206feac40a98d11d652caea75aad780b95965c141",
+        "tail": "Fleet UI source assets verified\nnpm warn cli npm v12.2.1 does not support Node.js v27.0.0-alpha.0.0.0. This version of npm supports the following node versions: `^22.22.2 || ^24.15.0 || >=26.0.0`. You can find the latest version at https://nodejs.org/.\nnpm notice run fleet-control-hub@0.2.0 verify:ui\nnpm notice run node scripts/build-fleet-ui.js --check\n"
+      },
+      {
+        "argv": [
+          "cmd.exe",
+          "/d",
+          "/c",
+          "npm test"
+        ],
+        "exit_code": 0,
+        "log_sha256": "7bdc4956b68946032b5e5bf2ec039cb97105618b075e712539d1b222596fae2a",
+        "tail": "rvice actions reject unauthenticated, cross-origin, unknown and replayed requests (17.5536ms)\n\u2714 Monai recovery invokes only the fixed launcher and refuses duplicate gateway start (1003.8123ms)\n\u2139 tests 85\n\u2139 suites 0\n\u2139 pass 85\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 1155.9001\nnpm warn cli npm v12.2.1 does not support Node.js v27.0.0-alpha.0.0.0. This version of npm supports the following node versions: `^22.22.2 || ^24.15.0 || >=26.0.0`. You can find the latest version at https://nodejs.org/.\nnpm notice run fleet-control-hub@0.2.0 test\nnpm notice run node --test test/*.test.js\n"
+      },
+      {
+        "argv": [
+          "cmd.exe",
+          "/d",
+          "/c",
+          "npm run test:babytracker"
+        ],
+        "exit_code": 0,
+        "log_sha256": "7367a77794bb84c42f44aa0fd5389d5137684146724d5fc3a41c29abd4012216",
+        "tail": "use the same protected local action path (2.3689ms)\n\u2714 the dashboard Start click submits once without confirmation and polls actual state (1.6891ms)\n\u2139 tests 121\n\u2139 suites 0\n\u2139 pass 121\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 955.5955\nnpm warn cli npm v12.2.1 does not support Node.js v27.0.0-alpha.0.0.0. This version of npm supports the following node versions: `^22.22.2 || ^24.15.0 || >=26.0.0`. You can find the latest version at https://nodejs.org/.\nnpm notice run fleet-control-hub@0.2.0 test:babytracker\nnpm notice run node --test packages/babytracker-controller/test/*.test.js\n"
+      },
+      {
+        "argv": [
+          "cmd.exe",
+          "/d",
+          "/c",
+          "npm run test:mjobs"
+        ],
+        "exit_code": 1,
+        "log_sha256": "82db48f8c4a3789bdf100e2c472962ce8e2bb32ef3d716d0b1cd46c27e45ad2f",
+        "tail": "ity-capacity.js\nFAIL test-terminal-delivery.js\nPASS test-restore-pause-fence.js\nPASS test-native-delivery-receipts.js\nPASS test-artifact-review.js\nPASS test-quota-policy.js\nPASS test-scoped-restore.js\n{\"ok\":false,\"passed\":57,\"failed\":1,\"notRun\":0,\"sourceStable\":true}\nnpm warn cli npm v12.2.1 does not support Node.js v27.0.0-alpha.0.0.0. This version of npm supports the following node versions: `^22.22.2 || ^24.15.0 || >=26.0.0`. You can find the latest version at https://nodejs.org/.\nnpm notice run fleet-control-hub@0.2.0 test:mjobs\nnpm notice run node packages/mjobs-controller/check-fleet.js\n"
+      },
+      {
+        "argv": [
+          "python",
+          "-m",
+          "pytest",
+          "-q",
+          "-p",
+          "no:cacheprovider",
+          "test/python/test_fleet_analytics.py",
+          "test/python/test_fleet_mission_runtime.py"
+        ],
+        "exit_code": 0,
+        "log_sha256": "21a0579a2056f778a113bf3debf3cca8c0c41a4f40d3e00648e2e8de02dad44a",
+        "tail": ".....................                                                    [100%]\n21 passed in 0.62s\n"
+      },
+      {
+        "argv": [
+          "git",
+          "diff",
+          "--check"
+        ],
+        "exit_code": 0,
+        "log_sha256": "aa07da846e6492217d889a49700de67cb75d6a1c46eab62efe1f6dc552250a95",
+        "tail": "warning: in the working copy of 'src/parity.js', CRLF will be replaced by LF the next time Git touches it\nwarning: in the working copy of 'test/parity.test.js', CRLF will be replaced by LF the next time Git touches it\n"
+      },
+      {
+        "argv": [
+          "git",
+          "diff",
+          "--exit-code",
+          "0258903984e7e3f54124be93a1f6b2988300e65b",
+          "--",
+          "packages",
+          "controller-packages.json",
+          "public",
+          "src/server.js",
+          "package.json",
+          "package-lock.json"
+        ],
+        "exit_code": 0,
+        "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "tail": ""
+      }
+    ],
+    "status": "HUB_PASS_NATIVE_PRIOR_FAILURE_RETAINED",
+    "completed_at": "2026-11-03T10:25:59.831Z",
+    "hub_tests_passed": 85,
+    "parity_tests_passed_included_in_hub": 26,
+    "new_parity_regressions": 6,
+    "babytracker_tests_passed": 121,
+    "python_tests_passed": 21,
+    "native_initial": {
+      "passed": 57,
+      "failed": 1,
+      "test": "test-terminal-delivery.js",
+      "source_stable": true,
+      "root_cause": "UNKNOWN; runner retained only command failure, not stdout details."
+    },
+    "native_targeted": {
+      "tests_passed": 22,
+      "tests_failed": 0,
+      "log_sha256": "0d64d6f9922539303a7f507044edd4461ca905f062711c7c4ef0a537f6bf644e",
+      "scope": "One diagnostic execution of the unchanged failed module; this does not relabel the prior58-module gate or establish its root cause."
+    },
+    "runtime_warning": "Local Node v27.0.0-alpha.0.0.0 with npm12.2.1 emitted an unsupported-runtime warning. No global runtime setting was changed. Hosted workflow uses Node24; its complete exact-candidate gate is still required.",
+    "protected_hosted_gate": "PENDING"
+  }
+}

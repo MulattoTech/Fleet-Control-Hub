@@ -2,6 +2,10 @@
 // Read-only GitHub evidence. No native controller or agent APIs are imported.
 const {execFile}=require('node:child_process');
 const REPO='MulattoTech/MJobs', PREFIX='repos/'+REPO+'/';
+const CLOSED_PRS_ROUTE='pulls?state=closed&sort=updated&direction=desc&per_page=100&page=1';
+// Drop unused repository/user metadata inside gh before its stdout reaches our
+// unchanged byte cap. Keep every row and the complete reference/merge fields.
+const CLOSED_PRS_QUERY='if type == "array" then map({number,state,body,merged_at,merge_commit_sha,base:{ref:.base.ref,repo:{full_name:.base.repo.full_name}}}) else . end';
 const DISCOVERY=['OBSERVED','PUBLICLY CLAIMED','INACCESSIBLE / AUTHORIZATION REQUIRED','NOT FOUND / UNKNOWN'];
 const IMPLEMENTATION=['ALREADY EXISTS','PARTIAL','MISSING','BLOCKED','VERIFIED IN TEST','MERGED','DEPLOYED','ACCEPTED'];
 const BLOCKERS=['PRIVATE_SITE_AUTHORIZATION_REQUIRED','FULL_HAR_TOOL_UNAVAILABLE','PROJECT_AUTH_SCOPE_MISSING','INTERACTIVE_COVERAGE_NOT_RUN'];
@@ -24,9 +28,11 @@ function parseGitHubResponse(stdout,failed=false,clock=Date.now()){
   if(failed||status!==200)throw error;
   try{return JSON.parse(match[3]);}catch{throw Error('PARITY_GITHUB_INVALID');}
 }
-function githubRead(apiPath,signal){
+function githubRead(apiPath,signal,execute=execFile){
   if(!apiPath.startsWith(PREFIX)||apiPath.length>500)return Promise.reject(Error('PARITY_PATH_REFUSED'));
-  return new Promise((resolve,reject)=>execFile('gh',['api','--include','--hostname','github.com',apiPath],
+  const args=['api','--include','--hostname','github.com',apiPath];
+  if(apiPath===PREFIX+CLOSED_PRS_ROUTE)args.push('--jq',CLOSED_PRS_QUERY);
+  return new Promise((resolve,reject)=>execute('gh',args,
     {timeout:10000,maxBuffer:2_000_000,windowsHide:true,signal},(error,stdout)=>{
       try{resolve(parseGitHubResponse(stdout,!!error));}catch(safeError){reject(safeError);}
     }));
@@ -136,7 +142,7 @@ function createParityTracker({read=githubRead,now=Date.now,ttlMs=600000,minRefre
     });
     // Recent closed PRs provide exact merge receipts, not proof that a complete
     // feature was delivered. A full page is explicitly a partial history window.
-    const closedRows=await get('pulls?state=closed&sort=updated&direction=desc&per_page=100&page=1');
+    const closedRows=await get(CLOSED_PRS_ROUTE);
     if(!Array.isArray(closedRows)||closedRows.length>100)fail();
     const mergeWindow={examined:closedRows.length,complete:closedRows.length<100,order:'RECENTLY_UPDATED_CLOSED_PRS'};
     const relatedMerges=closedRows.filter(p=>p?.merged_at&&p?.base?.ref==='main'&&p?.base?.repo?.full_name===REPO)

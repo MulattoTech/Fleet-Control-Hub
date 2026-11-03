@@ -1,6 +1,6 @@
 'use strict';
 const test=require('node:test'),assert=require('node:assert/strict');
-const {createParityTracker,catalogProjection,checkSummary,parseGitHubResponse}=require('../src/parity');
+const {createParityTracker,catalogProjection,checkSummary,parseGitHubResponse,githubRead}=require('../src/parity');
 const A='a'.repeat(40),B='b'.repeat(40),C='c'.repeat(40);
 const SECRET='private-candidate-secret@example.invalid';
 const check=(id=1,conclusion='success',status='completed',name='CI',app=15368)=>({id,app:{id:app},name,status,conclusion});
@@ -156,4 +156,62 @@ test('server-directed cooldown wins over local retry backoff',async()=>{
   const f=fixture();let requests=0;const read=async()=>{requests++;const error=Error(SECRET);error.retryAt=f.now()+3600000;throw error;};
   const tracker=createParityTracker({...f,read});const first=await tracker.status();f.advance(600000);await tracker.status({refresh:true});
   assert.equal(requests,1);assert.equal(first.nextRefreshAt,'2026-11-03T07:00:00.000Z');
+});
+
+test('closed-window transport projects before bounded stdout while preserving every record',async()=>{
+  const route='repos/MulattoTech/MJobs/pulls?state=closed&sort=updated&direction=desc&per_page=100&page=1';
+  const rows=Array.from({length:100},(_,i)=>({number:i+1,state:'closed',body:'Reference #96 '+SECRET,merged_at:null,merge_commit_sha:null,base:{ref:'main',repo:{full_name:'MulattoTech/MJobs'}}}));
+  const signal=new AbortController().signal;let calls=0;
+  const execute=(file,args,options,callback)=>{
+    calls++;assert.equal(file,'gh');assert.deepEqual(args.slice(0,5),['api','--include','--hostname','github.com',route]);
+    assert.equal(args[5],'--jq');assert.equal(args.length,7);assert.ok(!args.includes('--paginate'));
+    for(const field of ['number','state','body','merged_at','merge_commit_sha','base','ref','repo','full_name'])assert.match(args[6],new RegExp('\\b'+field+'\\b'));
+    assert.equal(options.maxBuffer,2000000);assert.equal(options.timeout,10000);assert.equal(options.signal,signal);assert.equal(options.windowsHide,true);
+    callback(null,'HTTP/2.0 200 OK\r\nContent-Type: application/json\r\n\r\n'+JSON.stringify(rows));
+  };
+  assert.deepEqual(await githubRead(route,signal,execute),rows);assert.equal(calls,1);
+});
+test('projection is route-specific and refused paths never execute a command',async()=>{
+  let calls=0;const execute=(file,args,_options,callback)=>{
+    calls++;assert.equal(file,'gh');assert.ok(!args.includes('--jq'));
+    callback(null,'HTTP/2.0 200 OK\r\nContent-Type: application/json\r\n\r\n{"number":903}');
+  };
+  assert.deepEqual(await githubRead('repos/MulattoTech/MJobs/issues/903',undefined,execute),{number:903});
+  for(const path of ['repos/someone/else/pulls','repos/MulattoTech/MJobs/'+ 'x'.repeat(501)]){
+    await assert.rejects(githubRead(path,undefined,execute),/PARITY_PATH_REFUSED/);
+  }
+  assert.equal(calls,1);
+});
+test('projected transport retains server retry headers and masks diagnostics',async()=>{
+  const start=Date.now();const execute=(_file,_args,_options,callback)=>callback(Error(SECRET),'HTTP/2.0 429 Rate limited\r\nRetry-After: 3600\r\n\r\n{"message":"'+SECRET+'"}');
+  await assert.rejects(githubRead('repos/MulattoTech/MJobs/pulls?state=closed&sort=updated&direction=desc&per_page=100&page=1',undefined,execute),error=>{
+    assert.equal(error.message,'PARITY_GITHUB_UNAVAILABLE');assert.ok(error.retryAt>=start+3600000&&error.retryAt<=Date.now()+3600000);
+    assert.ok(!String(error).includes(SECRET));return true;
+  });
+});
+test('overflow and malformed projected data cannot be reported as successful reads',async()=>{
+  for(const [error,body] of [[Object.assign(Error(SECRET),{code:'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'}),'[]'],[null,SECRET]]){
+    const execute=(_file,_args,_options,callback)=>callback(error,'HTTP/2.0 200 OK\r\nContent-Type: application/json\r\n\r\n'+body);
+    await assert.rejects(githubRead('repos/MulattoTech/MJobs/pulls?state=closed&sort=updated&direction=desc&per_page=100&page=1',undefined,execute),caught=>{
+      assert.match(caught.message,/^PARITY_GITHUB_(?:UNAVAILABLE|INVALID)$/);assert.ok(!String(caught).includes(SECRET));return true;
+    });
+  }
+});
+test('projected hundredth row keeps its merge linkage without claiming complete history',async()=>{
+  const f=fixture(),route='repos/MulattoTech/MJobs/pulls?state=closed&sort=updated&direction=desc&per_page=100&page=1';
+  const rows=Array.from({length:100},(_,i)=>({number:i+1,state:'closed',body:'',merged_at:null,merge_commit_sha:null,base:{ref:'main',repo:{full_name:'MulattoTech/MJobs'}}}));
+  rows[99]={...rows[99],body:'MJ-TH-002 #96 '+SECRET,merged_at:'2026-11-03T05:35:44Z',merge_commit_sha:B};
+  const execute=(_file,args,_options,callback)=>{assert.ok(args.includes('--jq'));callback(null,'HTTP/2.0 200 OK\r\nContent-Type: application/json\r\n\r\n'+JSON.stringify(rows));};
+  const read=(path,signal)=>path===route?githubRead(path,signal,execute):f.read(path,signal);
+  const result=await createParityTracker({...f,read}).status();
+  assert.equal(result.available,true);assert.deepEqual(result.mergeWindow,{examined:100,complete:false,order:'RECENTLY_UPDATED_CLOSED_PRS'});
+  assert.equal(result.features[1].relatedMerges[0].number,100);assert.equal(result.features[1].relatedMerges[0].mergeSha,B);
+  assert.equal(result.features[1].delivery.state,'NOT_VERIFIED');assert.ok(!JSON.stringify(result).includes(SECRET));
+});
+test('a non-array projected response remains an unavailable refresh rather than an empty board',async()=>{
+  const f=fixture(),route='repos/MulattoTech/MJobs/pulls?state=closed&sort=updated&direction=desc&per_page=100&page=1';
+  const execute=(_file,_args,_options,callback)=>callback(null,'HTTP/2.0 200 OK\r\nContent-Type: application/json\r\n\r\n{"message":"'+SECRET+'"}');
+  const read=(path,signal)=>path===route?githubRead(path,signal,execute):f.read(path,signal);
+  const result=await createParityTracker({...f,read}).status();
+  assert.equal(result.available,false);assert.equal(result.stale,true);assert.ok(!JSON.stringify(result).includes(SECRET));
 });
