@@ -122,8 +122,10 @@ function createParityTracker({read=githubRead,now=Date.now,ttlMs=600000,minRefre
       return [f.id,...f.requirements].some(id=>new RegExp('(?:^|[^A-Za-z0-9-])'+id.replaceAll('.','\\.')+'(?![A-Za-z0-9.-])').test(body))||
         f.issueNumbers.some(n=>new RegExp('(?:^|[^A-Za-z0-9/])#'+n+'\\b').test(body));
     };
-    const related=pullRows.filter(p=>catalog.features.some(f=>relates(p,f))||catalog.workstreams.some(w=>
-      typeof p.body==='string'&&new RegExp('(?:^|[^A-Za-z0-9/])#'+w.issue+'\\b').test(p.body)));
+    const relatesWorkstream=(p,w)=>typeof p.body==='string'&&(
+      new RegExp('(?:^|[^A-Za-z0-9-])'+w.key+'(?![A-Za-z0-9-])').test(p.body)||
+      new RegExp('(?:^|[^A-Za-z0-9/])#'+w.issue+'\\b').test(p.body));
+    const related=pullRows.filter(p=>catalog.features.some(f=>relates(p,f))||catalog.workstreams.some(w=>relatesWorkstream(p,w)));
     if(related.length>16)fail();
     const pulls=await mapBounded(related,async p=>{
       if(!positive(p?.number)||!SHA.test(p?.head?.sha)||p.state!=='open')fail();
@@ -132,6 +134,21 @@ function createParityTracker({read=githubRead,now=Date.now,ttlMs=600000,minRefre
       return {number:p.number,headSha:p.head.sha,state:'OPEN',draft:p.draft===true,ci,
         featureIds:catalog.features.filter(f=>relates(p,f)).map(f=>f.id),url:'https://github.com/'+REPO+'/pull/'+p.number};
     });
+    // Recent closed PRs provide exact merge receipts, not proof that a complete
+    // feature was delivered. A full page is explicitly a partial history window.
+    const closedRows=await get('pulls?state=closed&sort=updated&direction=desc&per_page=100&page=1');
+    if(!Array.isArray(closedRows)||closedRows.length>100)fail();
+    const mergeWindow={examined:closedRows.length,complete:closedRows.length<100,order:'RECENTLY_UPDATED_CLOSED_PRS'};
+    const relatedMerges=closedRows.filter(p=>p?.merged_at&&p?.base?.ref==='main'&&p?.base?.repo?.full_name===REPO)
+      .filter(p=>catalog.features.some(f=>relates(p,f))||catalog.workstreams.some(w=>relatesWorkstream(p,w)))
+      .map(p=>{
+        if(!positive(p.number)||p.state!=='closed'||!date(p.merged_at)||!SHA.test(p.merge_commit_sha))fail();
+        return {number:p.number,mergeSha:p.merge_commit_sha,mergedAt:p.merged_at,
+          featureIds:catalog.features.filter(f=>relates(p,f)).map(f=>f.id),
+          workstreamKeys:catalog.workstreams.filter(w=>relatesWorkstream(p,w)).map(w=>w.key),
+          url:'https://github.com/'+REPO+'/pull/'+p.number};
+      }).sort((a,b)=>Date.parse(b.mergedAt)-Date.parse(a.mergedAt)||b.number-a.number);
+    if(relatedMerges.length>24)fail();
     const claimKeys=new Set([...catalog.workstreams.map(w=>w.key),...catalog.features.flatMap(f=>[f.id,...f.requirements])]);
     const refs=await get('git/matching-refs/heads/webpro-claims/');
     if(!Array.isArray(refs)||refs.length>128)fail();
@@ -149,16 +166,21 @@ function createParityTracker({read=githubRead,now=Date.now,ttlMs=600000,minRefre
     const discoveryCounts=Object.fromEntries(DISCOVERY.map(s=>[s,0])),implementationCounts=Object.fromEntries(IMPLEMENTATION.map(s=>[s,0]));
     const features=catalog.features.map(f=>{
       discoveryCounts[f.discovery]++;implementationCounts[f.implementation]++;
+      const mergedLinks=relatedMerges.filter(m=>m.featureIds.includes(f.id)).slice(0,3)
+        .map(({number,mergeSha,mergedAt,url})=>({number,mergeSha,mergedAt,url}));
       return {...f,issues:f.issueNumbers.map(n=>issues.get(n)),pulls:pulls.filter(p=>p.featureIds.includes(f.id)),
-        claims:claims.filter(c=>[f.id,...f.requirements].includes(c.key)),
+        claims:claims.filter(c=>[f.id,...f.requirements].includes(c.key)),relatedMerges:mergedLinks,
         delivery:{state:'NOT_VERIFIED',mergeSha:null,deployedSha:null,accepted:null}};
     });
     return {available:true,sourceSha,syncedAt:new Date(now()).toISOString(),catalogAsOf:catalog.catalogAsOf,
       epicUrl:'https://github.com/'+REPO+'/issues/'+catalog.epicIssue,coverage:catalog.coverage,harStatus:catalog.harStatus,
       blockers:catalog.blockers,projectSync:catalog.projectSync,discoveryCounts,implementationCounts,
-      workstreams:catalog.workstreams.map(w=>({...w,issue:issues.get(w.issue),claims:claims.filter(c=>c.key===w.key)})),
-      features,deliveryVerification:'NOT_IMPLEMENTED',acceptanceAuthority:'ORIGINAL_MATRICES_UNCHANGED',
-      warnings:['PR_LINKS_ARE_REFERENCES','CHECKS_ARE_NOT_PROTECTED_GATE_ACCEPTANCE','CLAIM_AGE_IS_NOT_A_HEARTBEAT','DEPLOYMENT_AND_PARITY_ACCEPTANCE_NOT_VERIFIED']};
+      workstreams:catalog.workstreams.map(w=>({...w,issue:issues.get(w.issue),claims:claims.filter(c=>c.key===w.key),
+        relatedMerges:relatedMerges.filter(m=>m.workstreamKeys.includes(w.key)).slice(0,3)
+          .map(({number,mergeSha,mergedAt,url})=>({number,mergeSha,mergedAt,url}))})),
+      features,mergeWindow,deliveryVerification:'NOT_IMPLEMENTED',acceptanceAuthority:'ORIGINAL_MATRICES_UNCHANGED',
+      warnings:['PR_LINKS_ARE_REFERENCES','RELATED_MERGES_ARE_NOT_FEATURE_ACCEPTANCE','CHECKS_ARE_NOT_PROTECTED_GATE_ACCEPTANCE','CLAIM_AGE_IS_NOT_A_HEARTBEAT','DEPLOYMENT_AND_PARITY_ACCEPTANCE_NOT_VERIFIED',
+        ...(!mergeWindow.complete?['CLOSED_PR_HISTORY_WINDOW_INCOMPLETE']:[])]};
   }
   function view(){
     return {...(snapshot||{available:false,features:[],workstreams:[]}),stale:!snapshot||lastError!==null||now()-Date.parse(snapshot.syncedAt)>=ttlMs,
