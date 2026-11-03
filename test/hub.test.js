@@ -10,7 +10,7 @@ const http=require('node:http');
 
 function fixture(){const calls=[];const fetcher=async(url,options={})=>{calls.push({url,options});
   if(url.endsWith('/api/state')&&url.includes(':8787'))return {ok:true,json:async()=>({projectId:'mjobs-luna',sessions:[{id:'a'}],summary:{total:1,working:0,idle:1,idlePending:0,ciAttention:0}})};
-  if(url.endsWith('/api/master'))return {ok:true,json:async()=>({dispatch:{sustainedEnabled:false,turboEnabled:false},emergency:{latched:false},drain:{enabled:true}})};
+  if(url.endsWith('/api/master'))return {ok:true,json:async()=>({dispatch:{sustainedEnabled:false,turboEnabled:false},emergency:{latched:false,scope:'machine'},drain:{enabled:true}})};
   if(url.endsWith('/api/sustain'))return {ok:true,json:async()=>({workItems:[{state:'approved'},{state:'leased'}],artifactReviews:{ready:1}})};
   if(url.endsWith('/api/run'))return {ok:true,json:async()=>({projectId:'mjobs-luna',phase:'idle',active:false,running:false,primaryId:'mjobs-luna-40',quota:{fresh:true,remainingPercent:46,minimumRemainingPercent:0,blocked:false},blockedReasons:[]})};
   if(url.endsWith('/api/startup'))return {ok:true,json:async()=>({run:{phase:'idle',active:false},preview:{targetCount:2,projectIds:['mjobs-luna'],primaryIds:['mjobs-luna-40'],manifestRevision:'a'.repeat(64)}})};
