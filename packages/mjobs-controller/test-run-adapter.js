@@ -48,6 +48,15 @@ test('stale provider reading is refreshed and must pass preflight before launch'
   f.quota.dispatchBlockReason = () => 'Provider usage is stale';
   await assert.rejects(f.adapter.prepare(() => {}), /stale/); assert.equal(f.commands.length, 0);
 });
+test('stale MJobs main prevents any native Start even when quota and resources pass', async () => {
+  const f = fixture();
+  let called = false;
+  f.adapter.ensureMainCurrent = async () => { called = true; throw Error('MJobs main diverged from GitHub'); };
+  f.adapter.launcher.reconcile = () => assert.fail('launcher must not be contacted');
+  await assert.rejects(f.adapter.prepare(() => {}), /diverged/);
+  assert.equal(called, true);
+  assert.equal(f.commands.length, 0);
+});
 test('watchdog release requires literal true rather than a truthy result object', async () => {
   const f = fixture(); let probes = 0, verified = false;
   f.restore.watchdogDisarmed = async () => { probes++; if (probes === 1) return { disarmed: false }; verified = true; return true; };

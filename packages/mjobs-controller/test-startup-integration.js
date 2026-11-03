@@ -110,6 +110,7 @@ function fixture() {
   const modules = {
     './turbo': { Turbo: dummy }, './sustain': { Sustain: dummy }, './master-controls': { MasterControls: dummy },
     './run-control': { RunController: dummy }, './run-adapter': { RunAdapter: dummy },
+    './main-reconcile': { createMainReconciler: () => ({ ensureCurrent: async () => ({ updated: false }) }) },
     './startup-control': { StartupController: dummy }, './startup-adapter': { StartupAdapter: dummy },
     './post-review-control': { completeReviewedRestore: async data => {
       if(data.confirm!=='COMPLETE REVIEWED RESTORE')throw Error('Explicit reviewed completion required');

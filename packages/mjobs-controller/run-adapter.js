@@ -6,7 +6,7 @@ const { unresolvedNativeReason } = require('./restore-fleet');
 const { policyStatus } = require('./quota-policy');
 const PROJECT = 'mjobs-luna';
 const MODEL = 'gpt-5.6-sol';
-const MISSION = 'Resume productive MJobs orchestration. Read AGENTS.md and the current requirement/acceptance checkpoint, inspect existing workers, branches, PRs and review receipts, then continue the highest-value unmet P0/P1 work. Reuse existing work before creating overlapping tasks. Default workers are GPT-5.6 Sol at Medium; recursive delegation is allowed within the configured project and resource limits. At most two GPT-6 Astra agents, both Medium, for difficult orchestration or independent review. Keep one integration owner, isolated worktrees and exact-head green required checks before protected PR merges. Preserve user work and production data. Do not send real employer submissions. Do not inflate acceptance or consume allowance with filler. Checkpoint and stop assigning when the provider allowance is exhausted or the user pauses/stops. Report actual commits, tests and remaining blockers.';
+const MISSION = 'Resume productive MJobs orchestration. Read AGENTS.md and the current requirement/acceptance checkpoint, inspect current GitHub main, existing workers, branches, PRs, review receipts and active task ownership refs/handoffs. Treat saved worker instructions and historical PR assignments as stale until revalidated; do not duplicate completed PR work. Then continue the highest-value unmet P0/P1 work. Reuse existing work before creating overlapping tasks. Default workers are GPT-5.6 Sol at Medium; recursive delegation is allowed within the configured project and resource limits. At most two GPT-6 Astra agents, both Medium, for difficult orchestration or independent review. Keep one integration owner, isolated worktrees and exact-head green required checks before protected PR merges. Preserve user work and production data. Do not send real employer submissions. Do not inflate acceptance or consume allowance with filler. Checkpoint and stop assigning when the provider allowance is exhausted or the user pauses/stops. Report actual commits, tests and remaining blockers.';
 const activity = s => s?.activity?.state || s?.activity;
 const primaryReady = s => !!s && !s.isTerminated && ['active','working','idle','waiting_input'].includes(activity(s)) &&
   (s.mode === 'chat' ? s.controllerVerified === true && ['ready','busy'].includes(s.controllerState) : s.mode === 'tui');
@@ -71,6 +71,11 @@ class RunAdapter {
     const resource = await this.master.restore.resourceReader(), limit = this.master.restore.config;
     if (!Number.isFinite(resource.ramGiB) || resource.ramGiB < limit.minFreeRamGiB || !Number.isFinite(resource.diskGiB) || resource.diskGiB < limit.minFreeDiskGiB || !Number.isFinite(resource.cpuPercent) || resource.cpuPercent >= limit.maxCpuPercent) throw Error('Verified machine capacity is insufficient for this run');
     check(); await this.verifyCodex(); check();
+    // Before a native agent is launched, fast-forward only an unchanged, clean main.
+    // GitHub ownership/PR claims are revalidated by the orchestrator after launch.
+    let source = null;
+    if (this.ensureMainCurrent) { check(); source = await this.ensureMainCurrent(check); check(); }
+    if (source?.updated) this.audit?.('mjobs_main_fast_forward', { from: source.previousHead, to: source.head, recoveryRef: source.safetyBranch });
     const launch = this.launcher.reconcile({ acceptCompletedCancellation: true });
     if (launch.requiresReconciliation || launch.pending) throw Error('A prior Orchestrator launch is still unverified; no duplicate launch was sent');
     try { await this.getSessions(); }
@@ -83,7 +88,7 @@ class RunAdapter {
     const repo = String(project?.repo || '').replace(/\.git$/, '').replace(/^git@github.com:/, 'https://github.com/').toLowerCase();
     if (project?.id !== PROJECT || project.kind !== 'single_repo' || repo !== 'https://github.com/mulattotech/mjobs') throw Error('MJobs project/repository binding changed');
     if (legacyRevision !== this.startup.status().revision || this.recoveryBlockReason()) throw Error('Recovery state changed during Start');
-    return { legacyRevision };
+    return { legacyRevision, repositoryHead: source?.head || null };
   }
   async inspect({ pending = null } = {}) {
     const all = await this.getSessions();
