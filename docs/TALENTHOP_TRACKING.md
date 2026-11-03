@@ -33,3 +33,10 @@ An isolated loopback Brave fixture exercised the complete 12-row panel and manua
 Read-only authenticated gh transport parsed the live MJobs main ref successfully. Catalog ingestion from main cannot succeed until MJobs PR #907 is merged. Native Windows used the installed Node 27 alpha; npm issued a version-compatibility warning. The owned install succeeded; full supported Node 24 hosted validation remains required. No global package/runtime changes were made.
 
 Deploy only verified current Hub main under the exclusive deployment claim, preserve installed runtime state and restart only the identified Hub service. Rollback is the prior verified Hub source release; no database/controller migration is introduced. No production deployment is claimed by this document. Review the containing PR's receipt for actual final source, CI, merge and rollout status.
+
+
+## Repeated check runs on one commit
+
+A draft-to-ready workflow restart on MJobs60021098 returned26 check runs for15 app/name contexts, including11 superseded records. The original any-failure summary incorrectly reported FAIL although each current context passed. The projection now selects the highest observed check-run ID for each GitHub app ID and exact check name. Different apps/names remain independent; missing/duplicate identities, incomplete inventories and unsupported statuses remain UNKNOWN. Pending or failed newest contexts still prevent PASS.
+
+The safe response reports current total,observedTotal and superseded counts; raw check output and identities are not forwarded. This is a deterministic observed-check display policy, not GitHub's protected-merge evaluation. Superseded records remain available in GitHub history and in the diagnosis receipt. The single-page100-run bound remains fail-closed. Current-main907 merge and later Hub deployment are recorded separately in PR receipts.

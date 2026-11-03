@@ -3,6 +3,7 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const {createParityTracker,catalogProjection,checkSummary,parseGitHubResponse}=require('../src/parity');
 const A='a'.repeat(40),B='b'.repeat(40),C='c'.repeat(40);
 const SECRET='private-candidate-secret@example.invalid';
+const check=(id=1,conclusion='success',status='completed',name='CI',app=15368)=>({id,app:{id:app},name,status,conclusion});
 function catalog(){return {schema_version:1,initiative_id:'MJ-TH',repository:'MulattoTech/MJobs',epic_issue:904,as_of:'2026-11-03T05:00:00Z',
   audit:{coverage:{routes_identified:3,routes_exercised:0,journeys_identified:2,journeys_exercised:0},har:{status:'BLOCKED'},blockers:['FULL_HAR_TOOL_UNAVAILABLE']},
   project:{sync_status:'BLOCKED_AUTH_SCOPE'},workstreams:[{key:'MJ-TH-RECON',issue:903}],
@@ -17,7 +18,7 @@ function fixture(){
     if(route==='contents/docs/talenthop/catalog.json?ref='+A)return {encoding:'base64',content:Buffer.from(JSON.stringify(document)).toString('base64')};
     if(/^issues\/\d+$/.test(route))return {number:Number(route.slice(7)),state:'closed',updated_at:'2026-11-03T05:30:00Z',body:SECRET,user:{email:SECRET}};
     if(route==='pulls?state=open&per_page=100&page=1')return [{number:906,state:'open',head:{sha:B},body:'Refs #96\n'+SECRET,title:SECRET,draft:false}];
-    if(route==='commits/'+B+'/check-runs?per_page=100')return {total_count:1,check_runs:[{status:'completed',conclusion:'success',output:{text:SECRET}}]};
+    if(route==='commits/'+B+'/check-runs?per_page=100')return {total_count:1,check_runs:[{...check(),output:{text:SECRET}}]};
     if(route==='git/matching-refs/heads/webpro-claims/')return [{ref:'refs/heads/webpro-claims/MJ-TH-RECON',object:{sha:C}}];
     if(route==='git/commits/'+C)return {sha:C,message:'Owner webpro-20261103T050255Z-1ba724 '+SECRET,committer:{date:'2026-11-03T05:00:00Z',email:SECRET}};
     throw Error('Unexpected fixture route');
@@ -69,10 +70,31 @@ test('unrecognized catalog content is not sent to the browser',()=>{
 });
 test('exact head checks distinguish pending, failed, missing, skipped and incomplete inventories',()=>{
   assert.equal(checkSummary({total_count:0,check_runs:[]}).state,'UNKNOWN');
-  assert.equal(checkSummary({total_count:2,check_runs:[{status:'completed',conclusion:'success'}]}).state,'UNKNOWN');
-  assert.equal(checkSummary({total_count:1,check_runs:[{status:'completed',conclusion:'skipped'}]}).state,'UNKNOWN');
-  assert.equal(checkSummary({total_count:1,check_runs:[{status:'in_progress',conclusion:null}]}).state,'PENDING');
-  assert.equal(checkSummary({total_count:1,check_runs:[{status:'completed',conclusion:'failure'}]}).state,'FAIL');
+  assert.equal(checkSummary({total_count:2,check_runs:[check()]}).state,'UNKNOWN');
+  assert.equal(checkSummary({total_count:1,check_runs:[check(1,'skipped')]}).state,'UNKNOWN');
+  assert.equal(checkSummary({total_count:1,check_runs:[check(1,null,'in_progress')]}).state,'PENDING');
+  assert.equal(checkSummary({total_count:1,check_runs:[check(1,'failure')]}).state,'FAIL');
+});
+test('superseded failures and cancellations do not mask the latest successful context',()=>{
+  const checks=[check(9,'failure'),check(12),check(10,'cancelled')];
+  assert.deepEqual(checkSummary({total_count:3,check_runs:checks}),{state:'PASS',total:1,observedTotal:3,superseded:2});
+  assert.deepEqual(checkSummary({total_count:3,check_runs:[...checks].reverse()}),{state:'PASS',total:1,observedTotal:3,superseded:2});
+});
+test('a newer pending or failed context supersedes prior success',()=>{
+  for(const [latest,state] of [[check(2,null,'queued'),'PENDING'],[check(2,'failure'),'FAIL'],[check(2,'cancelled'),'FAIL'],[check(2,'skipped'),'UNKNOWN']]){
+    assert.deepEqual(checkSummary({total_count:2,check_runs:[latest,check(1)]}),{state,total:1,observedTotal:2,superseded:1});
+  }
+});
+test('different app identities and names cannot suppress each other',()=>{
+  for(const different of [check(2,'success','completed','CI',999),check(2,'success','completed','Other CI')]){
+    assert.deepEqual(checkSummary({total_count:2,check_runs:[check(1,'failure'),different]}),{state:'FAIL',total:2,observedTotal:2,superseded:0});
+  }
+});
+test('missing or ambiguous check identities fail closed',()=>{
+  for(const invalid of [{status:'completed',conclusion:'success'},{...check(),id:0},{...check(),app:null},{...check(),name:''},{...check(),status:'invented'}]){
+    assert.deepEqual(checkSummary({total_count:1,check_runs:[invalid]}),{state:'UNKNOWN',total:null});
+  }
+  assert.deepEqual(checkSummary({total_count:2,check_runs:[check(1),check(1,'failure')]}),{state:'UNKNOWN',total:null});
 });
 test('a total deadline settles even when an injected transport never responds',async()=>{
   let signal;const tracker=createParityTracker({read:async(_path,current)=>{signal=current;return new Promise(()=>{});},deadlineMs:15});

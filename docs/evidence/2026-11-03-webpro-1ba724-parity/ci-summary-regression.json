@@ -1,0 +1,48 @@
+{
+  "run_id": "webpro-20261103T050255Z-1ba724",
+  "as_of": "2026-11-03T06:46:01.111827+00:00",
+  "source": "e2f4e22a3492b5c0e726ad81797ca450d1fc0e7c",
+  "base": "0bf297c7b88186848eb0bf4fc6558712ce1af4b2",
+  "local_linux": {
+    "baseline": {
+      "passed": 14,
+      "failed": 4,
+      "skipped": 0
+    },
+    "corrected": {
+      "passed": 18,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "native": {
+    "command": [
+      "node",
+      "--test",
+      "test\\parity-http.test.js",
+      "test\\parity-ui.test.js",
+      "test\\parity.test.js"
+    ],
+    "exit_code": 0,
+    "output": "\u2714 parity read inherits host/auth protection and exposes no write or fleet action (29.7729ms)\n\u2714 remote parity requests still require the owner Access verifier (3.4953ms)\n\u2714 roadmap renders qualified coverage, keyboard table and unverified delivery through text nodes (19.8838ms)\n\u2714 manual refresh coalesces duplicate clicks and never sends a fleet action (1.0331ms)\n\u2714 failed refresh labels retained evidence stale and restores the refresh control (1.4803ms)\n\u2714 live metadata is projected without bodies, identities or inferred delivery acceptance (4.1089ms)\n\u2714 concurrent reads coalesce and manual refresh respects the minimum interval (0.7051ms)\n\u2714 failure retains a visibly stale last good snapshot and backoff prevents a retry storm (0.5412ms)\n\u2714 a missing main catalog reports unavailable rather than an empty successful board (0.3155ms)\n\u2714 pagination exhaustion fails closed without silently dropping competing PRs (0.2478ms)\n\u2714 catalog dimensions and feature IDs are validated before reading arbitrary issue numbers (0.4076ms)\n\u2714 unrecognized catalog content is not sent to the browser (0.0651ms)\n\u2714 exact head checks distinguish pending, failed, missing, skipped and incomplete inventories (0.4075ms)\n\u2714 superseded failures and cancellations do not mask the latest successful context (0.1773ms)\n\u2714 a newer pending or failed context supersedes prior success (0.1445ms)\n\u2714 different app identities and names cannot suppress each other (0.1089ms)\n\u2714 missing or ambiguous check identities fail closed (0.0787ms)\n\u2714 a total deadline settles even when an injected transport never responds (18.1448ms)\n\u2714 claim owner SHA mismatch invalidates the refresh and never grants ownership (0.4876ms)\n\u2714 restart starts unknown and performs a fresh canonical read instead of trusting a prior process (0.1967ms)\n\u2714 CI inspection failure stays unknown without hiding otherwise available issues (0.1849ms)\n\u2714 response parsing honors Retry-After and rate-limit reset without exposing response secrets (0.2617ms)\n\u2714 server-directed cooldown wins over local retry backoff (0.1014ms)\n\u2139 tests 23\n\u2139 suites 0\n\u2139 pass 23\n\u2139 fail 0\n\u2139 cancelled 0\n\u2139 skipped 0\n\u2139 todo 0\n\u2139 duration_ms 238.1155\n"
+  },
+  "live_github": {
+    "head": "60021098ba0d97d0783a197311040d6a0cbae74e",
+    "comparison": {
+      "old": {
+        "state": "FAIL",
+        "total": 26
+      },
+      "corrected": {
+        "state": "PASS",
+        "total": 15,
+        "observedTotal": 26,
+        "superseded": 11
+      }
+    }
+  },
+  "policy": "Highest observed check-run ID per app ID and exact name; display policy only, not protected-gate acceptance.",
+  "hosted_ci": "PENDING",
+  "deployment": "NOT_DEPLOYED",
+  "acceptance_changes": 0
+}
