@@ -18,6 +18,11 @@ function fixture(){
     if(route==='contents/docs/talenthop/catalog.json?ref='+A)return {encoding:'base64',content:Buffer.from(JSON.stringify(document)).toString('base64')};
     if(/^issues\/\d+$/.test(route))return {number:Number(route.slice(7)),state:'closed',updated_at:'2026-11-03T05:30:00Z',body:SECRET,user:{email:SECRET}};
     if(route==='pulls?state=open&per_page=100&page=1')return [{number:906,state:'open',head:{sha:B},body:'Refs #96\n'+SECRET,title:SECRET,draft:false}];
+    if(route==='pulls?state=closed&sort=updated&direction=desc&per_page=100&page=1')return [
+      {number:907,state:'closed',merged_at:'2026-11-03T05:35:44Z',merge_commit_sha:B,
+        base:{ref:'main',repo:{full_name:'MulattoTech/MJobs'}},body:'MJ-TH-002 #96\n'+SECRET,title:SECRET},
+      {number:904,state:'closed',merged_at:null,body:'MJ-TH-001 #26',base:{ref:'main',repo:{full_name:'MulattoTech/MJobs'}}}
+    ];
     if(route==='commits/'+B+'/check-runs?per_page=100')return {total_count:1,check_runs:[{...check(),output:{text:SECRET}}]};
     if(route==='git/matching-refs/heads/webpro-claims/')return [{ref:'refs/heads/webpro-claims/MJ-TH-RECON',object:{sha:C}}];
     if(route==='git/commits/'+C)return {sha:C,message:'Owner webpro-20261103T050255Z-1ba724 '+SECRET,committer:{date:'2026-11-03T05:00:00Z',email:SECRET}};
@@ -29,6 +34,9 @@ test('live metadata is projected without bodies, identities or inferred delivery
   const f=fixture(),tracker=createParityTracker(f);const result=await tracker.status();
   assert.equal(result.available,true);assert.equal(result.stale,false);assert.equal(result.sourceSha,A);
   assert.equal(result.features[1].issues[0].state,'closed');assert.equal(result.features[1].pulls[0].ci.state,'PASS');
+  assert.deepEqual(result.features[1].relatedMerges,[{number:907,mergeSha:B,mergedAt:'2026-11-03T05:35:44Z',url:'https://github.com/MulattoTech/MJobs/pull/907'}]);
+  assert.deepEqual(result.features[0].relatedMerges,[]);assert.deepEqual(result.mergeWindow,{examined:2,complete:true,order:'RECENTLY_UPDATED_CLOSED_PRS'});
+  assert.equal(result.features[1].delivery.state,'NOT_VERIFIED');assert.equal(result.features[1].delivery.mergeSha,null);
   assert.equal(result.features[1].delivery.accepted,null);assert.equal(result.features[1].delivery.deployedSha,null);
   assert.equal(result.workstreams[0].claims[0].runId,'webpro-20261103T050255Z-1ba724');
   assert.equal(result.workstreams[0].claims[0].ageIndicator,'OLDER_THAN_30_MINUTES');
@@ -37,6 +45,30 @@ test('live metadata is projected without bodies, identities or inferred delivery
   assert.equal(result.projectSync,'BLOCKED_AUTH_SCOPE');assert.equal(result.harStatus,'BLOCKED');
   assert.ok(!JSON.stringify(result).includes(SECRET));
   assert.ok(f.calls.every(path=>path.startsWith('repos/MulattoTech/MJobs/')));
+});
+test('bounded closed PR window never invents complete history or feature acceptance',async()=>{
+  const f=fixture(),route='pulls?state=closed&sort=updated&direction=desc&per_page=100&page=1';
+  const read=(path,signal)=>path.endsWith(route)?Array.from({length:100},(_,i)=>({number:i+1,state:'closed',merged_at:null})):f.read(path,signal);
+  const result=await createParityTracker({...f,read}).status();
+  assert.equal(result.available,true);assert.equal(result.mergeWindow.complete,false);assert.equal(result.mergeWindow.examined,100);
+  assert.equal(result.features[1].relatedMerges.length,0);assert.equal(result.features[1].delivery.state,'NOT_VERIFIED');
+  assert.ok(result.warnings.includes('CLOSED_PR_HISTORY_WINDOW_INCOMPLETE'));
+});
+test('linked merged PR evidence is scoped to main and invalid receipts fail closed',async()=>{
+  const f=fixture(),route='pulls?state=closed&sort=updated&direction=desc&per_page=100&page=1';
+  const base={number:912,state:'closed',merged_at:'2026-11-03T05:40:00Z',merge_commit_sha:B,
+    base:{ref:'main',repo:{full_name:'MulattoTech/MJobs'}},body:'MJ-TH-002'};
+  for(const row of [{...base,merge_commit_sha:'invalid'},{...base,merged_at:'not-a-date'},{...base,state:'open'}]){
+    const read=(path,signal)=>path.endsWith(route)?[row]:f.read(path,signal);
+    const result=await createParityTracker({...f,read}).status();
+    assert.equal(result.available,false);assert.equal(result.stale,true);
+  }
+  for(const row of [{...base,base:{ref:'release',repo:{full_name:'MulattoTech/MJobs'}}},
+    {...base,base:{ref:'main',repo:{full_name:'someone/else'}}}]){
+    const read=(path,signal)=>path.endsWith(route)?[row]:f.read(path,signal);
+    const result=await createParityTracker({...f,read}).status();
+    assert.equal(result.available,true);assert.deepEqual(result.features[1].relatedMerges,[]);
+  }
 });
 test('concurrent reads coalesce and manual refresh respects the minimum interval',async()=>{
   const f=fixture(),tracker=createParityTracker(f);const results=await Promise.all([tracker.status(),tracker.status({refresh:true}),tracker.status()]);
