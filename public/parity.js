@@ -17,10 +17,11 @@
     const summary=node('p',data.features.length+' capabilities · '+data.coverage.routes.exercised+'/'+data.coverage.routes.identified+' routes exercised · '+data.coverage.journeys.exercised+'/'+data.coverage.journeys.identified+' journeys exercised · HAR '+data.harStatus);
     content.append(summary,link('Open parity epic',data.epicUrl));
     const counts=node('p',Object.entries(data.discoveryCounts).map(([name,n])=>n+' '+name.toLowerCase()).join(' · '));content.append(counts);
+    content.append(node('p','Catalog implementation states: '+Object.entries(data.implementationCounts).map(([name,n])=>n+' '+name.toLowerCase()).join(' · ')+'. Delivery requires separate evidence.'));
     const blockers=node('ul');for(const code of data.blockers)blockers.append(node('li',labels[code]||'Evidence requires review'));content.append(blockers);
     const streams=node('ul');
     for(const work of data.workstreams){const li=node('li');li.append(link(work.key+' · #'+work.issue.number,work.issue.url));
-      for(const claim of work.claims)li.append(node('span',' · '+(claim.runId||'Owner run unknown')+' · '+(claim.ageIndicator==='OLDER_THAN_30_MINUTES'?'Claim older than 30 minutes; heartbeat unknown':'Claim age under 30 minutes; heartbeat unknown')));
+      for(const claim of work.claims)li.append(node('span',' · '),link('Claim '+claim.ownerCommit.slice(0,12),claim.url),node('span',' · '+(claim.runId||'Owner run unknown')+' · '+(claim.ageIndicator==='OLDER_THAN_30_MINUTES'?'Claim older than 30 minutes; heartbeat unknown':'Claim age under 30 minutes; heartbeat unknown')));
       if(!work.claims.length)li.append(node('span',' · No matching claim at last sync'));streams.append(li);}
     content.append(streams);
     const wrap=node('div'),table=node('table'),caption=node('caption','Capability evidence and current GitHub references');wrap.className='parity-table';wrap.tabIndex=0;wrap.setAttribute('aria-label','Scrollable capability table');
@@ -28,9 +29,10 @@
     for(const text of ['Capability','Discovery','MJobs implementation','GitHub references','Delivery evidence']){const th=node('th',text);th.scope='col';headers.append(th);}head.append(headers);table.append(head);
     const body=node('tbody');
     for(const feature of data.features){const tr=node('tr'),identity=node('td');identity.append(node('strong',feature.id+' · '+feature.title),node('div',feature.priority+(feature.dependencies.length?' · Depends on '+feature.dependencies.join(', '):'')));
+      if(feature.requirements.length)identity.append(node('div','Requirements: '+feature.requirements.join(', ')));
       const references=node('td');for(const issue of feature.issues)references.append(link('#'+issue.number+' '+issue.state,issue.url),node('span',' '));
       for(const pr of feature.pulls)references.append(node('div'),link('PR #'+pr.number+' · '+pr.state+' · checks '+pr.ci.state,pr.url));
-      for(const claim of feature.claims)references.append(node('div','Claim '+claim.key+' · '+(claim.runId||'owner unknown')));
+      for(const claim of feature.claims){const row=node('div');row.append(link('Claim '+claim.key,claim.url),node('span',' · '+(claim.runId||'owner unknown')+' · owner '+claim.ownerCommit.slice(0,12)+' · heartbeat unknown'));references.append(row);}
       if(feature.pulls.length>1)references.append(node('div','Multiple referenced PRs; check their scope.'));
       tr.append(identity,node('td',feature.discovery),node('td',feature.implementation),references,node('td','Merge, deployment and parity acceptance not verified'));
       body.append(tr);}

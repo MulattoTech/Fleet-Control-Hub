@@ -2,9 +2,9 @@
 const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 function sample(){return {available:true,stale:false,syncedAt:'2026-11-03T06:00:00Z',sourceSha:'a'.repeat(40),catalogAsOf:'2026-11-03T05:00:00Z',
   epicUrl:'https://github.com/MulattoTech/MJobs/issues/904',coverage:{routes:{exercised:0,identified:3},journeys:{exercised:0,identified:1}},harStatus:'BLOCKED',
-  discoveryCounts:{OBSERVED:0,'PUBLICLY CLAIMED':1},blockers:['FULL_HAR_TOOL_UNAVAILABLE'],workstreams:[],
-  features:[{id:'MJ-TH-001',title:'<img src=x onerror=alert(1)>',priority:'P1',discovery:'PUBLICLY CLAIMED',implementation:'PARTIAL',dependencies:[],
-    issues:[{number:26,state:'closed',url:'https://github.com/MulattoTech/MJobs/issues/26'}],pulls:[],claims:[]}]};}
+  discoveryCounts:{OBSERVED:0,'PUBLICLY CLAIMED':1},implementationCounts:{PARTIAL:1,ACCEPTED:0},blockers:['FULL_HAR_TOOL_UNAVAILABLE'],workstreams:[],
+  features:[{id:'MJ-TH-001',title:'<img src=x onerror=alert(1)>',priority:'P1',discovery:'PUBLICLY CLAIMED',implementation:'PARTIAL',dependencies:[],requirements:['MJ-REQ-025'],
+    issues:[{number:26,state:'closed',url:'https://github.com/MulattoTech/MJobs/issues/26'}],pulls:[],claims:[{key:'MJ-REQ-025',ownerCommit:'b'.repeat(40),runId:'webpro-20261103T050255Z-1ba724',url:'https://github.com/MulattoTech/MJobs/tree/webpro-claims/MJ-REQ-025'}]}]};}
 function fixture(){
   const nodes=[],calls=[],timers=[];let failure=false,pending=false,release;
   function node(tag){const item={tag,children:[],attrs:{},handlers:{},textContent:'',disabled:false,
@@ -22,6 +22,9 @@ test('roadmap renders qualified coverage, keyboard table and unverified delivery
   const f=fixture();await new Promise(setImmediate);
   assert.equal(f.calls[0].url,'/api/parity');assert.ok(f.text().includes('0/3 routes exercised'));
   assert.ok(f.text().includes('0 observed'));assert.ok(f.text().includes('Merge, deployment and parity acceptance not verified'));
+  assert.ok(f.text().includes('Catalog implementation states: 1 partial · 0 accepted. Delivery requires separate evidence.'));
+  assert.ok(f.text().includes('Requirements: MJ-REQ-025'));assert.ok(f.text().includes('heartbeat unknown'));
+  assert.ok(f.nodes.some(n=>n.tag==='a'&&n.href==='https://github.com/MulattoTech/MJobs/tree/webpro-claims/MJ-REQ-025'));
   assert.ok(f.text().includes('<img src=x onerror=alert(1)>'));assert.equal(f.nodes.some(n=>n.tag==='img'),false);
   assert.ok(f.nodes.some(n=>n.attrs['aria-label']==='Scrollable capability table'&&n.tabIndex===0));
   assert.ok(f.nodes.some(n=>n.tag==='caption'));assert.ok(f.nodes.filter(n=>n.tag==='th').every(n=>n.scope==='col'));
