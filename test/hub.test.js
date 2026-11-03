@@ -153,6 +153,29 @@ test('MJobs status projects native run progress and errors while preserving obse
   run={projectId:'mjobs-luna',phase:'running',active:false,running:true};assert.equal((await api.status('mjobs')).mode,'running');
   run=null;assert.equal((await api.status('mjobs')).mode,'paused or manual');
 });
+test('native MJobs controller stays actionable when the AO worker runtime is offline',async()=>{
+  const {calls,fetcher}=fixture();
+  const api=createAdapters({fetcher:async(url,options)=>{
+    if(url.endsWith('/api/state')&&url.includes(':8787'))return {ok:true,json:async()=>({projectId:'mjobs-luna',offline:true,sessions:[],summary:{total:70,working:null,idle:null}})};
+    if(url.endsWith('/api/run'))return {ok:true,json:async()=>({projectId:'mjobs-luna',phase:'blocked',active:false,running:false,error:'Outer MJobs checkout was not clean',quota:{fresh:true,remainingPercent:80,minimumRemainingPercent:7,blocked:false},blockedReasons:[]})};
+    return fetcher(url,options);
+  },progressReader:()=>({available:false})});
+  const status=await api.status('mjobs');
+  assert.equal(status.online,false);assert.equal(status.controllerConnected,true);assert.equal(status.start.known,true);
+  assert.match(status.start.lastFailure,/checkout was not clean/);
+  assert.equal((await api.startPreview('mjobs')).blocked,false);
+  assert.equal(calls.filter(x=>x.options.method==='POST').length,0);
+});
+test('BabyTracker Start can be offered by a healthy native controller before AO workers exist',async()=>{
+  const {fetcher}=fixture();
+  const api=createAdapters({fetcher:async(url,options)=>{
+    if(url.endsWith('/api/state')&&url.includes(':4319'))return {ok:true,json:async()=>({projectId:'babytracker',runtime:{online:false},mode:'paused',sessions:[],summary:{total:0},tasks:[],quota:{fresh:true,remainingPercent:80},quotaPolicy:{minimumAllowedPercent:7}})};
+    return fetcher(url,options);
+  },progressReader:()=>({available:false})});
+  const status=await api.status('babytracker');
+  assert.equal(status.online,false);assert.equal(status.controllerConnected,true);assert.equal(status.start.known,true);
+  assert.equal((await api.startPreview('babytracker')).blocked,false);
+});
 test('Start preview preserves native reconciliation blockers without requiring a completed stop to be rearmed',async()=>{
   const {fetcher}=fixture();
   const api=createAdapters({fetcher:async(url,options)=>{

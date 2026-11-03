@@ -5,7 +5,7 @@ const fs=require('node:fs');
 const vm=require('node:vm');
 const path=require('node:path');
 
-function uiFixture(){
+function uiFixture({stubRender=true}={}){
   const calls=[],timers=[],storage=new Map(),observed=[];
   const nodes=new Map();
   function node(){return {disabled:false,append(){},replaceChildren(){},setAttribute(){},addEventListener(){}};}
@@ -27,7 +27,7 @@ function uiFixture(){
       return {ok:false,json:async()=>({error:'fixture service unavailable'})};
     }});
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../public/app.js'),'utf8'),context);
-  vm.runInContext('render=fleets=>observed.push(fleets[0].mode);confirmAction=()=>{throw Error("Normal Start opened a dialog");};',context);
+  if(stubRender)vm.runInContext('render=fleets=>observed.push(fleets[0].mode);confirmAction=()=>{throw Error("Normal Start opened a dialog");};',context);
   return {context,calls,timers,storage,observed,setOutcome:v=>postOutcome=v,release:()=>release(),setMode:v=>mode=v,start:()=>vm.runInContext('startFleet("mjobs","MJobs",{disabled:false})',context)};
 }
 
@@ -47,4 +47,13 @@ test('Hub Start retains the request after transport failure and clears it after 
   f.setOutcome('refused');await f.start();assert.equal(f.storage.size,0);
   const bodies=f.calls.filter(c=>c.url==='/api/start').map(c=>JSON.parse(c.options.body));
   assert.equal(bodies.length,3);assert.equal(bodies[0].requestId,bodies[1].requestId);assert.equal(bodies[1].requestId,bodies[2].requestId);
+});
+test('Hub Start remains available when native HTTP control is live but MJobs agents are offline',async()=>{
+  const f=uiFixture({stubRender:false});await new Promise(resolve=>setImmediate(resolve));
+  const shape=vm.runInContext(`render([{id:'mjobs',name:'MJobs',online:false,controllerConnected:true,mode:'blocked',
+    start:{known:true,phase:'blocked',running:false,lastFailure:'Main checkout was dirty',quota:{fresh:true,remainingPercent:80,minimumRemainingPercent:7,blocked:false},blockedReasons:[]},
+    safety:{dispatchEnabled:false,emergencyScope:'fleet-owned'},progress:null}]);
+    ({disabled:fleetViews.get('mjobs').start.disabled,status:fleetViews.get('mjobs').state.textContent,
+      reason:fleetViews.get('mjobs').reason.textContent,controller:fleetViews.get('mjobs').kind.textContent})`,f.context);
+  assert.equal(shape.disabled,false);assert.match(shape.status,/retry/);assert.match(shape.reason,/checkout was dirty/);assert.match(shape.controller,/Controller connected/);
 });

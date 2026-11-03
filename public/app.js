@@ -20,9 +20,15 @@ var FleetPower = (() => {
     if (reasons) return { ...result, state: 'attention', status: 'Start blocked', detail: reasons };
     if (q.fresh !== true || result.remaining === null || result.reserve === null) return { ...result, state: 'checking', status: 'Waiting for usage', detail: 'A fresh usage reading and the saved reserve are required. Status updates automatically.' };
     if (q.blocked === true || result.remaining <= result.reserve) return { ...result, state: 'held', status: result.remaining === 0 ? 'Allowance exhausted' : 'Quota hold', detail: result.remaining <= result.reserve ? `${result.remaining}% remaining / ${result.reserve}% reserve. Start becomes available above the reserve; a reset never launches agents automatically.` : String(q.reason || 'The provider currently blocks new work.').slice(0, 300) };
-    if (!['idle', 'paused', 'blocked', 'uncertain'].includes(input.phase)) return { ...result, state: 'attention', status: 'State needs review', detail: 'The controller reported an unrecognized run state. No launch is offered.' };
+    if (!['idle', 'paused', 'blocked', 'uncertain', 'running'].includes(input.phase)) return { ...result, state: 'attention', status: 'State needs review', detail: 'The controller reported an unrecognized run state. No launch is offered.' };
     if (input.phase === 'uncertain') return { ...result, state: 'attention', status: 'Verify pending launch', canStart: true, detail: 'Start checks the existing launch receipt. It must not create a duplicate operation.' };
-    return { ...result, state: 'ready', status: input.phase === 'paused' ? 'Paused · ready to start' : 'Ready to start', canStart: true,
+    if (input.phase === 'blocked') {
+      const previous = typeof input.lastFailure === 'string' ? input.lastFailure.slice(0, 240) : '';
+      return { ...result, state: 'retry', status: 'Previous Start failed · retry available', canStart: true,
+        detail: previous ? 'Last attempt: ' + previous + '. Click Start to check the current conditions and retry safely.' : 'The last attempt did not finish. Click Start to recheck and retry safely.' };
+    }
+    const paused = input.phase === 'paused' || input.phase === 'running';
+    return { ...result, state: 'ready', status: paused ? 'Paused · press Start to resume' : 'Ready to start', canStart: true,
       detail: input.retry ? 'Retry the same Start request. The controller verifies its original outcome before continuing.' : 'One click resumes the project mission with your saved limits. No prompt to write.' };
   }
   return Object.freeze({ present });
@@ -122,16 +128,18 @@ function render(fleets) {
       const detail=el('div','detail');row.append(title,content,actions,detail,limitPanel,reviewPanel);holder.append(row);
       v={row,start,label,state,reason,nums,value,meter,reserve,freshness,detail,kind,pause,stop,limits,reviews};fleetViews.set(fleet.id,v);
     }
-    const model=FleetPower.present({...fleet.start,name:fleet.name,online:fleet.online,known:fleet.start?.known===true,busy:pendingActions.has(fleet.id+':start')});
-    v.row.className='fleet'+(fleet.online?'':' offline');v.row.setAttribute('data-power-state',model.state);
+    // The native HTTP controller may be reachable while the AO runtime is offline.
+    const controllerConnected=fleet.controllerConnected===true||(fleet.controllerConnected==null&&fleet.online===true);
+    const model=FleetPower.present({...fleet.start,name:fleet.name,online:controllerConnected,known:fleet.start?.known===true,busy:pendingActions.has(fleet.id+':start')});
+    v.row.className='fleet'+(controllerConnected?'':' offline');v.row.setAttribute('data-power-state',model.state);
     v.start.disabled=!model.canStart;v.start.setAttribute('aria-busy',String(model.state==='starting'));
     v.label.textContent=model.label;v.state.textContent=model.status;v.reason.textContent=model.detail;
-    v.kind.textContent=fleet.online?'Controller connected':'Controller unavailable';
+    v.kind.textContent=controllerConnected?(fleet.online?'Controller connected · runtime online':'Controller connected · agents offline'):'Controller unavailable';
     for(const key of Object.keys(v.nums))v.nums[key].textContent=fleet.online&&Number.isInteger(fleet[key])?fleet[key].toLocaleString():'—';
     v.value.textContent=model.remaining===null?'—':model.remaining+'%';v.meter.hidden=model.remaining===null;v.meter.value=model.remaining??0;
     v.reserve.textContent=model.reserve===null?'Reserve unavailable':model.reserve+'% saved reserve';v.freshness.textContent=fleet.start?.quota?.fresh===true?'Fresh provider reading':'Usage unavailable';
-    for(const [button,action] of [[v.pause,'pause'],[v.stop,'graceful-stop']])button.disabled=!fleet.online||pendingActions.has(fleet.id+':'+action);
-    v.limits.disabled=v.reviews.disabled=!fleet.online;
+    for(const [button,action] of [[v.pause,'pause'],[v.stop,'graceful-stop']])button.disabled=!controllerConnected||pendingActions.has(fleet.id+':'+action);
+    v.limits.disabled=v.reviews.disabled=!controllerConnected;
     v.detail.textContent=safetyText(fleet.safety)+'. '+progressText(fleet);
   }
   const missing=Array.from(fleetViews.keys()).filter(id=>!fleets.some(f=>f.id===id));
@@ -143,7 +151,7 @@ function render(fleets) {
 
 let refreshInFlight=false;
 async function refresh(){if(refreshInFlight)return;refreshInFlight=true;const button=$('refresh');button.disabled=true;try{const r=await fetch('/api/status',{cache:'no-store'});if(!r.ok)throw Error('Hub returned '+r.status);const data=await r.json();render(data.fleets);$('notice').textContent=(lastActionMessage?lastActionMessage+' ':'')+'Observed '+new Date(data.observedAt).toLocaleTimeString()+'. Status reads do not dispatch work.';}catch(e){for(const v of fleetViews.values()){v.start.disabled=true;v.state.textContent='Status unavailable';v.reason.textContent='Controller status could not be refreshed. No new launch is offered.';} $('notice').textContent=(lastActionMessage?lastActionMessage+' ':'')+'Status unavailable: '+e.message;}finally{button.disabled=false;refreshInFlight=false;}}
-function safetyText(s){if(!s)return 'Unavailable';const scope=s.emergencyScope==='machine'?'machine-wide Codex/AO':s.emergencyScope==='project'?'project sessions':'unknown';return (s.emergency?'Emergency latched':s.gracefulStop?'Graceful stop in progress':s.dispatchEnabled?'Dispatch enabled':'Dispatch paused')+'; Codex remaining '+(s.codexQuotaFresh&&s.codexRemaining!=null?s.codexRemaining+'%':'unavailable')+'; emergency scope: '+scope;}
+function safetyText(s){if(!s)return 'Unavailable';const scope=s.emergencyScope==='machine'?'machine-wide Codex/AO':s.emergencyScope==='fleet-owned'?'MJobs-owned Codex/AO':s.emergencyScope==='project'?'project sessions':'unknown';return (s.emergency?'Emergency latched':s.gracefulStop?'Graceful stop in progress':s.dispatchEnabled?'Dispatch enabled':'Dispatch paused')+'; Codex remaining '+(s.codexQuotaFresh&&s.codexRemaining!=null?s.codexRemaining+'%':'unavailable')+'; emergency scope: '+scope;}
 function progressText(fleet){const p=fleet.progress;if(!p?.pipeline?.available)return 'Work stage unavailable';
   const fields=[['proposed','proposed'],['approved','approved'],['active','active'],['completed','completed'],['accepted','accepted'],['blocked','blocked'],['unassessed','unassessed']];
   const stages=fields.filter(([key])=>Number.isInteger(p.pipeline[key])).map(([key,label])=>p.pipeline[key]+' '+label).join(', ');
@@ -169,7 +177,7 @@ async function assessCandidate(id,candidate,button){
     const r=await postAction('/api/review-assessment',{id,candidateId:candidate.id,decision,confirmation,evidenceReviewed:true,prNumber,reviewId});const result=await r.json();if(!r.ok)throw Error(result.error||'Assessment refused');$('notice').textContent=result.note;await refresh();
   }catch(e){$('notice').textContent='Assessment outcome was not confirmed. Check the native controller before retrying: '+e.message;button.disabled=false;}}
 async function controlFleet(id,name,action,button){const key=id+':'+action;if(pendingActions.has(key))return;pendingActions.add(key);button.disabled=true;try{
-  const message=action==='pause'?'Pause new dispatch for '+name+'? Existing turns may finish.':'Gracefully stop '+name+'? Idle sessions may exit and active sessions will receive a wind-down instruction.';if(!await confirmAction(message))return;
+  const message=action==='pause'?'Pause new dispatch for '+name+'? Existing turns may finish.':'Gracefully stop '+name+'? Idle sessions may exit and active sessions will receive a wind-down instruction.';if(action==='graceful-stop'&&!await confirmAction(message))return;
   const r=await postAction('/api/control',{id,action});const data=await r.json();if(!r.ok)throw Error(data.error||'Control failed');showActionMessage(data.note);
 }catch(e){showActionMessage('Action outcome was not confirmed. Check the selected controller before retrying: '+e.message);}finally{pendingActions.delete(key);await refresh();}}
 async function startFleet(id,name,button){const key=id+':start';if(pendingActions.has(key))return;pendingActions.add(key);button.disabled=true;try{

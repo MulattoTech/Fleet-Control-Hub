@@ -1,5 +1,16 @@
 # Fleet Control Hub
 
+## Simple MJobs startup (without Electron)
+
+- Open the protected **https://fleet.m-techlabs.com** page, or local **http://127.0.0.1:4320**.
+- After the Codex allowance resets, wait for a **fresh** usage reading above the configured reserve, then click **Start MJobs**. If a previous launch failed, its last error and a retry option are shown. Repeated clicks use one stable request ID.
+- **Starting** means the native controller acknowledged an asynchronous request; only **Running** means the native controller verifies that automatic dispatch was enabled. The controller may be connected while the Orchestrator runtime is offline; this is a recoverable Start condition.
+- **Pause dispatch** immediately stops new assignments without killing active work. **Start MJobs** resumes after a pause. **Graceful stop** asks for confirmation and requests a managed wind-down. Advanced historical restore is a separate operation.
+- A failed attempt never silently turns on another project or consumes a second request ID after a lost response. The local native controller owns project identity, Git main reconciliation, quota, emergency and native session readiness checks.
+
+The Hub remains a lightweight Node-powered web interface. Dashboard load, refresh and server restart do not launch agents. Do not copy controller runtime state from this repository when deploying.
+
+
 ## Fleet UI 1.0
 
 The shared Hub, native MJobs page and remote monitor now share the Flight Deck design. The power action keeps its **Start MJobs** label; quota holds and recovery states are explained separately. See [design and validation](docs/FLIGHT_DECK_DESIGN.md) and the [reusable UI package](packages/fleet-ui/README.md). `npm run build:ui` synchronizes assets; `npm run verify:ui` checks drift. New project execution still requires a project-specific adapter.
