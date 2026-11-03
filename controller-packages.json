@@ -250,16 +250,17 @@
       "examples/project.example.json": "909287633f50be1309409ac299f19bd593efd2d6af3838720a3228f2a4ede411",
       "index.js": "cf8f85c5edec2ed306cebcfbe94e2bc2d8526c8938bcb30dfb8bcfa862b7520e",
       "README.md": "f89e41f62a4a5dcb6c5efb471846fe2f458de95ed1922805974bc933718202a4",
-      "src/capsule.js": "6ff699e02974b7c0b148cd5adcfb9f7f251fa806fca3e4bbfb0c73a0a6241e06",
-      "src/common.js": "6e3e9a80f572e9a2bf02d1d387d19eb4865a10cd59e45064778dbeb9ea7c077b",
-      "src/engine.js": "6f9fc5eb393a0d7b3107afa361bcafbaea747e3ab2f5dc8137812d441be1e80f",
-      "src/native-adapter.js": "c76ead495087aa2cff2370d237006bf3f47d082f94d9649ae18366398bc74896",
+      "src/capsule.js": "4a4aa1544d1dfe2443f377e9ba163cd0c40b0f00cb91022ec459de8d71b9455b",
+      "src/common.js": "b79d6b8c9d197d61729590cda1d540f2a2041174b8f12c9b282a2adafb9439f8",
+      "src/engine.js": "b31623f66caa12e4d1a1ad51dbf52e8983bb5214a7d473783c960bf77e3823f8",
+      "src/native-adapter.js": "106dfd4b49ceb4663f27c62953d66d9e935a6280d17bc3daaaf36a12e17e2553",
       "src/policy.js": "8bc440e4c28fa7bf524bb50ce3595f40971c6620c2aed76806f445c1c565f510",
-      "src/store.js": "677e0c70d3182c728b78edeecbf6511786d5960f45ba8598b6ac4e4d0b0ea7ed",
-      "test/capsules.test.js": "383c3b455e4294dfab7be703a5511933061c5c64f768ce5fd88fe6d211d5e790",
-      "test/lifecycle.test.js": "5e6e31e1d6b3c6fb7b804a3f6353171a410eac6ae39076056c06b556642ab9cf",
+      "src/store.js": "e84fbfdf676d26f0af430ee5ce2494d5a2a9f371b1e7dadf7ee660dfcea14c46",
+      "test/capsules.test.js": "f0a7cfadf0cc7e38d8635e992b218802b5d25d14e99d0a6f57306d340c7d0c8f",
+      "test/lifecycle.test.js": "5a2cd83b91d666dd5cef93ad0dc845df3524828f4c47ac560e8823303aea0efd",
       "test/native-adapter.test.js": "52ed74ecb5832f468e120132f2dfd199e3950a35c82bb3b4a16c5d0769204ad6",
-      "windows/Run-Lifecycle.vbs": "632f45fa895dd20249aa5ec150311af3ded0892e4578eebc5204d73f28c9bd23"
+      "windows/Run-Lifecycle.vbs": "632f45fa895dd20249aa5ec150311af3ded0892e4578eebc5204d73f28c9bd23",
+      "test/safety-regressions.test.js": "d3b53f5e3959f22c739fa4f0425dd6533eb7c944fb8d13c962f8f16b82a514e1"
     }
   }
 }
