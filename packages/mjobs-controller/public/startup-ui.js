@@ -36,7 +36,7 @@ const FleetStartupUI = (() => {
   } catch {}
 
   root.classList.add('startup-panel');
-  root.innerHTML = '<div class="startup-heading"><div><p class="startup-eyebrow">Protected launch</p><h2>Start the fleet safely</h2><p class="startup-intro">One explicit startup sequence: verify the allowance, arm the 7% stop, then recover the preserved fleet.</p></div><span id="startupBadge" class="startup-badge">Checking status…</span></div>' +
+  root.innerHTML = '<div class="startup-heading"><div><p class="startup-eyebrow">Protected launch</p><h2>Start the fleet safely</h2><p class="startup-intro">One explicit startup sequence: verify the allowance, arm the saved emergency cutoff, then recover the preserved fleet.</p></div><span id="startupBadge" class="startup-badge">Checking status…</span></div>' +
     '<div class="startup-current" role="status" aria-live="polite" aria-atomic="true"><h3 id="startupPhase">Loading startup state</h3><p id="startupDetail">No agents are being started by this refresh.</p></div>' +
     '<ol id="startupSteps" class="startup-steps" aria-label="Startup stages">' + stepLabels.map((label, index) => '<li data-startup-step="' + (index + 1) + '"><span>' + (index + 1) + '</span>' + label + '</li>').join('') + '</ol>' +
     '<div id="startupRestoreProgress" class="startup-restore" hidden><label id="startupRestoreLabel" for="startupRestoreMeter">Restoration progress</label><progress id="startupRestoreMeter" max="1" value="0"></progress><p id="startupRestoreDetail"></p></div>' +
