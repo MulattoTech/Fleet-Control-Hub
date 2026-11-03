@@ -124,7 +124,8 @@ function render(fleets) {
       limits.addEventListener('click',()=>{if(openLimits.has(fleet.id)){openLimits.delete(fleet.id);limitPanel.replaceChildren();}else loadLimits(fleet.id,limitPanel);});
       actions.append(pause,stop,limits,reviews);
       if(fleet.id==='mjobs'){const advanced=el('details','advanced-controls'),summary=el('summary','','Advanced recovery'),one=el('button','','Restore one saved session');one.type='button';one.addEventListener('click',()=>startOneMJobs(one));advanced.append(summary,one);actions.append(advanced);}
-      if(['127.0.0.1','localhost'].includes(location.hostname)){const open=el('a','action','Full controls');open.href=fleet.controlUrl;actions.append(open);}
+      if(fleet.id==='mjobs'){const open=el('a','action','Full agent controls');open.href='/fleet/';actions.append(open);}
+      else if(['127.0.0.1','localhost'].includes(location.hostname)){const open=el('a','action','Full controls');open.href=fleet.controlUrl;actions.append(open);}
       const detail=el('div','detail');row.append(title,content,actions,detail,limitPanel,reviewPanel);holder.append(row);
       v={row,start,label,state,reason,nums,value,meter,reserve,freshness,detail,kind,pause,stop,limits,reviews};fleetViews.set(fleet.id,v);
     }
@@ -149,8 +150,8 @@ function render(fleets) {
   $('totals').replaceChildren(el('b','',available.length?total.toLocaleString():'—'),el('span','',available.length===fleets.length?'Tracked sessions':'Sessions in connected fleets'));
 }
 
-let refreshInFlight=false;
-async function refresh(){if(refreshInFlight)return;refreshInFlight=true;const button=$('refresh');button.disabled=true;try{const r=await fetch('/api/status',{cache:'no-store'});if(!r.ok)throw Error('Hub returned '+r.status);const data=await r.json();render(data.fleets);$('notice').textContent=(lastActionMessage?lastActionMessage+' ':'')+'Observed '+new Date(data.observedAt).toLocaleTimeString()+'. Status reads do not dispatch work.';}catch(e){for(const v of fleetViews.values()){v.start.disabled=true;v.state.textContent='Status unavailable';v.reason.textContent='Controller status could not be refreshed. No new launch is offered.';} $('notice').textContent=(lastActionMessage?lastActionMessage+' ':'')+'Status unavailable: '+e.message;}finally{button.disabled=false;refreshInFlight=false;}}
+let refreshInFlight=false,refreshQueued=false;
+async function refresh(){if(refreshInFlight){refreshQueued=true;return;}refreshInFlight=true;const button=$('refresh');button.disabled=true;try{const r=await fetch('/api/status',{cache:'no-store'});if(!r.ok)throw Error('Hub returned '+r.status);const data=await r.json();render(data.fleets);$('notice').textContent=(lastActionMessage?lastActionMessage+' ':'')+'Observed '+new Date(data.observedAt).toLocaleTimeString()+'. Status reads do not dispatch work.';}catch(e){for(const v of fleetViews.values()){v.start.disabled=true;v.state.textContent='Status unavailable';v.reason.textContent='Controller status could not be refreshed. No new launch is offered.';} $('notice').textContent=(lastActionMessage?lastActionMessage+' ':'')+'Status unavailable: '+e.message;}finally{button.disabled=false;refreshInFlight=false;if(refreshQueued){refreshQueued=false;queueMicrotask(refresh);}}}
 function safetyText(s){if(!s)return 'Unavailable';const scope=s.emergencyScope==='machine'?'machine-wide Codex/AO':s.emergencyScope==='fleet-owned'?'MJobs-owned Codex/AO':s.emergencyScope==='project'?'project sessions':'unknown';return (s.emergency?'Emergency latched':s.gracefulStop?'Graceful stop in progress':s.dispatchEnabled?'Dispatch enabled':'Dispatch paused')+'; Codex remaining '+(s.codexQuotaFresh&&s.codexRemaining!=null?s.codexRemaining+'%':'unavailable')+'; emergency scope: '+scope;}
 function progressText(fleet){const p=fleet.progress;if(!p?.pipeline?.available)return 'Work stage unavailable';
   const fields=[['proposed','proposed'],['approved','approved'],['active','active'],['completed','completed'],['accepted','accepted'],['blocked','blocked'],['unassessed','unassessed']];
@@ -178,9 +179,10 @@ async function assessCandidate(id,candidate,button){
   }catch(e){$('notice').textContent='Assessment outcome was not confirmed. Check the native controller before retrying: '+e.message;button.disabled=false;}}
 async function controlFleet(id,name,action,button){const key=id+':'+action;if(pendingActions.has(key))return;pendingActions.add(key);button.disabled=true;try{
   const message=action==='pause'?'Pause new dispatch for '+name+'? Existing turns may finish.':'Gracefully stop '+name+'? Idle sessions may exit and active sessions will receive a wind-down instruction.';if(action==='graceful-stop'&&!await confirmAction(message))return;
+  showActionMessage((action==='pause'?'Requesting dispatch pause for ':'Requesting graceful stop for ')+name+'… The controller has not confirmed this yet.');
   const r=await postAction('/api/control',{id,action});const data=await r.json();if(!r.ok)throw Error(data.error||'Control failed');showActionMessage(data.note);
 }catch(e){showActionMessage('Action outcome was not confirmed. Check the selected controller before retrying: '+e.message);}finally{pendingActions.delete(key);await refresh();}}
-async function startFleet(id,name,button){const key=id+':start';if(pendingActions.has(key))return;pendingActions.add(key);button.disabled=true;try{
+async function startFleet(id,name,button){const key=id+':start';if(pendingActions.has(key))return;pendingActions.add(key);button.disabled=true;showActionMessage('Checking '+name+' startup conditions… No agents launched yet.');try{
   const previewResponse=await fetch('/api/start-preview?id='+encodeURIComponent(id),{cache:'no-store'});const preview=await previewResponse.json();if(!previewResponse.ok)throw Error(preview.error||'Start preview unavailable');
   if(preview.blocked){showActionMessage(name+' cannot start: '+(preview.blockedReasons?.join('; ')||'current controller or quota state blocks Start')+'.');return;}
   const storageKey=id+'StartRequestId',requestId=sessionStorage.getItem(storageKey)||crypto.randomUUID();

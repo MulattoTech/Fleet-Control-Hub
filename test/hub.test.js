@@ -137,6 +137,19 @@ test('one-session HTTP write requires same origin and action token',async()=>{
     assert.equal((await send(base,token)).status,202);assert.deepEqual(calls[0],['mjobs','START ONE MJobs','fixture-123','a'.repeat(64),'mjobs-luna-40']);
   }finally{await new Promise(resolve=>server.close(resolve));}
 });
+test('MJobs status overlaps independent native reads instead of serializing five round trips',async()=>{
+  const {fetcher}=fixture(),entered=[];
+  let release;const gate=new Promise(resolve=>{release=resolve;});
+  const api=createAdapters({fetcher:async(url,options)=>{
+    if(url.includes(':8787')){entered.push(new URL(url).pathname);await gate;}
+    return fetcher(url,options);
+  },progressReader:()=>({available:false})});
+  const result=api.status('mjobs');
+  try{assert.deepEqual(entered.sort(),['/api/state','/api/master','/api/sustain','/api/quota','/api/run'].sort());}
+  finally{release();}
+  assert.equal((await result).id,'mjobs');
+});
+
 test('status reads normalize both fleets and never mutate',async()=>{
   const {calls,fetcher}=fixture();const api=createAdapters({fetcher});
   assert.equal((await api.status('mjobs')).total,1);assert.equal((await api.status('babytracker')).review,'NOT_ASSESSED');

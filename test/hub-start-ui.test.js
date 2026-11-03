@@ -31,6 +31,15 @@ function uiFixture({stubRender=true}={}){
   return {context,calls,timers,storage,observed,setOutcome:v=>postOutcome=v,release:()=>release(),setMode:v=>mode=v,start:()=>vm.runInContext('startFleet("mjobs","MJobs",{disabled:false})',context)};
 }
 
+test('Start gives immediate local feedback before the controller reply',async()=>{
+  const f=uiFixture();await new Promise(resolve=>setImmediate(resolve));f.setOutcome('pending');
+  const first=f.start();
+  const notice=vm.runInContext('document.getElementById("notice").textContent',f.context);
+  assert.match(notice,/Checking MJobs startup conditions/);
+  await new Promise(resolve=>setImmediate(resolve));
+  f.release();await first;
+});
+
 test('Hub Start submits once on double click without confirmation and polls real controller status',async()=>{
   const f=uiFixture();await new Promise(resolve=>setImmediate(resolve));f.setOutcome('pending');
   const first=f.start();await f.start();await new Promise(resolve=>setImmediate(resolve));
