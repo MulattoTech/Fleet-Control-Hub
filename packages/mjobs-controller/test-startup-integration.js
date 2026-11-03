@@ -319,6 +319,12 @@ test('server bootstrap explicitly pauses a persisted active restore before accep
   assert.deepEqual(f.b.effects.map(x => x.op), ['restore.pause', 'hold']); assert.deepEqual(f.b.native, []);
 });
 
+test('advanced Restore dialog describes the saved emergency cutoff without hardcoding 7%', () => {
+  const source = fs.readFileSync(path.join(__dirname, 'public', 'restore-ui.js'), 'utf8');
+  assert.match(source, /arm your saved emergency cutoff before restoration/);
+  assert.doesNotMatch(source, /arm 7% protection before restoration/);
+});
+
 test('restore UI does not label historical completion as currently verified while runtime health is false', async () => {
   const nodes = new Map();
   const element = id => {
