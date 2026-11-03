@@ -256,7 +256,7 @@ class MasterControls{
   return await this.restore.preview();
  }
  async restoreStart(options={}){
-  if(this.locked())throw Error('Emergency stop is latched. Explicitly release the lockout after quota resets, then re-arm the 7% quota guard before restoring any agent.');
+  if(this.locked())throw Error('Emergency stop is latched. Explicitly release the lockout after quota resets, then re-arm the saved quota guard before restoring any agent.');
   if(this.restore.state.active)return this.status();
   if(this.restore.running)throw Error('A previous restore tick is still running');
   const previousNative=unresolvedNativeReason(this.restore.state);

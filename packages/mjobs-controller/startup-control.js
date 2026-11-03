@@ -193,8 +193,11 @@ class StartupController {
     if (q.ordinaryUsageAllowed === false) throw new StartupError('USAGE_UNAVAILABLE', 'Codex ordinary usage is unavailable');
     const minimum=q.minimumRemainingPercent===undefined?POLICY.brakePercent:q.minimumRemainingPercent;
     if(!Number.isInteger(minimum)||minimum<0||minimum>99)throw new StartupError('QUOTA_POLICY_INVALID','Saved start/new-work quota policy is invalid.');
-    if (q.remainingPercent <= minimum) throw new StartupError('QUOTA_LOW', 'Quota hold: '+q.remainingPercent+'% remaining; start/new work requires more than '+minimum+'%. Change the visible quota limit; emergency stop stays 7%.');
-    if(this.state.policy?.brakePercent!==minimum){this.state.policy={...POLICY,brakePercent:minimum};this._persist();}
+    if (q.remainingPercent <= minimum) throw new StartupError('QUOTA_LOW', 'Quota hold: '+q.remainingPercent+'% remaining; start/new work requires more than '+minimum+'%. Change the visible reserve; the optional emergency cutoff is '+q.thresholdPercent+'%.');
+    if(!Number.isInteger(q.thresholdPercent)||q.thresholdPercent<0||q.thresholdPercent>50)throw new StartupError('GUARD_POLICY_INVALID','Saved emergency stop cutoff is invalid.');
+    if(baseline){this.state.policy={...POLICY,thresholdPercent:q.thresholdPercent,brakePercent:minimum};this._persist();}
+    else if(this.state.policy?.thresholdPercent!==q.thresholdPercent)throw new StartupError('GUARD_CONFIG_CHANGED','Emergency cutoff changed during Startup; cancel and start a new verified request.');
+    if(this.state.policy?.brakePercent!==minimum){this.state.policy={...this.state.policy,brakePercent:minimum};this._persist();}
     if (!emergency || typeof emergency.latched !== 'boolean') throw new StartupError('EMERGENCY_UNKNOWN', 'Emergency-latch state is unavailable');
     if (baseline) {
       if (emergency.latched && (typeof emergency.revision !== 'string' || !emergency.revision)) throw new StartupError('EMERGENCY_UNKNOWN', 'The latched emergency revision must be identified before release');
@@ -204,7 +207,7 @@ class StartupController {
     if (emergency.latched && (!allowLatched || this.state.latchReleased)) throw new StartupError('EMERGENCY_ACTIVE', 'Emergency stop was engaged; Startup cannot continue');
     if (emergency.latched && this.state.initialEmergencyRevision !== emergency.revision) throw new StartupError('EMERGENCY_CHANGED', 'A newer emergency stop superseded this Startup request');
     if (this.state.dispatchHeld && value.dispatchPaused !== true) throw new StartupError('DISPATCH_NOT_HELD', 'Automatic dispatch is not confirmed paused');
-    if (requireGuard && (q.armed !== true || q.tripped === true || q.thresholdPercent !== POLICY.thresholdPercent)) throw new StartupError('GUARD_UNARMED', 'The exact 7% quota guard is not armed');
+    if (requireGuard && (q.armed !== true || q.tripped === true || q.thresholdPercent !== this.state.policy.thresholdPercent)) throw new StartupError('GUARD_UNARMED', 'The saved '+this.state.policy.thresholdPercent+'% quota guard is not armed');
     if (requireGuard && ((q.monitorEnabled !== undefined && q.monitorEnabled !== true) || (q.pollSeconds !== undefined && q.pollSeconds !== POLICY.pollSeconds) || (q.window !== undefined && q.window !== POLICY.window))) throw new StartupError('GUARD_CONFIG_CHANGED', 'Quota guard settings changed during Startup');
     return value;
   }
@@ -262,7 +265,7 @@ class StartupController {
     await this._wait('watchdog disarmed verification', 'waiting_watchdog', this.timeouts.watchdogMs, this.deps.watchdogDisarmed);
     this._transition('arming_guard');
     await this._checkSafety();
-    const receipt = await this._call('arm 7% guard', this.deps.arm, { mutates: true, timeoutMs: this.timeouts.actionMs });
+    const receipt = await this._call('arm saved quota guard', this.deps.arm, { mutates: true, timeoutMs: this.timeouts.actionMs });
     const token = receipt?.token || receipt?.revision;
     if (receipt?.armed !== true || typeof token !== 'string' || !token) throw new StartupError('GUARD_ACK_MISSING', 'Arming did not return a monitor-acknowledgment token', true);
     this.state.guardReceipt = { token, armedAt: receipt.armedAt || this._iso() }; this._persist();
@@ -397,7 +400,7 @@ class StartupController {
         if (proof.noOperationInFlight !== true || proof.dispatchPaused !== true || proof.restoreActive !== false || proof.launchActive !== false) return pending(proof.reason || 'No-operation-in-flight and paused-dispatch evidence is incomplete. Nothing was cleared.');
         let outcome = null;
         const guard = proof.guard;
-        const validGuard = guard?.fresh === true && guard.armed === true && guard.tripped === false && Number.isFinite(guard.remainingPercent) && (guard.minimumRemainingPercent===undefined||(Number.isInteger(guard.minimumRemainingPercent)&&guard.minimumRemainingPercent>=0&&guard.minimumRemainingPercent<=99)) && guard.remainingPercent > (guard.minimumRemainingPercent??POLICY.brakePercent) && guard.remainingPercent <= 100 && guard.ordinaryUsageAllowed !== false && guard.thresholdPercent === POLICY.thresholdPercent && guard.pollSeconds === POLICY.pollSeconds && guard.window === POLICY.window && typeof guard.revision === 'string' && guard.revision.length > 0 && guard.acknowledgedRevision === guard.revision;
+        const validGuard = guard?.fresh === true && guard.armed === true && guard.tripped === false && Number.isFinite(guard.remainingPercent) && (guard.minimumRemainingPercent===undefined||(Number.isInteger(guard.minimumRemainingPercent)&&guard.minimumRemainingPercent>=0&&guard.minimumRemainingPercent<=99)) && guard.remainingPercent > (guard.minimumRemainingPercent??POLICY.brakePercent) && guard.remainingPercent <= 100 && guard.ordinaryUsageAllowed !== false && guard.thresholdPercent === (original.policy?.thresholdPercent??POLICY.thresholdPercent) && guard.pollSeconds === POLICY.pollSeconds && guard.window === POLICY.window && typeof guard.revision === 'string' && guard.revision.length > 0 && guard.acknowledgedRevision === guard.revision;
         if (proof.outcome === 'ready_paused') {
           const expected = original.bootstrap?.targetCount;
           const count = proof.expectedTargetCount;

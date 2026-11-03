@@ -42,7 +42,7 @@ const FleetQuotaUI=(()=>{
   el('quotaPolicyReason').textContent=policy.reason+' Healthy agents may still be online while new work is blocked.';
   if(!minimumDirty)el('quotaMinimum').value=minimum;
   el('quotaMinimum').min=0;
-  el('quotaMinimumSave').disabled=busy||tripped;
+  el('quotaMinimumSave').disabled=busy;
 
   if(!settingsDirty){
    el('quotaThreshold').value=snapshot.thresholdPercent;
@@ -57,7 +57,7 @@ const FleetQuotaUI=(()=>{
   button.textContent=armed?'Disarm automatic stop':tripped?'Re-arm after recovery':'ARM AUTO-KILL';
   button.className='quota-arm'+(armed?' armed':'');
   button.disabled=busy||tripped||(!armed&&(!data.fresh||data.selectedRemainingPercent===null));
-  el('quotaSave').disabled=busy||tripped;
+  el('quotaSave').disabled=busy;
   const top=el('quotaTopbar');
   if(top){
    top.textContent=tripped?(data.fresh&&data.selectedRemainingPercent!==null?'Codex '+data.selectedRemainingPercent+'% left · STOP TRIPPED':'CODEX STOP TRIPPED · USAGE STALE'):data.fresh&&data.selectedRemainingPercent!==null?
@@ -88,7 +88,7 @@ const FleetQuotaUI=(()=>{
   try{
    const data=await api('/api/quota/config',{thresholdPercent:threshold,window,enabled:true});
    settingsDirty=false;render(data);
-   toast('Codex threshold saved. '+(data.config.autoKillArmed?'Guard remains armed.':'Normal Start uses the saved reserve; no arming is required.'));
+   toast('Emergency cutoff saved. '+(data.config.autoKillArmed?'Guard remains armed.':'Auto-stop stays disarmed until you explicitly arm it. Nothing was started.'));
   }catch(e){toast(e.message,true)}
   finally{busy=false}
  }

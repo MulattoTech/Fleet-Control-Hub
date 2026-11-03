@@ -12,7 +12,7 @@ const FleetStartupUI = (() => {
     holding_dispatch: ['Holding automatic dispatch', 'Sustained and Turbo dispatch are being kept paused.', 1],
     unlocking: ['Releasing the verified stop latch', 'Only the emergency revision authorized by this Startup request may be released.', 2],
     waiting_watchdog: ['Waiting for the stop watcher', 'No agent restoration is allowed until the emergency watcher is confirmed disarmed.', 2],
-    arming_guard: ['Arming the 7% emergency guard', 'Configuring quota protection before any fleet restoration.', 3],
+    arming_guard: ['Arming the selected emergency guard', 'Configuring quota protection before any fleet restoration.', 3],
     waiting_guard_ack: ['Verifying guard acknowledgment', 'Waiting for the quota monitor to acknowledge this exact guard configuration.', 3],
     starting_restore: ['Starting preserved-fleet recovery', 'Using the existing restore controller; session identities and worktrees are preserved.', 4],
     restoring: ['Restoring the preserved fleet', 'Primary controllers are verified before workers are restored in bounded batches.', 5],
@@ -26,7 +26,7 @@ const FleetStartupUI = (() => {
     uncertain: ['Startup needs reconciliation', 'A prior launch or restore needs verification. Recheck safely can recognize verified completion; it never resends a launch or restores agents.', 0],
     resumable: ['Interrupted startup can continue', 'Existing runtimes and stopped sessions were verified. Run Startup to restore the remaining sessions; healthy agents will be preserved.', 0],
   };
-  const stepLabels = ['Validate', 'Stop watcher', 'Arm 7%', 'Start restore', 'Restore fleet', 'Verify now', 'Ready / UI'];
+  const stepLabels = ['Validate', 'Stop watcher', 'Arm guard', 'Start restore', 'Restore fleet', 'Verify now', 'Ready / UI'];
   let run = null, readiness = null, preview = null, lastSuccess = 0, readError = null, lastProgress = null;
   let readPromise = null, refreshQueued = false, mutationEpoch = 0, actionBusy = false, modalOpen = false;
   let pendingRequest = null;
@@ -44,7 +44,7 @@ const FleetStartupUI = (() => {
     '<div id="startupIssue" class="startup-issue" role="alert" hidden></div>' +
     '<p id="startupFreshness" class="startup-freshness">Waiting for a status response.</p>' +
     '<div class="startup-actions"><button id="startupStart" type="button" class="primary-button" disabled>Startup…</button><button id="startupOpenUi" type="button" class="ghost-button" disabled>Open Orchestrator</button><button id="startupRecheck" type="button" class="ghost-button" hidden>Recheck safely</button><button id="startupCancel" type="button" class="danger-button" hidden>Cancel startup</button><button id="startupRefresh" type="button" class="ghost-button">Refresh status</button></div>' +
-    '<p class="startup-footnote">Startup can resume agent work and consume usage. Select Start working after verification to enable Sustained automatically; uncheck it for restore-only. The 7% cutoff cannot eliminate provider-metering delay.</p>';
+    '<p class="startup-footnote">Startup can resume agent work and consume usage. Select Start working after verification to enable Sustained automatically; uncheck it for restore-only. The selected emergency cutoff cannot eliminate provider-metering delay.</p>';
 
   function setText(id, text) { const el = byId(id); if (el && el.textContent !== text) el.textContent = text; }
   function fresh() { return !!run && !readError && Date.now() - lastSuccess < 20000; }
@@ -172,14 +172,15 @@ const FleetStartupUI = (() => {
     const count = Number.isInteger(preview?.totalTargets) ? preview.totalTargets : Number.isInteger(preview?.targetCount) ? preview.targetCount : null;
     const quota = readiness?.quota || preview?.quota;
     const remaining = quota?.remainingPercent ?? quota?.remaining;
+    const stop = Number.isInteger(quota?.thresholdPercent) ? quota.thresholdPercent : (run?.policy?.thresholdPercent ?? 7);
     const quotaText = Number.isFinite(remaining) && quota?.fresh === true ? remaining + '% currently reported remaining.' : 'Fresh allowance is verified again by the server before launch.';
-    openModal('<h2>Start the preserved fleet?</h2><p>This explicitly authorizes releasing the current emergency lock, arming the <strong>7% emergency stop</strong>, and restoring the saved primary and workers. Restored agents may resume work and consume usage. Choose whether to start automatic work after every runtime is verified. No duplicate fleet is created.</p>' +
+    openModal('<h2>Start the preserved fleet?</h2><p>This explicitly authorizes releasing the current emergency lock, arming the <strong>' + stop + '% emergency stop</strong>, and restoring the saved primary and workers. Restored agents may resume work and consume usage. Choose whether to start automatic work after every runtime is verified. No duplicate fleet is created.</p>' +
       '<div class="startup-modal-note"><strong>' + escape(quotaText) + '</strong><p>' + (count === null ? 'The server validates the saved recovery manifest before starting.' : escape(count) + ' preserved session targets reported by the preview.') + '</p><p>No worker restoration is allowed before the stop watcher is disarmed and the quota monitor acknowledges the guard.</p></div>' +
       (retry ? '<p class="startup-modal-warning">The previous request has an unconfirmed response. Retrying reuses its original request ID and options; it does not authorize a duplicate startup.</p>' : '') +
       '<label class="startup-check"><input id="startupWorkOption" type="checkbox" ' + ((retry ? pendingRequest.startWorkAfter === true : true) ? 'checked' : '') + (retry ? ' disabled' : '') + '> Start working after verification (enable Sustained at the saved target)</label>' +
       '<label class="startup-check"><input id="startupOpenUiOption" type="checkbox" ' + ((retry ? pendingRequest.openUi : true) ? 'checked' : '') + (retry ? ' disabled' : '') + '> Open the Orchestrator desktop UI after verification</label>' +
       '<div class="form-field"><label for="startupConfirmText">Type <strong>STARTUP</strong> to confirm</label><input id="startupConfirmText" autocomplete="off" spellcheck="false" placeholder="STARTUP"></div><p id="startupModalStatus" class="startup-modal-status"></p>' +
-      '<div class="modal-actions"><button type="button" class="ghost-button" data-modal="cancel">Cancel</button><button type="button" id="startupConfirmButton" class="primary-button" disabled>Start with 7% protection</button></div>');
+      '<div class="modal-actions"><button type="button" class="ghost-button" data-modal="cancel">Cancel</button><button type="button" id="startupConfirmButton" class="primary-button" disabled>Start with ' + stop + '% protection</button></div>');
     modalOpen = true;
     byId('startupConfirmText').addEventListener('input', updateModal);
     byId('startupConfirmButton').addEventListener('click', submitStartup);

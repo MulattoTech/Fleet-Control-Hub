@@ -40,7 +40,8 @@ class RunAdapter {
     // Start prepares a soft reserve policy; an old armed hard-stop must not hide
     // the Start action that releases that legacy setting intentionally.
     const policy = policyStatus({ ...s.config, autoKillArmed: false }, { fresh: s.fresh, selectedRemainingPercent: s.selectedRemainingPercent, ordinaryUsageAllowed: s.ordinaryUsageAllowed });
-    return { fresh: s.fresh, remainingPercent: s.selectedRemainingPercent, minimumRemainingPercent: policy.minimumRemainingPercent, blocked: policy.blocked, reason: policy.reason };
+    return { fresh: s.fresh, remainingPercent: s.selectedRemainingPercent, minimumRemainingPercent: policy.minimumRemainingPercent,
+      thresholdPercent: s.config?.thresholdPercent ?? null, autoKillArmed: s.config?.autoKillArmed === true, blocked: policy.blocked, reason: policy.reason };
   }
   async prepare(check) {
     check(); const reason = this.recoveryBlockReason(); if (reason) throw Error(reason);
@@ -119,7 +120,7 @@ class RunAdapter {
     await this.command(args, 30000, { runStart: true });
   }
   deps() {
-    return { quota: () => this.quotaStatus(), recoveryBlockReason: () => this.recoveryBlockReason(),
+    return { quota: () => this.quotaStatus(), recoveryBlockReason: () => this.recoveryBlockReason(), emergencyLocked: () => this.master.locked?.() === true,
       dispatchEnabled: () => this.master.sustain.config.enabled,
       blockReason: ({ prepared } = {}) => this.recoveryBlockReason() || (prepared ? this.master.locked() ? 'Emergency Stop is active' : this.quota.dispatchBlockReason() : null),
       pause: () => this.master.disableAutomaticDispatch(), prepare: check => this.prepare(check), inspect: pending => this.inspect({ pending }),

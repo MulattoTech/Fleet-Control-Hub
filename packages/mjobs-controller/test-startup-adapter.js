@@ -352,7 +352,7 @@ test('arming writes the exact policy, returns its revision, and awaits a new mat
   const adapter = f.make(); const receipt = adapter.arm(f.context());
   assert.equal(receipt.armed, true); assert.equal(receipt.token, configRevision(f.state.config));
   assert.deepEqual(f.state.effects.map(x => x.op), ['quota.update', 'quota.arm']);
-  assert.deepEqual(f.state.effects[0].update, { enabled: true, pollSeconds: 5, thresholdPercent: 7, window: 'any' });
+  assert.deepEqual(f.state.effects[0].update, { enabled: true, pollSeconds: 5, window: 'any' });
   const ctx = f.context({ guardReceipt: receipt });
   assert.equal(adapter.guardAck(ctx), false);
   f.state.acknowledgedRevision = receipt.token; assert.equal(adapter.guardAck(ctx), true);
