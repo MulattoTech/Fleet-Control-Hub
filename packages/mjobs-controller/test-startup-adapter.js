@@ -818,6 +818,31 @@ test('partial reconciliation accounts for healthy and exactly stopped targets wi
   });
 });
 
+test('read-only partial reconciliation honors the current acknowledged configurable emergency cutoff', async t => {
+  for (const cutoff of [0, 4, 7, 25, 50]) await t.test(cutoff + '% acknowledged', async st => {
+    const f = fixture(st), { adapter, ctx } = partialRecovery(f);
+    f.state.config.thresholdPercent = cutoff;
+    f.state.config.updatedAt = new Date(++f.state.now).toISOString();
+    f.state.acknowledgedRevision = configRevision(f.state.config);
+    const ledger = clone(f.master.restore.state), proof = await adapter.reconcile(ctx);
+    assert.equal(proof.outcome, 'resumable', 'Saved valid cutoff must not force the old 7% setting');
+    assert.deepEqual(f.master.restore.state, ledger); assert.deepEqual(f.state.effects, []);
+  });
+  await t.test('changed cutoff without live acknowledgment remains unknown', async st => {
+    const f = fixture(st), { adapter, ctx } = partialRecovery(f);
+    f.state.config.thresholdPercent = 4;
+    const proof = await adapter.reconcile(ctx);
+    assert.equal(proof.outcome, 'unknown'); assert.deepEqual(f.state.effects, []);
+  });
+  await t.test('out-of-range cutoff cannot be accepted with a fabricated acknowledgment', async st => {
+    const f = fixture(st), { adapter, ctx } = partialRecovery(f);
+    f.state.config.thresholdPercent = 51;
+    f.state.acknowledgedRevision = configRevision(f.state.config);
+    const proof = await adapter.reconcile(ctx);
+    assert.equal(proof.outcome, 'unknown'); assert.deepEqual(f.state.effects, []);
+  });
+});
+
 test('partial recovery rejects missing evidence, uncertain submissions, changed targets and unbound operations', async t => {
   const cases = {
     'missing stopped proof': f => f.state.stoppedEvidence.delete('mjobs-codex-1'),

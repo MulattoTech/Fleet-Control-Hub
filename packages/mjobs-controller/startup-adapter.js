@@ -455,7 +455,7 @@ class StartupAdapter {
    // start never committed, without discarding that earlier operation's ledger.
    const binding=this.recoveryBinding(previous,manifest,{uncommitted:previous.restoreStarted===false,durableBefore}),healthy=current.healthyIds||[],stopped=current.stoppedIds||[];
    const accounted=exactIds([...healthy,...stopped],manifest.targets.map(s=>s.id));
-   const protectedNow=!e.latched&&!this.quota.dispatchBlockReason()&&q.config.enabled===true&&q.config.autoKillArmed===true&&q.config.tripped===false&&q.config.thresholdPercent===7&&q.config.pollSeconds===5&&q.config.window==='any'&&q.guardAcknowledged===true&&q.guardAck?.revision===configRevision(q.config);
+   const protectedNow=!e.latched&&!this.quota.dispatchBlockReason()&&q.config.enabled===true&&q.config.autoKillArmed===true&&q.config.tripped===false&&Number.isInteger(q.config.thresholdPercent)&&q.config.thresholdPercent>=0&&q.config.thresholdPercent<=50&&q.config.pollSeconds===5&&q.config.window==='any'&&q.guardAcknowledged===true&&q.guardAck?.revision===configRevision(q.config);
    if(!operationInFlight&&restoreWasInactive&&restoreBefore===binding.stateFingerprint&&submittedIds.length===0&&dispatchPaused&&identitiesMatch&&current.recoveryIdentitiesMatch===true&&current.daemonOnline===true&&current.conflicts?.length===0&&!this.master.drainState.enabled&&binding.runId===ctx.runId&&binding.verified&&accounted&&stopped.length>0&&protectedNow){
     Object.assign(proof,{outcome:'resumable',resumeAuditComplete:true,manifestRevision:manifest.revision,
      expectedTargetIds:manifest.targets.map(s=>s.id),healthyTargetIds:[...healthy],stoppedTargetIds:[...stopped],
