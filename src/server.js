@@ -6,13 +6,14 @@ const {randomBytes,timingSafeEqual}=require('node:crypto');
 const {createAdapters}=require('./adapters');
 const {configuredRemote,createRemoteAuth}=require('./remote-auth');
 const {createServiceLaunchpad}=require('./service-launchpad');
+const {createParityTracker}=require('./parity');
 const root=path.join(__dirname,'..','public');
 
-function makeServer({adapters=createAdapters(),services=createServiceLaunchpad(),port=Number(process.env.FLEET_HUB_PORT||4320),remote=configuredRemote(),verifyRemote=remote?createRemoteAuth(remote):null}={}) {
+function makeServer({adapters=createAdapters(),services=createServiceLaunchpad(),parity=createParityTracker(),port=Number(process.env.FLEET_HUB_PORT||4320),remote=configuredRemote(),verifyRemote=remote?createRemoteAuth(remote):null}={}) {
   if(!Number.isInteger(port)||port<1||port>65535)throw Error('Invalid port');
   const token=randomBytes(32).toString('hex');
   const serviceNonces=new Map();
-  const files={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8']};
+  const files={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8'],'/parity.js':['parity.js','text/javascript; charset=utf-8'],'/parity.css':['parity.css','text/css; charset=utf-8']};
   const server=http.createServer(async(req,res)=>{
     res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');
     res.setHeader('Content-Security-Policy',"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'");
@@ -27,6 +28,7 @@ function makeServer({adapters=createAdapters(),services=createServiceLaunchpad()
       if(req.method==='GET') {
         if(url.pathname==='/api/session')return json(200,{token});
         if(url.pathname==='/api/status')return json(200,{observedAt:new Date().toISOString(),fleets:await Promise.all(['mjobs','babytracker'].map(adapters.status))});
+        if(url.pathname==='/api/parity')return json(200,await parity.status({refresh:url.searchParams.get('refresh')==='1'}));
         if(url.pathname==='/api/services')return json(200,await services.status());
         if(url.pathname==='/api/services/nonce'){
           for(const [key,expires] of serviceNonces)if(expires<Date.now())serviceNonces.delete(key);

@@ -1,0 +1,81 @@
+{
+  "run_id": "webpro-20261103T050255Z-1ba724",
+  "source_sha": "7c50c0185a5fe21bcbf6d2dd6b1b96c7da3ecd1f",
+  "utc": "2026-11-03T05:31:30.979419+00:00",
+  "node": "v27.0.0-alpha.0.0.0",
+  "scope": "Owned isolated Windows Hub; synthetic fixtures; no agents dispatched",
+  "results": [
+    {
+      "command": [
+        "node",
+        "--test",
+        "test\\fleet-ui.test.js",
+        "test\\hub-start-ui.test.js",
+        "test\\hub.test.js",
+        "test\\mjobs-mode-markup.test.js",
+        "test\\packages.test.js",
+        "test\\parity-http.test.js",
+        "test\\parity-ui.test.js",
+        "test\\parity.test.js",
+        "test\\service-launchpad.test.js"
+      ],
+      "exit_code": 0,
+      "seconds": 1.86,
+      "stdout_tail": "ner assertion (15.4475ms)\n\u00e2\u0153\u201d copies only selector and mode-specific text while preserving installed scripts, quota and protected startup (2.1989ms)\n\u00e2\u0153\u201d repeat application is byte-for-byte idempotent and replaces a selector in place without duplication (1.6302ms)\n\u00e2\u0153\u201d rejects missing or duplicate selector fragments and ignores markup inside comments and script strings (2.314ms)\n\u00e2\u0153\u201d controller paths reject traversal, absolute paths and runtime secrets (1.0125ms)\n\u00e2\u0153\u201d both maintained controller trees match the source-only manifest (353.9354ms)\n\u00e2\u0153\u201d install preview never writes and cannot target the source checkout (89.9986ms)\n\u00e2\u0153\u201d source package text has canonical LF bytes on every platform (241.3119ms)\n\u00e2\u0153\u201d parity read inherits host/auth protection and exposes no write or fleet action (44.479ms)\n\u00e2\u0153\u201d remote parity requests still require the owner Access verifier (2.894ms)\n\u00e2\u0153\u201d roadmap renders qualified coverage, keyboard table and unverified delivery through text nodes (18.9711ms)\n\u00e2\u0153\u201d manual refresh coalesces duplicate clicks and never sends a fleet action (1.5432ms)\n\u00e2\u0153\u201d failed refresh labels retained evidence stale and restores the refresh control (2.4062ms)\n\u00e2\u0153\u201d live metadata is projected without bodies, identities or inferred delivery acceptance (2.9942ms)\n\u00e2\u0153\u201d concurrent reads coalesce and manual refresh respects the minimum interval (1.2286ms)\n\u00e2\u0153\u201d failure retains a visibly stale last good snapshot and backoff prevents a retry storm (0.8116ms)\n\u00e2\u0153\u201d a missing main catalog reports unavailable rather than an empty successful board (0.6395ms)\n\u00e2\u0153\u201d pagination exhaustion fails closed without silently dropping competing PRs (1.0786ms)\n\u00e2\u0153\u201d catalog dimensions and feature IDs are validated before reading arbitrary issue numbers (0.4115ms)\n\u00e2\u0153\u201d unrecognized catalog content is not sent to the browser (0.082ms)\n\u00e2\u0153\u201d exact head checks distinguish pending, failed, missing, skipped and incomplete inventories (0.0846ms)\n\u00e2\u0153\u201d a total deadline settles even when an injected transport never responds (24.7009ms)\n\u00e2\u0153\u201d claim owner SHA mismatch invalidates the refresh and never grants ownership (0.5874ms)\n\u00e2\u0153\u201d restart starts unknown and performs a fresh canonical read instead of trusting a prior process (0.2838ms)\n\u00e2\u0153\u201d CI inspection failure stays unknown without hiding otherwise available issues (0.2085ms)\n\u00e2\u0153\u201d response parsing honors Retry-After and rate-limit reset without exposing response secrets (0.5521ms)\n\u00e2\u0153\u201d server-directed cooldown wins over local retry backoff (0.1619ms)\n\u00e2\u0153\u201d fixed Plex launch uses no request arguments and records audit without touching services (21.0186ms)\n\u00e2\u0153\u201d Docker recovery invokes only fixed desktop CLI arguments and shares a cooldown (5.3539ms)\n\u00e2\u0153\u201d service actions reject unauthenticated, cross-origin, unknown and replayed requests (33.2187ms)\n\u00e2\u0153\u201d Monai recovery invokes only the fixed launcher and refuses duplicate gateway start (1024.8114ms)\n\u00e2\u201e\u00b9 tests 65\n\u00e2\u201e\u00b9 suites 0\n\u00e2\u201e\u00b9 pass 65\n\u00e2\u201e\u00b9 fail 0\n\u00e2\u201e\u00b9 cancelled 0\n\u00e2\u201e\u00b9 skipped 0\n\u00e2\u201e\u00b9 todo 0\n\u00e2\u201e\u00b9 duration_ms 1759.0785\n",
+      "stderr_tail": ""
+    },
+    {
+      "command": [
+        "node",
+        "scripts/build-fleet-ui.js",
+        "--check"
+      ],
+      "exit_code": 0,
+      "seconds": 0.093,
+      "stdout_tail": "Fleet UI source assets verified\n",
+      "stderr_tail": ""
+    },
+    {
+      "command": [
+        "node",
+        "scripts/controller-package.js",
+        "verify",
+        "babytracker-controller"
+      ],
+      "exit_code": 0,
+      "seconds": 0.141,
+      "stdout_tail": "{\"package\":\"babytracker-controller\",\"verified\":48}\n",
+      "stderr_tail": ""
+    },
+    {
+      "command": [
+        "node",
+        "scripts/controller-package.js",
+        "verify",
+        "mjobs-controller"
+      ],
+      "exit_code": 0,
+      "seconds": 0.281,
+      "stdout_tail": "{\"package\":\"mjobs-controller\",\"verified\":193}\n",
+      "stderr_tail": ""
+    }
+  ],
+  "browser": {
+    "kind": "SYNTHETIC_LOOPBACK_FIXTURE",
+    "rows": 12,
+    "desktop_manual_refresh": "PASS",
+    "mobile_viewport_requested": [
+      390,
+      844
+    ],
+    "css_document_width": 375,
+    "css_document_scroll_width": 375,
+    "table_container_width": 309,
+    "table_scroll_width": 740,
+    "viewport_reset": true
+  },
+  "independent_review": "NOT_CLAIMED",
+  "hosted_node24": "PENDING",
+  "production_deployment": "NOT_RUN",
+  "native_controller_quota_changes": false
+}
