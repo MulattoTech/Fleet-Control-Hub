@@ -28,7 +28,8 @@ function summarizeMJobs(raw, master) {
     review:'Review state is managed in MJobs', controlUrl:DEFAULT_ENDPOINTS.mjobs,
     detail:raw.offline ? 'Preserved state; live AO feed unavailable' : null };
 }
-function mjobsSafety(master,quota){return {dispatchEnabled:master?.dispatch?.sustainedEnabled===true||master?.dispatch?.turboEnabled===true,emergencyScope:'machine',
+function mjobsSafety(master,quota){const scope=master?.emergency?.scope;return {dispatchEnabled:master?.dispatch?.sustainedEnabled===true||master?.dispatch?.turboEnabled===true,
+  emergencyScope:scope==='fleet-owned'?'fleet-owned':['machine','all Codex processes across the host'].includes(scope)?'machine':'unknown',
   emergency:master?.emergency?.latched===true,gracefulStop:master?.drain?.enabled===true,
   codexQuotaFresh:quota?.fresh===true,codexRemaining:Number.isFinite(quota?.policy?.remainingPercent)?quota.policy.remainingPercent:null};}
 function summarizeBaby(raw) {
