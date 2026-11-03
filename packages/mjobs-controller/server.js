@@ -12,6 +12,7 @@ const { StartupController } = require('./startup-control');
 const { StartupAdapter } = require('./startup-adapter');
 const { RunController } = require('./run-control');
 const { RunAdapter } = require('./run-adapter');
+const { createMainReconciler } = require('./main-reconcile');
 const { completeReviewedRestore } = require('./post-review-control');
 const { OrchestratorLauncher } = require('./orchestrator-launcher');
 const { runtimeHealthy, addControllerHealth, controllerStopped } = require('./runtime-health');
@@ -737,7 +738,9 @@ startupAdapter=new StartupAdapter({root,master,quota,launcher:orchestratorLaunch
  verifyCodex:verifyCodexExecutable,getSessions:getLiveSessions,runtimeHealth:runtimeHealthy,
  operationBusy:()=>mutationLock||sustain.running||turbo.running||!!findWork?.running});
 startup=new StartupController({root,deps:startupAdapter.deps(),audit,timeouts:{readMs:30000,actionMs:35000}});
+const mainReconciler=createMainReconciler({repoDir:'C:\\Tools\\Dev\\MJobs'});
 const runAdapter=new RunAdapter({root,master,quota,startup,launcher:orchestratorLauncher,
+ ensureMainCurrent:check=>mainReconciler.ensureCurrent(check),audit,
  getSessions:getLiveSessions,verifyCodex:verifyCodexExecutable,command,
  busy:()=>mutationLock||sustain.running||turbo.running||!!findWork?.running,
  inspectProject:async()=>{const r=await exec(AO,['project','get',projectId,'--json'],{windowsHide:true,timeout:10000,maxBuffer:100000,cwd:root});return JSON.parse(r.stdout).project;}});
