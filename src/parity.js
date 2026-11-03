@@ -71,11 +71,24 @@ function catalogProjection(raw){
 }
 function checkSummary(raw){
   const checks=raw?.check_runs;
-  if(!Array.isArray(checks)||!Number.isSafeInteger(raw.total_count)||checks.length!==raw.total_count||!checks.length)return {state:'UNKNOWN',total:null};
+  const unknown=()=>({state:'UNKNOWN',total:null});
+  if(!Array.isArray(checks)||!Number.isSafeInteger(raw.total_count)||checks.length!==raw.total_count||!checks.length||checks.length>100)return unknown();
+  const latest=new Map(),identities=new Set();
+  for(const check of checks){
+    if(!positive(check?.id)||identities.has(check.id)||!positive(check.app?.id)||
+       typeof check.name!=='string'||!check.name.trim()||check.name.length>256||
+       !['queued','in_progress','completed','waiting','requested','pending'].includes(check.status))return unknown();
+    identities.add(check.id);
+    // Multiple workflow suites can coexist on one commit. Keep the newest
+    // observed check identity for each app/name; never merge different apps.
+    const key=JSON.stringify([check.app.id,check.name]),previous=latest.get(key);
+    if(!previous||check.id>previous.id)latest.set(key,check);
+  }
+  const current=[...latest.values()];
   const bad=['failure','timed_out','cancelled','action_required','startup_failure','stale'];
-  const state=checks.some(c=>bad.includes(c.conclusion))?'FAIL':checks.some(c=>c.status!=='completed')?'PENDING':
-    checks.every(c=>c.conclusion==='success')?'PASS':'UNKNOWN';
-  return {state,total:checks.length};
+  const state=current.some(c=>bad.includes(c.conclusion))?'FAIL':current.some(c=>c.status!=='completed')?'PENDING':
+    current.every(c=>c.conclusion==='success')?'PASS':'UNKNOWN';
+  return {state,total:current.length,observedTotal:checks.length,superseded:checks.length-current.length};
 }
 function createParityTracker({read=githubRead,now=Date.now,ttlMs=600000,minRefreshMs=60000,deadlineMs=25000}={}){
   for(const n of [ttlMs,minRefreshMs,deadlineMs])if(!positive(n))throw Error('Invalid parity timing');
