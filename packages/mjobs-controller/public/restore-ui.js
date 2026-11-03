@@ -51,7 +51,7 @@ const FleetRestoreUI=(()=>{
    const counts={all:data.totalTargets||0,online:data.alreadyOnline||0,toResume:data.willResume||0};
    const conflicts=data.rootConflicts||[];
    const locked=!!data.emergencyLatched;
-   let notes=locked?'The emergency stop is active. Use Startup above to verify the reset, release this stop, and arm 7% protection before restoration. This advanced Restore button does not release the stop.':
+   let notes=locked?'The emergency stop is active. Use Startup above to verify the reset, release this stop, and arm your saved emergency cutoff before restoration. This advanced Restore button does not release the stop.':
     'Preserved session IDs, branches and worktrees will be reused. No force-pushes, branch resets or duplicate project roots.';
    const emergencyClass=locked?' warn':'';
    if(!counts.all){toast('No recoverable AO session manifest is available. Live Codex sessions will not be duplicated.',true);return}
