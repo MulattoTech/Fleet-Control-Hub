@@ -51,7 +51,7 @@ class StartupAdapter {
   if(!s.dispatchPaused)throw Error('Automatic dispatch must remain paused during Startup');
   if(requireGuard){
    const reason=this.quota.dispatchBlockReason();if(reason)throw Error(reason);
-   if(s.quota.thresholdPercent!==7||s.quota.pollSeconds!==5||s.quota.window!=='any')throw Error('Startup guard settings changed');
+   if(s.quota.thresholdPercent!==(ctx?.policy?.thresholdPercent??this.quota.config().thresholdPercent)||s.quota.pollSeconds!==5||s.quota.window!=='any')throw Error('Startup guard settings changed');
    if(ctx?.guardReceipt?.token!==configRevision(this.quota.config()))throw Error('Startup guard revision changed');
   }
   return s;
@@ -166,7 +166,8 @@ class StartupAdapter {
  async watchdogDisarmed(ctx){this.check(ctx);return this.master.restore.watchdogDisarmed(true);}
  arm(ctx){
   this.safeForMutation(ctx);
-  this.quota.update({enabled:true,pollSeconds:5,thresholdPercent:7,window:'any'});
+  if(this.quota.config().thresholdPercent!==(ctx?.policy?.thresholdPercent??this.quota.config().thresholdPercent))throw Error('Saved emergency cutoff changed during Startup');
+   this.quota.update({enabled:true,pollSeconds:5,window:'any'});
   this.safeForMutation(ctx);
   const s=this.quota.arm();
   return {armed:s.config.autoKillArmed&&!s.config.tripped,token:configRevision(s.config),armedAt:s.config.updatedAt};

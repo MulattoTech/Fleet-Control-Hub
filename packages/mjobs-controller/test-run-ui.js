@@ -5,11 +5,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, 'public/run-ui.js'), 'utf8');
-const idle = { projectId: 'mjobs-luna', phase: 'paused', active: false, running: false, quota: { fresh: true, remainingPercent: 80, minimumRemainingPercent: 7, blocked: false } };
+const idle = { projectId: 'mjobs-luna', phase: 'paused', active: false, running: false, quota: { fresh: true, remainingPercent: 80, minimumRemainingPercent: 7, thresholdPercent: 7, autoKillArmed: false, blocked: false } };
 const response = value => ({ ok: true, json: async () => value });
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const flush = async () => { for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve)); };
-function fixture(handler, pathname = '/') {
+function fixture(handler, pathname = '/', confirmHandler = () => assert.fail('unexpected limit confirmation')) {
   const elements = new Map(), storage = new Map(), calls = [], timers = [];
   const element = id => { if (!elements.has(id)) elements.set(id, { textContent: '', disabled: false, classList: { add() {} }, setAttribute() {}, addEventListener(type, fn) { this[type] = fn; } }); return elements.get(id); };
   const context = vm.createContext({
@@ -18,7 +18,7 @@ function fixture(handler, pathname = '/') {
     fetch: async (url, options) => { calls.push({ url, body: options.body ? JSON.parse(options.body) : null }); return handler(url, options); },
     crypto: { randomUUID: () => 'stable-request-001' }, AbortSignal: { timeout: () => undefined }, structuredClone,
     setTimeout: fn => { timers.push(fn); return timers.length; }, clearTimeout() {},
-    confirm: () => assert.fail('ordinary Start must not ask for modal confirmation')
+    confirm: () => assert.fail('ordinary Start must not ask for modal confirmation'), window: { confirm: confirmHandler }
   });
   vm.runInContext(source + '\nthis.ui = FleetRunUI;', context);
   return { ui: context.ui, element, storage, calls, timers };
@@ -85,4 +85,27 @@ test('embedded Mission view routes status, Start and Pause under its own prefix'
  assert.equal(f.calls.filter(x=>x.url==='/fleet/api/run/start').length,1);
  assert.equal(f.calls.filter(x=>x.url==='/fleet/api/master/pause').length,1);
  assert.equal(f.calls.some(x=>x.url.startsWith('/api/')),false);f.ui.dispose();
+});
+
+test('emergency lock exposes a release button and saves limits without starting agents', async () => {
+ let quota={fresh:true,remainingPercent:7,minimumRemainingPercent:7,thresholdPercent:7,autoKillArmed:false,blocked:true};
+ let state={...idle,quota,emergencyLatched:true},saved=null;
+ const f=fixture((url,options)=>{
+  if(url==='/api/run')return response(state);
+  if(url==='/api/quota/config'){
+   saved=JSON.parse(options.body);quota={...quota,...saved,blocked:false};state={...state,quota};
+   return response({config:quota});
+  }
+  throw Error('Unexpected request: '+url);
+ },'/',()=>true);
+ await flush();
+ assert.equal(f.element('runStart').disabled,true);
+ assert.equal(f.element('runUnlock').hidden,false);
+ f.element('runReserveInput').value='0';f.element('runReserveInput').input();
+ f.element('runEmergencyInput').value='3';f.element('runEmergencyInput').input();
+ await f.element('runSaveLimits').click();
+ assert.deepEqual(saved,{minimumRemainingPercent:0,thresholdPercent:3});
+ assert.equal(f.calls.filter(x=>x.url==='/api/run/start').length,0);
+ assert.match(f.element('runSettingsFeedback').textContent,/No fleet start was requested/);
+ f.ui.dispose();
 });

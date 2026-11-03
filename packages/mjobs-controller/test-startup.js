@@ -50,6 +50,35 @@ test('ordered startup composes existing restore, acknowledges guard, and finishe
   assert.equal(saved.phase, 'ready_paused'); assert.equal(saved.runId, accepted.run.runId);
 });
 
+test('protected startup uses the configured emergency cutoff instead of resetting it to 7%', async t => {
+ const f=fixture(t);
+ f.live.quota.thresholdPercent=3;
+ f.deps.arm=async ctx=>{
+  assert.equal(ctx.policy.thresholdPercent,3);
+  f.events.push('arm-3');
+  f.live.quota.armed=true;f.live.quota.tripped=false;
+  return {armed:true,token:'custom-guard'};
+ };
+ f.deps.guardAck=async ctx=>{assert.equal(ctx.guardReceipt.token,'custom-guard');return {ready:true};};
+ const controller=f.make();
+ controller.start(request('custom-cutoff-01'));
+ const result=await controller.waitForIdle();
+ assert.equal(result.phase,'ready_paused');
+ assert.equal(result.policy.thresholdPercent,3);
+ assert.equal(f.events.filter(x=>x==='arm-3').length,1);
+});
+
+test('cutoff changes during protected startup block restoration', async t => {
+ const f=fixture(t);
+ f.deps.holdDispatch=async()=>{f.live.dispatchPaused=true;f.live.quota.thresholdPercent=2;};
+ const controller=f.make();
+ controller.start(request('cutoff-drift-01'));
+ const result=await controller.waitForIdle();
+ assert.equal(result.error.code,'GUARD_CONFIG_CHANGED');
+ assert.equal(f.events.includes('unlock'),false);
+ assert.equal(f.events.includes('restore-start'),false);
+});
+
 test('exact confirmation and stable request identity are required', t => {
   const f = fixture(t), controller = f.make();
   assert.throws(() => controller.start({ confirm: 'start', requestId: 'request-0001' }), /STARTUP/);
@@ -167,7 +196,7 @@ test('a timed-out mutation stays uncertain even if it later resolves', async t =
   const controller = f.make(); const first = controller.start(request('uncertain-01'));
   const result = await controller.waitForIdle();
   assert.equal(result.phase, 'uncertain'); assert.equal(result.reconciliationRequired, true);
-  assert.equal(result.actionPending.name, 'arm 7% guard');
+  assert.equal(result.actionPending.name, 'arm saved quota guard');
   assert.throws(() => controller.start(request('uncertain-02')), /Reconcile/);
   assert.equal(controller.start(request('uncertain-01')).run.runId, first.run.runId);
   gate.resolve({ armed: true, token: 'late' }); await new Promise(resolve => setImmediate(resolve));

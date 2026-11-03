@@ -87,7 +87,9 @@ class QuotaControl{
  }
  update(x){
   const config=this.validateUpdate(x);
-  if(this.locked())throw Error('Emergency lockout is active');
+  // Editing saved limits is safe during a stop: no agent is launched and the latch stays on disk.
+  // Any previously armed auto-stop is disarmed while locked; it must be armed explicitly later.
+  if(this.locked())config.autoKillArmed=false;
   if(config.autoKillArmed){
    const before=this.config();
    if(before.thresholdPercent!==config.thresholdPercent||before.window!==config.window)config.autoKillArmed=false;

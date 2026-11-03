@@ -31,6 +31,15 @@ body.flight-deck{background:var(--fd-ground);color:var(--fd-text);font:14px/1.5 
 @media(max-width:1100px){.flight-deck .app-shell{display:block}.flight-deck .sidebar{position:static;width:auto;min-height:0;height:auto;padding:16px 24px;border-right:0;border-bottom:1px solid var(--fd-line)}.flight-deck .sidebar-spacer,.flight-deck .sidebar-note,.flight-deck .sidebar-bottom,.flight-deck .workspace-switch,.flight-deck .nav-label{display:none}.flight-deck .sidebar .nav-links{display:flex;flex-direction:row;flex-wrap:wrap;gap:12px;margin:8px 0}.flight-deck .nav-link{font-size:13px;min-height:40px;padding:6px 0}.flight-deck .main{margin-left:0}.flight-deck .main-content{padding:24px}.flight-deck .topbar{padding:12px 24px}.flight-deck .master-control-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:640px){.flight-deck .sidebar{padding:16px}.flight-deck .main-content{padding:20px 16px}.flight-deck .topbar{padding:12px 16px}.flight-deck .top-actions{gap:8px}.flight-deck .headline{display:block}.flight-deck .headline h1{font-size:24px}.flight-deck .headline-side{margin-top:12px}.flight-deck #runSection{padding:20px}.flight-deck .run-layout{grid-template-columns:1fr;gap:20px}.flight-deck .run-main .fd-power{max-width:none}.flight-deck .metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.flight-deck .metric-card{padding:16px}.flight-deck .metric-card:nth-child(3){border-left:0;border-top:1px solid var(--fd-line)}.flight-deck .metric-card:nth-child(4){border-top:1px solid var(--fd-line)}.flight-deck .intelligence,.flight-deck .quota-grid,.flight-deck .master-control-grid,.flight-deck .turbo-body{display:grid;grid-template-columns:1fr}.flight-deck button:not(.fd-power){min-height:44px}.flight-deck .section-heading{padding:16px;flex-wrap:wrap}.flight-deck .toolbar{display:flex}.flight-deck .search-box{flex-basis:100%}.flight-deck .turbo-stats{grid-template-columns:repeat(2,1fr)}.flight-deck .quota-heading{flex-wrap:wrap}.flight-deck .avatar{display:none}.flight-deck .quota-policy-controls{flex-wrap:wrap}.flight-deck .nav-icon{display:none}}
 
+/* The reserve and hard-stop cutoff remain editable directly beside Start, even while latched. */
+.flight-deck .run-quick-settings{display:flex;gap:12px 18px;align-items:flex-end;flex-wrap:wrap;margin-top:20px;padding-top:18px;border-top:1px solid var(--fd-line)}
+.flight-deck .run-setting{display:grid;gap:6px;min-width:160px}
+.flight-deck .run-setting label{font-size:12px;color:var(--fd-muted)}
+.flight-deck .run-setting input{width:110px;padding:7px 10px;font:500 18px var(--fd-mono)}
+.flight-deck .run-quick-settings .fd-footnote{flex-basis:100%;margin:0;font-size:12px}
+.flight-deck #runUnlock{border-color:var(--fd-danger);color:var(--fd-text)}
+.flight-deck #runSection[data-power-state=locked]{border-color:var(--fd-danger)}
+
 /* Responsive navigation keeps every existing action visible. */
 @media(max-width:1100px){
  .flight-deck .sidebar .nav-group{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}

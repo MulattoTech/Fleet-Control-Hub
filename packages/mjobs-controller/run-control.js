@@ -28,6 +28,7 @@ class RunController {
     const quota = this.deps.quota();
     return { ...structuredClone(this.state), projectId: 'mjobs-luna', active: !!this.task,
       running: this.state.phase === 'running' && this.deps.dispatchEnabled(), quota,
+      emergencyLatched: this.deps.emergencyLocked?.() === true,
       blockedReasons: [this.readError, this.deps.recoveryBlockReason?.()].filter(Boolean) };
   }
   ownsLegacy(legacy) { return !!this.state.legacyRevision && this.state.legacyRevision === legacy?.revision && !this.deps.recoveryBlockReason?.(); }

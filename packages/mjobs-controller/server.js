@@ -481,7 +481,7 @@ async function retire(x){
 }
 async function main(req,res){
  if(!['127.0.0.1:'+port,'localhost:'+port].includes(req.headers.host||''))return json(res,403,{error:'Local host only'});
- if(master?.locked()&&req.method==='POST'&&!['/api/master/emergency','/api/master/rearm','/api/master/restore','/api/master/pause','/api/agent-plan','/api/startup','/api/startup/cancel','/api/startup/reconcile','/api/run/start'].includes(req.url))return json(res,423,{error:'Emergency shutdown lockout is active; use protected Startup after the allowance reset'});
+ if(master?.locked()&&req.method==='POST'&&!['/api/master/emergency','/api/master/rearm','/api/master/restore','/api/master/pause','/api/agent-plan','/api/startup','/api/startup/cancel','/api/startup/reconcile','/api/run/start','/api/quota/config'].includes(req.url))return json(res,423,{error:'Emergency shutdown lockout is active; use protected Startup after the allowance reset'});
  if(master?.drainState.enabled&&req.method==='POST'&&req.url!=='/api/agent-plan'&&!req.url.startsWith('/api/master/')&&!req.url.startsWith('/api/startup')&&req.url!=='/api/run/start')return json(res,423,{error:'Graceful shutdown is draining sessions. New work is disabled'});
  if(req.method==='GET'&&req.url==='/api/run')return json(res,200,currentRun.status());
  if(req.method==='POST'&&req.url==='/api/run/start'){

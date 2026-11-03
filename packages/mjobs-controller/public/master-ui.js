@@ -166,7 +166,7 @@ const FleetMasterUI=(()=>{
  }
  function askRearm(){
   if(busy)return;
-  openModal('<h2>Release emergency lockout?</h2><p>Only do this once your Codex allowance has reset. This releases the process shutdown latch but does not restart anything. You must then wait for a fresh usage reading and explicitly re-arm the 7% quota guard before Restore Fleet can run.</p>'+
+  openModal('<h2>Release emergency lockout?</h2><p>Releasing the emergency latch does not start anything. Review the current Codex allowance and adjust your saved reserve and emergency cutoff above. The Start MJobs button performs fresh quota and runtime checks; advanced full-fleet Restore also requires explicit arming of the saved cutoff.</p>'+
    '<div class="form-field"><label for="rearmPhrase">Type <strong>REARM</strong></label><input id="rearmPhrase" class="emergency-input" placeholder="REARM" spellcheck="false" autocomplete="off"></div>'+
    '<div class="modal-actions"><button class="ghost-button" data-modal="cancel">Cancel</button><button class="master-confirm" id="confirmRearm" disabled>Re-arm controls</button></div>');
   const field=byId('rearmPhrase'),confirm=byId('confirmRearm');
@@ -186,5 +186,5 @@ const FleetMasterUI=(()=>{
  byId('masterRearm').addEventListener('click',askRearm);
  refresh();
  setInterval(()=>{if(!document.hidden||current?.emergency?.latched)refresh()},5000);
- return {refresh,askEmergency};
+ return {refresh,askEmergency,askRearm};
 })();
