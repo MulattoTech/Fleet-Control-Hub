@@ -11,6 +11,32 @@
 The Hub remains a lightweight Node-powered web interface. Dashboard load, refresh and server restart do not launch agents. Do not copy controller runtime state from this repository when deploying.
 
 
+## One native MJobs Fleet UI, two entry points
+
+The **Full agent controls** link opens `/fleet/`, which relays the installed, guarded
+Mission Control UI at `127.0.0.1:18729/fleet/`. Its HTML, JavaScript, CSS and
+native API response bodies are passed through unchanged; there is no second
+copy of agent operations to maintain.
+
+| Access | Address |
+| --- | --- |
+| Direct original MJobs UI | `http://127.0.0.1:18729/fleet/` |
+| Full controls through local Hub | `http://127.0.0.1:4320/fleet/` |
+| Same full controls through Cloudflare Access | `https://fleet.m-techlabs.com/fleet/` |
+| Simple shared overview (same Node application) | `http://127.0.0.1:4320/` or `https://fleet.m-techlabs.com/` |
+
+The remote bridge preserves the Hub's existing owner-verified Access gate. It
+accepts only fixed native routes, checks same-origin and native action headers
+on writes, forwards no browser cookies or Access JWTs to the native endpoint,
+and never automatically retries a write. The native Mission Control proxy
+retains its own loopback restrictions, route allowlist and native action guards.
+A backend or tunnel outage reports unavailability; it never starts agents.
+
+Status reads for separate native endpoints run concurrently for lower latency.
+Click feedback appears immediately, but **Running** still requires native
+verification. Native route updates require review of the Hub allowlist before
+new capabilities can be exposed remotely. This is a deliberate security gate.
+
 ## Fleet UI 1.0
 
 The shared Hub, native MJobs page and remote monitor now share the Flight Deck design. The power action keeps its **Start MJobs** label; quota holds and recovery states are explained separately. See [design and validation](docs/FLIGHT_DECK_DESIGN.md) and the [reusable UI package](packages/fleet-ui/README.md). `npm run build:ui` synchronizes assets; `npm run verify:ui` checks drift. New project execution still requires a project-specific adapter.

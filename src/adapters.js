@@ -55,9 +55,15 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
   async function status(id) {
     try {
       if(id==='mjobs') {
-        const raw=await read(id,'/api/state'); let master=null,sustain=null,quota=null,run=null;
-        try{master=await read(id,'/api/master')}catch{};try{sustain=await read(id,'/api/sustain')}catch{};try{quota=await read(id,'/api/quota')}catch{};
-        try{const value=await read(id,'/api/run');if(value.projectId==='mjobs-luna')run=value;}catch{}
+        // Independent native reads overlap; a slow optional status must not hold up the whole dashboard.
+        const [raw,master,sustain,quota,runResult]=await Promise.all([
+          read(id,'/api/state'),
+          read(id,'/api/master').catch(()=>null),
+          read(id,'/api/sustain').catch(()=>null),
+          read(id,'/api/quota').catch(()=>null),
+          read(id,'/api/run').catch(()=>null)
+        ]);
+        const run=runResult?.projectId==='mjobs-luna'?runResult:null;
         const evidence=progressReader(),lifecycle=mjobsLifecycle(sustain),summary=summarizeMJobs(raw,master);
         summary.start={known:!!run,phase:run?.phase,active:run?.active===true,running:run?.running===true,pendingKind:run?.pending?.kind||null,quota:run?.quota?{fresh:run.quota.fresh===true,remainingPercent:run.quota.remainingPercent,minimumRemainingPercent:run.quota.minimumRemainingPercent,blocked:run.quota.blocked===true,reason:typeof run.quota.reason==='string'?run.quota.reason.slice(0,300):null}:null,blockedReasons:Array.isArray(run?.blockedReasons)?run.blockedReasons.filter(x=>typeof x==='string').map(x=>x.slice(0,300)):[],lastFailure:run?.phase==='blocked'&&typeof run?.error==='string'?run.error.slice(0,300):null,emergencyLatched:run?.emergencyLatched===true};
         if(run){summary.mode=run.active===true?'starting':run.running===true?'running':safeMode(run.phase);if(run.error)summary.detail=String(run.error).slice(0,200);}
