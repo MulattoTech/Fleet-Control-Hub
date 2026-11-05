@@ -137,3 +137,16 @@ test('native pages link back to the same Hub and BabyTracker theme is generated 
   assert.ok(grafana.links.some(x=>x.title==='Fleet Overview'&&x.url==='https://fleet.m-techlabs.com/'));
   assert.ok(grafana.panels.filter(x=>x.type==='stat').every(x=>x.fieldConfig.defaults.color.fixedColor==='#8bbcff'));
 });
+
+test('BabyTracker secondary project roster keeps its overview return outside the mobile-hidden sidebar',()=>{
+  const repo=path.join(__dirname,'..'),read=p=>fs.readFileSync(path.join(repo,p),'utf8');
+  const html=read('packages/babytracker-controller/public/projects.html');
+  const main=html.slice(html.indexOf('<main class="main">'));
+  const header=main.match(/<header class="topbar">([\s\S]*?)<\/header>/)?.[1];
+  assert.ok(header,'project roster has a visible main topbar');
+  assert.match(header,/<a class="hub-home hub-home-topbar" data-hub-home href="http:\/\/127\.0\.0\.1:4320\/">← All fleets<\/a>/);
+  const css=read('packages/babytracker-controller/public/mjobs-style.css');
+  assert.match(css,/@media\(max-width:900px\)[\s\S]*?\.sidebar \.nav-links[^}]*\{display:none\}/);
+  assert.match(read('packages/fleet-ui/babytracker.css'),/\.hub-home-topbar\{display:inline-flex/);
+  assert.match(read('packages/babytracker-controller/public/projects.js'),/querySelectorAll\('\[data-hub-home\]'\)[\s\S]*?localBabyFleet\?'http:\/\/127\.0\.0\.1:4320\/':'\/'/);
+});

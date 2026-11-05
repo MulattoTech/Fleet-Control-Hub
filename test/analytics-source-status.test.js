@@ -79,7 +79,16 @@ test('Grafana source health uses a fixed GET-only status file and retains observ
  assert.ok(source);assert.equal(source.gridPos.y,3);
  assert.equal(source.targets[0].url,'http://fleet-analytics-data:8080/collector-status.json');
  assert.equal(source.targets[0].url_options.method,'GET');
- assert.match(source.targets[0].root_selector,/COLLECTOR OFFLINE/);
+ assert.equal(source.targets[0].columns[0].selector,'available');
+ assert.match(source.targets[0].root_selector,/\$fresh and \(available = false or \$live\) \? \[\$\] : \[\]\)/);
+ assert.doesNotMatch(source.targets[0].root_selector,/\[\{'state'/);
+ assert.match(source.description,/No data means.*stale or invalid, not zero activity/);
+ const availability=source.fieldConfig.overrides.find(x=>x.matcher.id==='byName'&&x.matcher.options==='Source status');
+ const mapping=availability.properties.find(x=>x.id==='mappings').value[0];
+ assert.equal(mapping.type,'value');
+ assert.equal(mapping.options.true.text,'LIVE');
+ assert.equal(mapping.options.false.text,'SOURCE UNAVAILABLE');
+ assert.deepEqual(Object.keys(mapping.options).sort(),['false','true']);
  assert.match(source.targets[0].root_selector,/90000/);
  assert.match(source.targets[0].root_selector,/\$type\(available\) = 'boolean'/);
  assert.match(source.targets[0].root_selector,/reasonCode = 'OK'/);

@@ -263,7 +263,7 @@ for item in PANELS:
 status_target = query(
     "$",
     [
-        ("state", "Source status", "string"),
+        ("available", "Source status", "string"),
         ("reasonCode", "Reason code", "string"),
         ("message", "Reason", "string"),
         ("checkedAt", "Source checked", "timestamp"),
@@ -278,17 +278,26 @@ status_target["root_selector"] = (
     "and $age >= -10000 and $age <= 90000; "
     "$live := $fresh and available = true and reasonCode = 'OK' "
     "and $sampleAge >= -10000 and $sampleAge <= 90000; "
-    "[{'state': $live ? 'LIVE' : ($fresh ? 'SOURCE UNAVAILABLE' : 'COLLECTOR OFFLINE'), "
-    "'reasonCode': $fresh ? (available = true and $not($live) ? 'OBSERVATION_UNVERIFIED' : reasonCode) : 'COLLECTOR_STATUS_STALE', "
-    "'message': $fresh ? (available = true and $not($live) ? 'The last successful observation is stale or unverified.' : message) "
-    ": 'Collector status is stale; old observations are not current activity.', "
-    "'checkedAt': checkedAt, 'lastSuccessAt': lastSuccessAt}])"
+    # Keep the original fixed-field receipt. A compound object/message projection
+    # failed on the installed Infinity backend; this bounded selector is verified
+    # against that backend with live and synthetic receipts. Grafana maps the
+    # admitted boolean to a label without reinterpreting historical evidence.
+    "$fresh and (available = false or $live) ? [$] : [])"
 )
-panel(
+source_health = panel(
     "Source health · last check",
     "table", 0, 3, 24, 5, status_target,
-    description="This check is separate from the last successful data observation. An offline source or identity mismatch never re-dates old counts. Data panels show the last observation for at most 90 seconds, then become unavailable.",
+    description="No data means the source-health receipt is stale or invalid, not zero activity. This check is separate from the last successful observation. An offline source or identity mismatch never re-dates old counts. Data panels expire after 90 seconds.",
 )
+source_health["fieldConfig"]["overrides"] = [{
+    "matcher": {"id": "byName", "options": "Source status"},
+    "properties": [{"id": "mappings", "value": [{
+        "type": "value", "options": {
+            "true": {"text": "LIVE", "color": "#91d6b7"},
+            "false": {"text": "SOURCE UNAVAILABLE", "color": "#edc67a"},
+        },
+    }]}],
+}]
 PANELS.sort(key=lambda item: (item["gridPos"]["y"], item["gridPos"]["x"]))
 agents = [
     "mjobs-luna-" + str(n)
