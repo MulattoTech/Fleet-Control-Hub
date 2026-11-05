@@ -1,6 +1,7 @@
 {
   "uid": "fleet-atlas",
   "title": "Fleet Atlas \u00b7 Operations Intelligence",
+  "description": "Fleet Control Flight Deck \u00b7 read-only native observations sampled every 30 seconds. Missing token attribution remains unknown.",
   "tags": [
     "fleet",
     "native-telemetry",
@@ -12,6 +13,32 @@
   "style": "dark",
   "timezone": "browser",
   "refresh": "30s",
+  "links": [
+    {
+      "type": "link",
+      "title": "Fleet Overview",
+      "url": "https://fleet.m-techlabs.com/",
+      "targetBlank": true,
+      "includeVars": false,
+      "keepTime": false
+    },
+    {
+      "type": "link",
+      "title": "Mission Control",
+      "url": "https://m-techlabs.com/mission-control/",
+      "targetBlank": true,
+      "includeVars": false,
+      "keepTime": false
+    },
+    {
+      "type": "link",
+      "title": "Fleet Atlas",
+      "url": "https://m-techlabs.com/mission-control/analytics/",
+      "targetBlank": true,
+      "includeVars": false,
+      "keepTime": false
+    }
+  ],
   "time": {
     "from": "now-24h",
     "to": "now"
@@ -218,7 +245,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "#8bbcff",
                 "value": null
               }
             ]
@@ -276,13 +303,14 @@
         "defaults": {
           "unit": "short",
           "color": {
-            "mode": "palette-classic"
+            "mode": "fixed",
+            "fixedColor": "#8bbcff"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "#8bbcff",
                 "value": null
               }
             ]
@@ -351,13 +379,14 @@
         "defaults": {
           "unit": "short",
           "color": {
-            "mode": "palette-classic"
+            "mode": "fixed",
+            "fixedColor": "#8bbcff"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "#8bbcff",
                 "value": null
               }
             ]
@@ -426,13 +455,14 @@
         "defaults": {
           "unit": "short",
           "color": {
-            "mode": "palette-classic"
+            "mode": "fixed",
+            "fixedColor": "#8bbcff"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "#8bbcff",
                 "value": null
               }
             ]
@@ -501,13 +531,14 @@
         "defaults": {
           "unit": "short",
           "color": {
-            "mode": "palette-classic"
+            "mode": "fixed",
+            "fixedColor": "#8bbcff"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "#8bbcff",
                 "value": null
               }
             ]
@@ -587,7 +618,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "#8bbcff",
                 "value": null
               }
             ]
@@ -670,7 +701,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "#8bbcff",
                 "value": null
               }
             ]
@@ -736,13 +767,14 @@
         "defaults": {
           "unit": "short",
           "color": {
-            "mode": "palette-classic"
+            "mode": "fixed",
+            "fixedColor": "#8bbcff"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "#8bbcff",
                 "value": null
               }
             ]
@@ -811,13 +843,14 @@
         "defaults": {
           "unit": "short",
           "color": {
-            "mode": "palette-classic"
+            "mode": "fixed",
+            "fixedColor": "#8bbcff"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "#8bbcff",
                 "value": null
               }
             ]
@@ -886,13 +919,14 @@
         "defaults": {
           "unit": "short",
           "color": {
-            "mode": "palette-classic"
+            "mode": "fixed",
+            "fixedColor": "#8bbcff"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "#8bbcff",
                 "value": null
               }
             ]
@@ -961,13 +995,14 @@
         "defaults": {
           "unit": "percent",
           "color": {
-            "mode": "palette-classic"
+            "mode": "fixed",
+            "fixedColor": "#8bbcff"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "#8bbcff",
                 "value": null
               }
             ]
@@ -1072,7 +1107,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "#8bbcff",
                 "value": null
               }
             ]
@@ -1134,13 +1169,14 @@
         "defaults": {
           "unit": "short",
           "color": {
-            "mode": "palette-classic"
+            "mode": "fixed",
+            "fixedColor": "#8bbcff"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "#8bbcff",
                 "value": null
               }
             ]
@@ -1209,13 +1245,14 @@
         "defaults": {
           "unit": "s",
           "color": {
-            "mode": "palette-classic"
+            "mode": "fixed",
+            "fixedColor": "#8bbcff"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "#8bbcff",
                 "value": null
               }
             ]
@@ -1284,13 +1321,14 @@
         "defaults": {
           "unit": "s",
           "color": {
-            "mode": "palette-classic"
+            "mode": "fixed",
+            "fixedColor": "#8bbcff"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "#8bbcff",
                 "value": null
               }
             ]
@@ -1359,13 +1397,14 @@
         "defaults": {
           "unit": "short",
           "color": {
-            "mode": "palette-classic"
+            "mode": "fixed",
+            "fixedColor": "#8bbcff"
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "#8bbcff",
                 "value": null
               }
             ]
@@ -1445,7 +1484,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "#8bbcff",
                 "value": null
               }
             ]
@@ -1541,7 +1580,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "#8bbcff",
                 "value": null
               }
             ]
@@ -1624,7 +1663,7 @@
             "mode": "absolute",
             "steps": [
               {
-                "color": "green",
+                "color": "#8bbcff",
                 "value": null
               }
             ]

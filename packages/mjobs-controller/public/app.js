@@ -1,4 +1,8 @@
 'use strict';
+// Native and authenticated Hub copies share this source; navigation stays on
+// the protected origin remotely, and returns to port 4320 locally.
+for(const link of document.querySelectorAll('[data-hub-home]'))
+  link.href=['127.0.0.1','localhost'].includes(location.hostname)?'http://127.0.0.1:4320/':'/';
 const $=(sel,root=document)=>root.querySelector(sel);
 const $$=(sel,root=document)=>Array.from(root.querySelectorAll(sel));
 const escapeHTML=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

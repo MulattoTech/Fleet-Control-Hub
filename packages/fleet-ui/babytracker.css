@@ -1,0 +1,18 @@
+/* BabyTracker's native controls keep their own operations but use the Flight Deck palette. */
+:root{--bg:var(--fd-ground);--sidebar:var(--fd-surface);--panel:var(--fd-surface);--panel2:var(--fd-raised);--surface:var(--fd-raised);--border:var(--fd-line);--border-soft:var(--fd-line);--text:var(--fd-text);--muted:var(--fd-muted);--subtle:var(--fd-faint);--teal:var(--fd-accent);--cyan:var(--fd-accent);--gold:var(--fd-warning);--coral:var(--fd-danger);--green:var(--fd-positive)}
+body,.app-shell,.main{background:var(--fd-ground);color:var(--fd-text)}
+.sidebar{background:var(--fd-surface);border-color:var(--fd-line)}
+.topbar,.panel,.metric-card,.task-item,.project-card{background:var(--fd-surface);border-color:var(--fd-line);box-shadow:none}
+.metric-card,.project-card{border-radius:var(--fd-radius)}
+.brand-mark,.workspace-icon{background:var(--fd-raised)!important;color:var(--fd-text)!important;border-color:var(--fd-control)!important}
+.primary-button{background:var(--fd-text)!important;color:#101012!important;border:1px solid var(--fd-text)!important;border-radius:var(--fd-radius)!important}
+.primary-button:hover{background:var(--fd-accent)!important;color:#101012!important;border-color:var(--fd-accent)!important}
+.ghost-button,.icon-button{background:var(--fd-raised)!important;color:var(--fd-text)!important;border-color:var(--fd-control)!important}
+.quota-policy-panel,.capacity-panel{background:var(--fd-raised)!important;border:1px solid var(--fd-control)!important}
+.status-notice,.project-stats div,.capacity-owner{background:var(--fd-raised);border-color:var(--fd-line)}
+.form-grid input,.form-grid select,.form-grid textarea,dialog input,dialog select,.quota-policy-panel input,.capacity-panel input{background:var(--fd-raised)!important;color:var(--fd-text)!important;border-color:var(--fd-control)!important}
+.headline h1 em{color:var(--fd-text);font-style:normal}
+.hub-home{display:block;min-height:48px;padding:12px!important;border:1px solid var(--fd-control);border-radius:var(--fd-radius);color:var(--fd-text)!important;font-weight:750}
+.hub-home:hover{border-color:var(--fd-accent);color:var(--fd-accent)!important}
+.hub-home-topbar{display:inline-flex;align-items:center;min-height:44px;white-space:nowrap;text-decoration:none;font-size:12px}
+@media(max-width:760px){.hub-home-topbar{padding:9px!important;font-size:11px}.topbar{gap:10px}}

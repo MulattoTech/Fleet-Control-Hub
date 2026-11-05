@@ -6,3 +6,40 @@
 
 .shell>aside,.shell nav,.intro>div{min-width:0}.shell nav{max-width:100%}.power-column .fd-status{display:flex}
 @media(max-width:1100px){.shell{grid-template-columns:minmax(0,1fr)}}
+
+/* Workspace registry and Mission Control share the same Flight Deck surfaces. */
+.overview-home{font-weight:700!important;border:1px solid var(--fd-control);border-radius:var(--fd-radius);padding:12px!important;color:var(--fd-text)!important}
+.overview-home:hover{border-color:var(--fd-accent)}
+.mission-panel,.tracked-projects,.observability{background:var(--fd-surface);border:1px solid var(--fd-line);border-radius:var(--fd-radius);padding:24px;margin-top:24px;scroll-margin-top:18px}
+.section-header{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:16px}
+.section-header p{color:var(--fd-muted);max-width:74ch;margin-top:7px}
+.section-name{font-size:11px!important;letter-spacing:.08em;text-transform:uppercase;color:var(--fd-accent)!important;margin:0 0 6px!important;font-weight:650}
+.mission-metrics,.tracked-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+.mission-metric,.tracked-card{background:var(--fd-raised);border:1px solid var(--fd-line);border-radius:var(--fd-radius);padding:18px;min-width:0}
+.mission-metric{display:flex;flex-direction:column;gap:9px}
+.mission-metric span,.mission-metric small{color:var(--fd-muted);font-size:12px;overflow-wrap:anywhere}
+.mission-metric strong{font-size:21px;font-weight:550;overflow-wrap:anywhere}
+.tracked-card-header{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap}
+.tracked-card p{margin:12px 0;color:var(--fd-muted);font-size:13px}
+.tracked-mode{font-size:11px;border:1px solid var(--fd-control);padding:4px 7px;border-radius:20px;color:var(--fd-muted)}
+.tracked-card-links{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:15px}
+.project-repo{color:var(--fd-accent);overflow-wrap:anywhere;font-size:12px}
+.workspace-paths{margin-top:12px}.workspace-paths summary{cursor:pointer;min-height:40px;padding:9px 0}.workspace-paths li{overflow-wrap:anywhere;font-family:var(--fd-mono);font-size:11px}
+.add-project{margin-top:18px;border-top:1px solid var(--fd-line);padding-top:16px}
+.add-project>summary{font-size:15px;font-weight:650;cursor:pointer;min-height:44px;padding:8px 0}
+.add-project form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px;max-width:900px}
+.add-project label{display:grid;gap:7px;color:var(--fd-muted);font-size:12px}
+.add-project label:nth-child(3),.add-project .fd-footnote,.add-project #project-feedback{grid-column:1/-1}
+.add-project textarea{min-height:80px;resize:vertical;border:1px solid var(--fd-control);border-radius:var(--fd-radius);padding:12px;background:var(--fd-raised);color:var(--fd-text);font:13px var(--fd-mono)}
+.add-project button{max-width:240px}.add-project #project-feedback{color:var(--fd-accent)}
+.observability .fleet-actions{margin-top:8px}.observability .fd-footnote{margin-top:16px}
+@media(max-width:640px){.mission-panel,.tracked-projects,.observability{padding:18px}.mission-metrics,.tracked-list,.add-project form{grid-template-columns:1fr}.add-project label:nth-child(3),.add-project .fd-footnote,.add-project #project-feedback{grid-column:auto}}
+.mission-area-details{margin-top:16px;border-top:1px solid var(--fd-line);padding-top:12px}
+.mission-area-details summary{color:var(--fd-text);font-size:13px;font-weight:650;cursor:pointer;margin-bottom:10px}
+.mission-area{display:grid;grid-template-columns:minmax(110px,1.1fr) minmax(100px,2fr) auto;align-items:center;gap:12px;border-bottom:1px solid var(--fd-line);padding:8px 0;font-size:12px}
+.mission-area span{overflow-wrap:anywhere}.mission-area small{color:var(--fd-muted);font-variant-numeric:tabular-nums;text-align:right}
+.mission-area meter{width:100%;height:10px;background:var(--fd-raised);border:0;border-radius:3px}
+.mission-area meter::-webkit-meter-bar{background:var(--fd-raised);border:0;border-radius:3px}
+.mission-area meter::-webkit-meter-optimum-value{background:var(--fd-accent);border-radius:3px}
+.mission-area meter::-moz-meter-bar{background:var(--fd-accent)}
+@media(max-width:700px){.mission-area{grid-template-columns:1fr auto}.mission-area meter{grid-column:1/-1;grid-row:2}.mission-area small{grid-column:2}}

@@ -42,7 +42,7 @@ function json(res, code, value) {
 
 function createServer({ config, controller, onRestart = null, projectsReader = async () => ({ projects: [] }) }) {
   const token = randomBytes(32).toString('hex');
-  const staticFiles = { '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/mjobs-style.css': ['mjobs-style.css', 'text/css; charset=utf-8'], '/babytracker.css': ['babytracker.css', 'text/css; charset=utf-8'], '/projects': ['projects.html', 'text/html; charset=utf-8'], '/projects.js': ['projects.js', 'text/javascript; charset=utf-8'] };
+  const staticFiles = { '/': ['index.html', 'text/html; charset=utf-8'], '/app.js': ['app.js', 'text/javascript; charset=utf-8'], '/mjobs-style.css': ['mjobs-style.css', 'text/css; charset=utf-8'], '/babytracker.css': ['babytracker.css', 'text/css; charset=utf-8'], '/fleet-theme.css': ['fleet-theme.css', 'text/css; charset=utf-8'], '/projects': ['projects.html', 'text/html; charset=utf-8'], '/projects.js': ['projects.js', 'text/javascript; charset=utf-8'] };
   let closing = false;
   const server = http.createServer(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');

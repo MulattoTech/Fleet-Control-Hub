@@ -42,7 +42,7 @@ def panel(title, kind, x, y, w, h, target=None, unit="none", description=""):
                 "color": {"mode": "palette-classic"},
                 "thresholds": {
                     "mode": "absolute",
-                    "steps": [{"color": "green", "value": None}],
+                    "steps": [{"color": "#8bbcff", "value": None}],
                 },
             },
             "overrides": [],
@@ -50,6 +50,7 @@ def panel(title, kind, x, y, w, h, target=None, unit="none", description=""):
         "options": {},
     }
     if kind == "stat":
+        item["fieldConfig"]["defaults"]["color"] = {"mode": "fixed", "fixedColor": "#8bbcff"}
         item["options"] = {
             "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False},
             "orientation": "auto",
@@ -294,6 +295,7 @@ agents = [
 dashboard = {
     "uid": "fleet-atlas",
     "title": "Fleet Atlas · Operations Intelligence",
+    "description": "Fleet Control Flight Deck · read-only native observations sampled every 30 seconds. Missing token attribution remains unknown.",
     "tags": ["fleet", "native-telemetry", "read-only"],
     "schemaVersion": 40,
     "version": 1,
@@ -301,6 +303,11 @@ dashboard = {
     "style": "dark",
     "timezone": "browser",
     "refresh": "30s",
+    "links": [
+        {"type": "link", "title": "Fleet Overview", "url": "https://fleet.m-techlabs.com/", "targetBlank": True, "includeVars": False, "keepTime": False},
+        {"type": "link", "title": "Mission Control", "url": "https://m-techlabs.com/mission-control/", "targetBlank": True, "includeVars": False, "keepTime": False},
+        {"type": "link", "title": "Fleet Atlas", "url": "https://m-techlabs.com/mission-control/analytics/", "targetBlank": True, "includeVars": False, "keepTime": False},
+    ],
     "time": {"from": "now-24h", "to": "now"},
     "graphTooltip": 1,
     "templating": {
