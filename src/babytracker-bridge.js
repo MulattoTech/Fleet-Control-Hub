@@ -5,6 +5,14 @@ const ORIGIN='http://127.0.0.1:4319';
 const ASSETS=new Set(['','app.js','projects','projects.js','mjobs-style.css','babytracker.css','fleet-theme.css']);
 const READS=new Set(['api/health','api/session','api/state','api/providers','api/projects']);
 const WRITES=new Set(['api/action']);
+// api/action multiplexes native operations: a route allowlist alone would
+// expose every future action, including the Hub's local-evidence-only review.
+const REMOTE_ACTIONS=new Set([
+  'reconcile-bootstrap','simpleStart','start','pause','drain','emergency','release',
+  'nudge','find-work','add-agent','reconcile-agent','all-hands','turbo','limits',
+  'quota-policy','concurrency-policy','task','assign','model-change','model-cancel',
+  'model-reconcile','model-resume','restart'
+]);
 
 function createBabyTrackerBridge({fetcher=fetch}={}){
   let inFlight=0;
@@ -32,6 +40,14 @@ function createBabyTrackerBridge({fetcher=fetch}={}){
       let size=0;const parts=[];
       for await(const chunk of req){size+=chunk.length;if(size>20000)return send(res,413,{error:'Action too large'});parts.push(chunk);}
       body=Buffer.concat(parts);
+      const remote=!['127.0.0.1','localhost'].includes(new URL(publicOrigin).hostname);
+      if(remote){
+        let input;
+        try{input=JSON.parse(body.toString('utf8'));}catch{return send(res,400,{error:'Action object required'});}
+        if(!input||Array.isArray(input)||typeof input!=='object')return send(res,400,{error:'Action object required'});
+        if(input.action==='assess-task')return send(res,403,{error:'Review assessment requires local evidence access'});
+        if(!REMOTE_ACTIONS.has(input.action))return send(res,403,{error:'BabyTracker action is not enabled for remote access'});
+      }
     }
     inFlight++;
     try{
@@ -53,4 +69,4 @@ function createBabyTrackerBridge({fetcher=fetch}={}){
     finally{inFlight--;}
   };
 }
-module.exports={createBabyTrackerBridge,ASSETS,READS,WRITES,ORIGIN};
+module.exports={createBabyTrackerBridge,ASSETS,READS,WRITES,REMOTE_ACTIONS,ORIGIN};

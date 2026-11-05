@@ -8,7 +8,7 @@ const {randomUUID}=require('node:crypto');
 
 const REPO=/^[A-Za-z0-9_.-]{1,39}\/[A-Za-z0-9_.-]{1,100}$/;
 const BUILTIN=new Set(['mulattotech/mjobs','mulattotech/babytracker']);
-const MAX_PROJECTS=100,MAX_WORKSPACES=64;
+const MAX_PROJECTS=100,MAX_WORKSPACES=64,MAX_REGISTRY_BYTES=256_000;
 const defaultFile=()=>path.join(process.env.LOCALAPPDATA||path.join(os.homedir(),'.config'),'FleetControlHub','tracked-projects.json');
 
 function validate(input){
@@ -37,7 +37,7 @@ function createProjectRegistry({file=defaultFile()}={}){
   function read(){
     try{
       const stat=fs.lstatSync(file);
-      if(!stat.isFile()||stat.isSymbolicLink()||stat.size>256_000)throw Error('Project registry is unsafe or oversized.');
+      if(!stat.isFile()||stat.isSymbolicLink()||stat.size>MAX_REGISTRY_BYTES)throw Error('Project registry is unsafe or oversized.');
       const data=JSON.parse(fs.readFileSync(file,'utf8'));
       if(data?.version!==1||!Array.isArray(data.projects)||data.projects.length>MAX_PROJECTS)throw Error('Invalid project registry.');
       const projects=data.projects.map(validate);
@@ -55,10 +55,12 @@ function createProjectRegistry({file=defaultFile()}={}){
     const project=validate(input),projects=read();
     if(projects.length>=MAX_PROJECTS)throw Error('Project registry limit reached.');
     if(projects.some(p=>p.repository.toLowerCase()===project.repository.toLowerCase()))throw Error('Project is already registered.');
+    const serialized=JSON.stringify({version:1,projects:[...projects,project]},null,2)+'\n';
+    if(Buffer.byteLength(serialized,'utf8')>MAX_REGISTRY_BYTES)throw Error('Project registry storage limit reached; reduce workspace metadata before adding this project.');
     const dir=path.dirname(file);fs.mkdirSync(dir,{recursive:true,mode:0o700});
     const temp=file+'.'+randomUUID()+'.tmp';
     try{
-      fs.writeFileSync(temp,JSON.stringify({version:1,projects:[...projects,project]},null,2)+'\n',{flag:'wx',mode:0o600});
+      fs.writeFileSync(temp,serialized,{flag:'wx',mode:0o600});
       fs.renameSync(temp,file);
     }finally{try{fs.unlinkSync(temp);}catch(e){if(e.code!=='ENOENT')throw e;}}
     return {repository:project.repository,name:project.name,workspaceCount:project.workspaces.length,kind:'read-only'};

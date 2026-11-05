@@ -20,15 +20,25 @@ function project(raw){
   const original=counts(raw.original),reference=counts(raw.reference);
   if(!original||!reference)return {available:false,reason:'Mission Control acceptance contract changed.'};
   const local=SHA.test(raw.git?.local_main_sha)?raw.git.local_main_sha:null;
+  const checkout=SHA.test(raw.git?.checkout_head_sha)?raw.git.checkout_head_sha:null;
   const published=SHA.test(raw.git?.github_main_sha)?raw.git.github_main_sha:null;
-  const synced=local&&published?local===published:null;
+  // Mission Control reads snapshot(root), i.e. the checked-out working tree,
+  // not refs/heads/main. Main can match GitHub while that checkout differs.
+  const synced=checkout&&published?checkout===published:null;
+  const localMainSynced=local&&published?local===published:null;
+  let warning=synced===false?'Checked-out MJobs source differs from GitHub main; local acceptance counts are not confirmed current.':
+    synced===null?'Checkout or GitHub main SHA unavailable; local acceptance counts are not confirmed current.':
+    'Checkout HEAD matches GitHub main; counts remain a live local working-tree snapshot, not verified published acceptance.';
+  if(localMainSynced===false)warning+=' Local main also differs from GitHub main.';
   return {available:true,observedAt:typeof raw.observed_at==='string'?raw.observed_at:null,
     original,reference,priorities:breakdown(raw.priorities,12),areas:breakdown(raw.areas,40),
     releaseReadiness:String(raw.release_readiness||'UNKNOWN').slice(0,80),
     checkpointCurrent:raw.checkpoint_current===true,localMainSha:local,githubMainSha:published,
-    githubSynced:synced,source:'Local canonical MJobs matrices',
-    warning:synced===false?'Local MJobs main differs from GitHub main; verify before using these counts as current.':
-      synced===null?'GitHub main comparison unavailable; local counts are not confirmed current.':null};
+    checkoutHeadSha:checkout,checkoutBranch:typeof raw.git?.checkout_branch==='string'?raw.git.checkout_branch.slice(0,160):null,
+    originalAsOf:typeof raw.original_as_of==='string'?raw.original_as_of.slice(0,160):null,
+    referenceAsOf:typeof raw.reference_as_of==='string'?raw.reference_as_of.slice(0,160):null,
+    githubSynced:synced,localMainSynced,publicationVerified:false,
+    source:'Local canonical MJobs matrices (working-tree snapshot)',warning};
 }
 function createMissionStatus({fetcher=fetch,clock=Date.now,ttlMs=5000}={}){
   let last=0,snapshot={available:false,reason:'Mission Control has not been checked.'},pending;

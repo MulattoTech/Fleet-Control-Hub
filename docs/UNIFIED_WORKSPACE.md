@@ -18,6 +18,11 @@ UI works directly on port 4319 and under the protected `/babytracker/` Hub path.
 The Hub relays an explicit allowlist of BabyTracker routes only. Native action
 tokens and same-origin guards are still required and the native controller
 retains all authorization and lifecycle decisions.
+The remote BabyTracker action allowlist explicitly excludes local evidence
+assessment; adding a native action never exposes it remotely by accident.
+Remote activity, Atlas and its turn/token detail drawer use the same generated
+Flight Deck tokens. Each has a labelled Fleet Overview return link; local Atlas
+cross-links use the actual loopback service ports, not the Grafana origin.
 
 ## Refresh and truth
 
@@ -31,6 +36,10 @@ retains all authorization and lifecycle decisions.
 
 GitHub PR status and CI checks do not by themselves turn acceptance items to
 PASS. Only the canonical MJobs acceptance process may update those matrices.
+Checkout synchronization compares the checkout that produced the snapshot,
+not an unrelated local main ref. Even a matching commit is labelled as a local
+working-tree snapshot, not proof of published acceptance. Expanded requirement
+areas and workspace disclosures stay open across refreshes.
 
 ## Safe expansion
 
@@ -39,6 +48,8 @@ to 64 absolute local workspaces. It records metadata only; no filesystem scan,
 repo clone, credentials, or background agents are run. Paths are never shown to
 remote clients. A reviewable adapter is required to turn a tracked project
 into a controllable Fleet; controller actions remain disabled until then.
+The complete registry has a 256 KB storage cap. Oversized additions are rejected
+before replacing the last readable registry; smaller later additions still work.
 
 For a new Mission Control, first define an authenticated, bounded, read-only
 progress contract with an explicit source SHA, acceptance authority, observed

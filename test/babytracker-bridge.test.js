@@ -72,7 +72,26 @@ test('Cloudflare owner verification protects native BabyTracker UI and actions',
     assert.equal((await req('/babytracker/')).code,403);
     assert.equal((await req('/babytracker/',{access:'verified'})).code,200);
     assert.equal((await req('/babytracker/api/action',{method:'POST',access:'verified',origin:'http://127.0.0.1:4382',headers:{'content-type':'application/json','x-babytracker-fleet':token},body:'{}'})).code,403);
-    assert.equal((await req('/babytracker/api/action',{method:'POST',access:'verified',origin:'https://fleet.m-techlabs.com',headers:{'content-type':'application/json','x-babytracker-fleet':token},body:'{}'})).code,200);
+    assert.equal((await req('/babytracker/api/action',{method:'POST',access:'verified',origin:'https://fleet.m-techlabs.com',headers:{'content-type':'application/json','x-babytracker-fleet':token},body:JSON.stringify({action:'pause'})})).code,200);
     assert.equal(f.calls.length,2);
+  });
+});
+
+test('remote native actions cannot bypass local-only review policy or expose new native actions',async()=>{
+  const f=fixture(),port=4383,token='c'.repeat(64),remote={hostname:'fleet.m-techlabs.com'};
+  await withHub(port,{remote,verifyRemote:async value=>{if(value!=='verified')throw Error('not owner');},babyTrackerBridge:createBabyTrackerBridge({fetcher:f.fetcher})},async()=>{
+    const post=body=>request(port,'/babytracker/api/action',{method:'POST',host:remote.hostname,access:'verified',origin:'https://'+remote.hostname,
+      headers:{'content-type':'application/json','x-babytracker-fleet':token},body:typeof body==='string'?body:JSON.stringify(body)});
+    const assessment={action:'assess-task',taskId:'submitted-task',decision:'accepted',confirm:'ASSESS BabyTracker',prNumber:1,reviewId:2};
+    const denied=await post(assessment);assert.equal(denied.code,403);assert.match(denied.body.toString(),/local evidence access/);
+    assert.equal((await post({action:'future-admin-action'})).code,403);
+    for(const invalid of ['null','[]','{'])assert.equal((await post(invalid)).code,400);
+    assert.equal(f.calls.length,0,'rejected actions never reach the native controller');
+    assert.equal((await post({action:'pause'})).code,200);
+    assert.equal(f.calls.length,1);
+    const local=await request(port,'/babytracker/api/action',{method:'POST',origin:'http://127.0.0.1:'+port,
+      headers:{'content-type':'application/json','x-babytracker-fleet':token},body:JSON.stringify(assessment)});
+    assert.equal(local.code,200,'local evidence assessment remains a native decision');
+    assert.equal(JSON.parse(f.calls[1].options.body).action,'assess-task');
   });
 });

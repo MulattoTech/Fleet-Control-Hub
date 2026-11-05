@@ -98,7 +98,7 @@ intro = panel(
 )
 intro["options"] = {
     "mode": "markdown",
-    "content": "## Work, not waiting.\n[Open the visual Fleet Atlas](/mission-control/analytics/) · [Mission Control](/mission-control/)\n\n**Executing** means a native active turn. Reserved agents are **on-call**, not busy. ETA values are conditional. Token use is not acceptance. Missing per-turn attribution remains unavailable.",
+    "content": "## Fleet workspace\n[← Fleet Overview](https://fleet.m-techlabs.com/) · [Fleet Atlas](https://m-techlabs.com/mission-control/analytics/) · [Mission Control](https://m-techlabs.com/mission-control/)\n\n**On this PC:** [Local Overview](http://127.0.0.1:4320/) · [Local Atlas](http://127.0.0.1:20800/mission-control/analytics/) · [Local Mission Control](http://127.0.0.1:18726/)\n\n**Executing** means a native active turn. Reserved agents are **on-call**, not busy. ETA values are conditional. Token use is not acceptance. Missing per-turn attribution remains unavailable.",
 }
 for i, (title, key, unit) in enumerate(
     [

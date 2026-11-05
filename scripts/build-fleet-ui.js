@@ -16,4 +16,7 @@ write('public/style.css',generated(read('tokens.css')+'\n'+read('hub.css')));
 write('packages/mjobs-controller/remote/public/style.css',generated(read('tokens.css')+'\n'+read('monitor.css')));
 write('packages/babytracker-controller/public/fleet-theme.css',generated(read('tokens.css')+'\n'+read('babytracker.css')));
 const name='packages/mjobs-controller/public/master.css',p=path.join(root,name);let body=fs.readFileSync(p,'utf8');const i=body.indexOf(marker);if(i>=0)body=body.slice(0,i);write(name,body.trimEnd()+'\n\n'+generated(read('tokens.css')+'\n'+read('native.css')));
+const atlasName='packages/mjobs-controller/remote/public/analytics/atlas.css';
+let atlas=fs.readFileSync(path.join(root,atlasName),'utf8');const atlasMarker=atlas.indexOf(marker);if(atlasMarker>=0)atlas=atlas.slice(0,atlasMarker);
+write(atlasName,atlas.trimEnd()+'\n\n'+generated(read('tokens.css')+'\n'+read('atlas.css')));
 if(bad)process.exitCode=1;else console.log('Fleet UI source assets '+(check?'verified':'synchronized'));

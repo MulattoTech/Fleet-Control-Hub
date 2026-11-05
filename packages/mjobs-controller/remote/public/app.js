@@ -37,6 +37,8 @@
   }
   function start(doc) {
     const $ = id => doc.getElementById(id);
+    const home=$('fleet-overview');
+    if(home&&typeof location!=='undefined'&&['localhost','127.0.0.1'].includes(location.hostname))home.href='http://127.0.0.1:4320/';
     let last = null, failed = false, loading = false;
     const control=globalThis.FleetRemoteControls?.start(doc,()=>last);
     const detail=globalThis.FleetAgentDetails?.start(doc,()=>last,control);
