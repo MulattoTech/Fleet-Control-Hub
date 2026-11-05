@@ -1,0 +1,24 @@
+/* Shared Flight Deck skin for Atlas and the per-agent turn/token drawer. */
+:root{--bg:var(--fd-ground);--panel:var(--fd-surface);--line:var(--fd-line);--text:var(--fd-text);--muted:var(--fd-muted);--mint:var(--fd-accent);--blue:var(--fd-accent);--amber:var(--fd-warning);--red:var(--fd-danger)}
+body{background:var(--fd-ground);font-family:var(--fd-font);font-variant-numeric:tabular-nums}
+.shell{max-width:1480px;padding:24px 32px}
+header{padding-bottom:20px;margin-bottom:24px;border-bottom:1px solid var(--fd-line);flex-wrap:wrap}
+.brand{font-weight:600;letter-spacing:0}.brand small{letter-spacing:.5px;margin-left:8px}
+.header-actions{flex-wrap:wrap;gap:12px}.header-actions a{display:inline-flex;align-items:center;min-height:44px;padding:8px 12px;border:1px solid var(--fd-line);border-radius:var(--fd-radius)}
+.header-actions .overview-home{color:var(--fd-text);border-color:var(--fd-control);font-weight:600}
+h1{font-size:clamp(28px,3.5vw,44px);font-weight:600;letter-spacing:-1.2px}.eyebrow{color:var(--fd-muted);letter-spacing:1px}
+button,input,select{background:var(--fd-raised);border-color:var(--fd-control);border-radius:var(--fd-radius);min-height:44px}
+button:hover{background:var(--fd-surface);border-color:var(--fd-accent)}input::placeholder{color:var(--fd-faint)}
+.panel,.metrics article,.pipeline>div,.detail-grid>div{background:var(--fd-surface);border-color:var(--fd-line);border-radius:var(--fd-radius)}
+.metrics strong{font-weight:500}.metrics strong em{color:var(--fd-faint)}
+.notice,.chip,.detail-note{background:var(--fd-raised);color:var(--fd-muted);border-color:var(--fd-line);border-radius:var(--fd-radius)}
+.notice{border-left-color:var(--fd-accent)}.chip.good{background:var(--fd-raised);color:var(--fd-positive);border-color:var(--fd-line)}
+.chip.warn{background:var(--fd-raised);color:var(--fd-warning);border-color:var(--fd-line)}
+.notice.stale{background:var(--fd-raised);color:var(--fd-danger);border-color:var(--fd-danger)}
+.heat-cell,.level-0{background:#292c32}.level-1{background:#304b6b}.level-2{background:#416b98}.level-3{background:#6299d2}.level-4{background:var(--fd-accent)}
+.heat-row,td{border-color:var(--fd-line)}.heat-ruler,th,.secondary,.chart-foot,footer{color:var(--fd-faint)}
+.heat-number,.task-text,footer strong{color:var(--fd-muted)}.workflow{border-color:var(--fd-line);border-radius:var(--fd-radius)}
+.mini-track i{background:var(--fd-line)}.mini-track i.on{background:var(--fd-accent)}
+dialog,.drawer-header{background:var(--fd-surface);border-color:var(--fd-control);border-radius:var(--fd-radius)}
+.detail-note{border-left-color:var(--fd-accent)}
+@media(max-width:650px){.shell{padding:18px 16px}.header-actions{width:100%;gap:8px}.header-actions a{font-size:12px}.metrics strong{font-size:30px}.filters input{min-width:0;width:100%}}

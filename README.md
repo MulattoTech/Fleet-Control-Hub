@@ -1,5 +1,47 @@
 # Fleet Control Hub
 
+## Unified workspace, Mission Control and project registration
+
+The shared overview at `http://127.0.0.1:4320/` and the owner-protected
+`https://fleet.m-techlabs.com/` now has a persistent **Fleet Overview** link,
+MJobs and BabyTracker control cards, a dedicated MJobs Mission Control section,
+and a read-only **Add GitHub project** form. Native MJobs and BabyTracker pages
+include a prominent return link; the MJobs route adapts it to the same protected
+origin when served remotely through `/fleet/`.
+
+The new project registry persists only explicitly entered `owner/name`, display
+name and local workspace-path metadata in the signed-in user's application-data
+directory (`FleetControlHub/tracked-projects.json`), or an explicit
+`FLEET_HUB_PROJECT_REGISTRY` file. This file is **never** committed to Git.
+Remote clients see workspace counts, not private absolute paths. Registration
+does not clone a repo, scan workspaces, install a controller, or grant dispatch,
+pause, stop or emergency permissions. Those require a reviewed, project-scoped
+adapter. The two built-in controllers remain the only actionable projects.
+
+Mission Control acceptance comes only from its existing read-only
+`http://127.0.0.1:18726/api/progress` response, cached for five seconds.
+GitHub main SHA comparisons are reported separately; if the local checkout is
+behind, the Hub warns rather than calling its counts published acceptance. An
+offline Mission Control is shown as unavailable, not zero. The original and
+reference acceptance matrices remain distinct. The protected remote Mission
+status page is still a **read-only** reporter; no Python launcher commands are
+proxied by this Hub.
+
+The shared design tokens now generate BabyTracker's native `fleet-theme.css`
+and the existing MJobs/Hub presentation, keeping the individual project action
+contracts unchanged. Grafana's provisioned Fleet Atlas dashboard gains
+cross-navigation to Fleet Overview and Mission Control with Flight Deck blue
+status accents. Its underlying native collector samples every 30 seconds;
+forcing three-second Grafana queries would not make that evidence fresher.
+The local Grafana and Fleet Atlas links are at ports 18731 and 20800, and their
+protected counterparts remain under `m-techlabs.com/mission-control/`.
+
+Deployment of the revised source is separate from passing tests. Preserve
+installed controller state and perform manifest-verified source-only installs
+only when the affected controller is paused, then smoke-test both origins and
+the owner-only Cloudflare Access gate. Existing Windows logon tasks and
+Cloudflare Tunnel ingress must not be replaced by repository source copying.
+
 ## Simple MJobs startup (without Electron)
 
 - Open the protected **https://fleet.m-techlabs.com** page, or local **http://127.0.0.1:4320**.

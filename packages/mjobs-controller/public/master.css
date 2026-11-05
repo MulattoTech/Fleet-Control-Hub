@@ -131,4 +131,9 @@ body.flight-deck{background:var(--fd-ground);color:var(--fd-text);font:14px/1.5 
 .flight-deck .dispatch-mode-control{background:var(--fd-surface);border-color:var(--fd-control);border-radius:6px}
 .flight-deck .disclaimer,.flight-deck .search-box{background:var(--fd-surface);border-color:var(--fd-line)}
 .flight-deck .disclaimer p{color:var(--fd-muted)}
+/* Return path is always present, including mobile native Fleet controls. */
+.fleet-hub-link{display:flex!important;align-items:center;min-height:48px!important;margin:0 0 12px;border:1px solid var(--fd-control)!important;border-radius:var(--fd-radius);font-weight:750;color:var(--fd-text)!important}
+.fleet-hub-link:hover{border-color:var(--fd-accent)!important}
+.fleet-hub-toplink{color:var(--fd-text);font-size:12px;white-space:nowrap;text-decoration:none;border:1px solid var(--fd-control);border-radius:var(--fd-radius);padding:10px;min-height:44px;display:inline-flex;align-items:center}
+.fleet-hub-toplink:hover{border-color:var(--fd-accent)}
 /* END GENERATED FLEET UI */

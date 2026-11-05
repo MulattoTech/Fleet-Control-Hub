@@ -8,13 +8,16 @@ const {configuredRemote,createRemoteAuth}=require('./remote-auth');
 const {createServiceLaunchpad}=require('./service-launchpad');
 const {createParityTracker}=require('./parity');
 const {createNativeFleetBridge}=require('./native-fleet-bridge');
+const {createBabyTrackerBridge}=require('./babytracker-bridge');
+const {createProjectRegistry}=require('./project-registry');
+const {createMissionStatus}=require('./mission-status');
 const root=path.join(__dirname,'..','public');
 
-function makeServer({adapters=createAdapters(),services=createServiceLaunchpad(),parity=createParityTracker(),nativeFleetBridge=createNativeFleetBridge(),port=Number(process.env.FLEET_HUB_PORT||4320),remote=configuredRemote(),verifyRemote=remote?createRemoteAuth(remote):null}={}) {
+function makeServer({adapters=createAdapters(),services=createServiceLaunchpad(),parity=createParityTracker(),nativeFleetBridge=createNativeFleetBridge(),babyTrackerBridge=createBabyTrackerBridge(),registry=createProjectRegistry(),mission=createMissionStatus(),port=Number(process.env.FLEET_HUB_PORT||4320),remote=configuredRemote(),verifyRemote=remote?createRemoteAuth(remote):null}={}) {
   if(!Number.isInteger(port)||port<1||port>65535)throw Error('Invalid port');
   const token=randomBytes(32).toString('hex');
   const serviceNonces=new Map();
-  const files={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8'],'/parity.js':['parity.js','text/javascript; charset=utf-8'],'/parity.css':['parity.css','text/css; charset=utf-8']};
+  const files={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8'],'/parity.js':['parity.js','text/javascript; charset=utf-8'],'/parity.css':['parity.css','text/css; charset=utf-8'],'/workspace.js':['workspace.js','text/javascript; charset=utf-8']};
   const server=http.createServer(async(req,res)=>{
     res.setHeader('Cache-Control','no-store');res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');
     res.setHeader('Content-Security-Policy',"default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'");
@@ -28,9 +31,13 @@ function makeServer({adapters=createAdapters(),services=createServiceLaunchpad()
     try {
       if(url.pathname==='/fleet'||url.pathname.startsWith('/fleet/'))
         return await nativeFleetBridge(req,res,{url,publicOrigin:remoteRequest?'https://'+remote.hostname:'http://'+host});
+      if(url.pathname==='/babytracker'||url.pathname.startsWith('/babytracker/'))
+        return await babyTrackerBridge(req,res,{url,publicOrigin:remoteRequest?'https://'+remote.hostname:'http://'+host});
       if(req.method==='GET') {
         if(url.pathname==='/api/session')return json(200,{token});
         if(url.pathname==='/api/status')return json(200,{observedAt:new Date().toISOString(),fleets:await Promise.all(['mjobs','babytracker'].map(adapters.status))});
+        if(url.pathname==='/api/projects')return json(200,{projects:registry.list({includeLocalPaths:!remoteRequest}),observedAt:new Date().toISOString(),controllerRegistration:'explicit-adapter-required'});
+        if(url.pathname==='/api/mission-status')return json(200,await mission.status());
         if(url.pathname==='/api/parity')return json(200,await parity.status({refresh:url.searchParams.get('refresh')==='1'}));
         if(url.pathname==='/api/services')return json(200,await services.status());
         if(url.pathname==='/api/services/nonce'){
@@ -45,13 +52,18 @@ function makeServer({adapters=createAdapters(),services=createServiceLaunchpad()
         const file=files[url.pathname];if(!file)return json(404,{error:'Not found'});
         res.writeHead(200,{'Content-Type':file[1]});return res.end(fs.readFileSync(path.join(root,file[0])));
       }
-        if(req.method!=='POST'||!['/api/pause','/api/control','/api/start','/api/bounded-start','/api/limits','/api/review-assessment','/api/services/action'].includes(url.pathname))return json(405,{error:'Method not allowed'});
+        if(req.method!=='POST'||!['/api/pause','/api/control','/api/start','/api/bounded-start','/api/limits','/api/review-assessment','/api/services/action','/api/projects'].includes(url.pathname))return json(405,{error:'Method not allowed'});
       if(![...allowed.map(x=>'http://'+x),...(remoteRequest?['https://'+remote.hostname]:[])].includes(req.headers.origin))return json(403,{error:'Same origin required'});
       const candidate=String(req.headers['x-fleet-hub']||'');
       if(candidate.length!==token.length||!timingSafeEqual(Buffer.from(candidate),Buffer.from(token)))return json(403,{error:'Invalid action token'});
       if(!/^application\/json(?:;|$)/i.test(req.headers['content-type']||''))return json(415,{error:'JSON required'});
-      let bytes=0,parts=[];for await(const part of req){bytes+=part.length;if(bytes>1024)return json(413,{error:'Request too large'});parts.push(part);}
+      const maxBytes=url.pathname==='/api/projects'?8192:1024;
+      let bytes=0,parts=[];for await(const part of req){bytes+=part.length;if(bytes>maxBytes)return json(413,{error:'Request too large'});parts.push(part);}
       const input=JSON.parse(Buffer.concat(parts).toString('utf8'));
+      if(url.pathname==='/api/projects'){
+        try{return json(201,{registered:registry.add(input),controllerInstalled:false});}
+        catch(e){return json(400,{error:String(e.message).slice(0,200)});}
+      }
       if(url.pathname==='/api/services/action'){
         if(!input||!['plex-start','rustdesk-restart','tailscale-restart','docker-start','docker-restart','monai-start'].includes(input.action)||input.confirmation!=='RUN '+input.action||typeof input.nonce!=='string'||Object.keys(input).some(k=>!['action','confirmation','nonce'].includes(k)))return json(400,{error:'Invalid service action'});
         const expiry=serviceNonces.get(input.nonce);if(!expiry||expiry<Date.now())return json(409,{error:'Action nonce expired or already used'});

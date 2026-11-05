@@ -1,4 +1,9 @@
 'use strict';
+// Relative API paths serve the same native UI on loopback and via the owner-
+// authenticated Hub's /babytracker/ proxy. No controller state is duplicated.
+const localBabyFleet=typeof location==='undefined'||['127.0.0.1','localhost'].includes(location.hostname);
+if(typeof document.querySelectorAll==='function')
+  document.querySelectorAll('[data-hub-home]').forEach(a=>{a.href=localBabyFleet?'http://127.0.0.1:4320/':'/';});
 const $ = id => document.getElementById(id);
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 let token = null, snapshot = null, refreshing = false, providers = [], limitsLoaded = false, quotaDirty = false, quotaSaving = false, concurrencyDirty = false, concurrencySaving = false, startPending = false;
@@ -6,8 +11,8 @@ function toast(message, error = false) { const node = document.createElement('di
 async function get(url) { const r = await fetch(url, { signal: AbortSignal.timeout(7000) }); const value = await r.json(); if (!r.ok) throw Error(value.error || 'Request failed'); return value; }
 async function action(action, extra = {}) {
   try {
-    if (!token) token = (await get('/api/session')).token;
-    const r = await fetch('/api/action', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-BabyTracker-Fleet': token }, body: JSON.stringify({ action, ...extra }), signal: AbortSignal.timeout(60000) });
+    if (!token) token = (await get('api/session')).token;
+    const r = await fetch('api/action', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-BabyTracker-Fleet': token }, body: JSON.stringify({ action, ...extra }), signal: AbortSignal.timeout(60000) });
     const value = await r.json();
     if (!r.ok) { if (r.status === 403) token = null; throw Error(value.error || 'Action failed'); }
     // A restarted controller creates a fresh action token. Clear the old token
@@ -61,7 +66,7 @@ function render(s) {
 }
 async function refresh() {
   if (refreshing) return; refreshing = true;
-  try { render(await get('/api/state')); }
+  try { render(await get('api/state')); }
   catch (e) { $('sync').textContent = 'Disconnected · snapshot stale'; $('notice').textContent = 'Controller unavailable: ' + e.message + '. Displayed values are historical until refreshed.'; $('notice').classList.add('warning'); }
   finally { refreshing = false; }
 }
@@ -102,7 +107,7 @@ $('rows').addEventListener('click', async event => {
     return action(button.dataset.op, { id: button.dataset.session, acknowledgeUnknownAgyQuota: agy }).catch(() => {});
   }
   try {
-    providers = (await get('/api/providers')).providers.filter(p => p.available && p.models.length);
+    providers = (await get('api/providers')).providers.filter(p => p.available && p.models.length);
     if (!providers.length) return toast('No provider model catalog has been verified for this installation yet.', true);
     $('planAgent').value = button.dataset.session; $('planProvider').innerHTML = providers.map(p => '<option value="' + esc(p.id) + '">' + esc(p.name) + '</option>').join('');
     const current = snapshot.sessions.find(s => s.id === button.dataset.session);
@@ -140,7 +145,7 @@ $('savePlan').addEventListener('click', async () => {
   } catch {} finally { $('savePlan').disabled=false; }
 });
 async function loadAgentProviders() {
-  const catalog = await get('/api/providers');
+  const catalog = await get('api/providers');
   providers = (catalog.providers || []).filter(p => p.available && p.models?.length && ['codex', 'agy'].includes(p.id));
   if (!providers.length) throw Error('No locally verified Codex or AGY models are currently available');
 }

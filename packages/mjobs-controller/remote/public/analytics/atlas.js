@@ -1,10 +1,12 @@
 'use strict';
 (()=>{
+ const local=typeof location!=='undefined'&&['localhost','127.0.0.1'].includes(location.hostname);
+ for(const [id,href] of Object.entries(local?{'fleet-overview':'http://127.0.0.1:4320/','mission-control':'http://127.0.0.1:18726/','grafana-link':'http://127.0.0.1:18731/mission-control/grafana/'}:{})){const link=document.getElementById(id);if(link)link.href=href;}
  const $=id=>document.getElementById(id),esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const num=x=>typeof x==='number'&&Number.isFinite(x)?x:null,fmt=x=>num(x)===null?'—':new Intl.NumberFormat(undefined,{notation:x>=10000?'compact':'standard',maximumFractionDigits:1}).format(x);
  const clock=x=>Number.isFinite(Date.parse(x||''))?new Date(x).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'—';
  const duration=x=>num(x)===null?'—':x<60?Math.round(x)+'s':x<3600?Math.floor(x/60)+'m '+Math.round(x%60)+'s':(x/3600).toFixed(1)+'h';
- const colors={executing:'#67e7bf',queued:'#82baff',dispatching:'#82baff',reserve:'#b49bff',ci_wait:'#f5c878',review_wait:'#b49bff',settling:'#f5c878',cooldown:'#f5c878',stopped:'#ff9ba9',approval:'#ff9ba9',primary_wait:'#ff9ba9',paused:'#526e89',available:'#526e89',unknown:'#526e89',control_wait:'#c9aa75',resource_wait:'#f5c878',quota_wait:'#ff9ba9'};
+ const colors={executing:'#8bbcff',queued:'#82baff',dispatching:'#82baff',reserve:'#b49bff',ci_wait:'#edc67a',review_wait:'#b49bff',settling:'#edc67a',cooldown:'#edc67a',stopped:'#ff9da9',approval:'#ff9da9',primary_wait:'#ff9da9',paused:'#68686f',available:'#68686f',unknown:'#68686f',control_wait:'#edc67a',resource_wait:'#edc67a',quota_wait:'#ff9da9'};
  const labels={executing:'Executing',queued:'Queued',dispatching:'Submitted',reserve:'On-call reserve',ci_wait:'Waiting for CI',review_wait:'Waiting for change',settling:'Turn settling',cooldown:'Delivery backoff',stopped:'Stopped',approval:'Needs a decision',primary_wait:'Waiting for primary',paused:'Dispatch paused',available:'Awaiting useful work',unknown:'Unknown',control_wait:'Control hold',resource_wait:'Resource-limited',quota_wait:'Quota protection'};
  let data=null,pending=false,selected=null,failed=false;const set=(id,text)=>{$(id).textContent=text;};
  const stale=()=>!data||!Number.isFinite(Date.parse(data.generatedAt))||Date.now()-Date.parse(data.generatedAt)>90000||Date.now()<Date.parse(data.generatedAt)-10000;
@@ -13,7 +15,7 @@
  function lineChart(){const rows=data.tokenSeries||[],w=900,h=185,top=18,bottom=160,max=Math.max(1,...rows.map(x=>num(x.output)||0));let body='';
   for(let n=0;n<4;n++){const y=top+(bottom-top)*n/3;body+='<line x1="0" y1="'+y+'" x2="900" y2="'+y+'" stroke="#22364a" stroke-dasharray="3 6"/><text x="895" y="'+(y-5)+'" text-anchor="end" fill="#7893ad" font-size="10">'+esc(fmt(max*(1-n/3)))+'</text>';}
   const points=rows.map((x,i)=>[i*w/Math.max(1,rows.length-1),bottom-(num(x.output)||0)/max*(bottom-top)]),d=points.map((p,i)=>(i?'L':'M')+p.map(n=>n.toFixed(2)).join(',')).join(' ');
-  if(points.length)body+='<path d="'+d+' L'+w+','+bottom+' L0,'+bottom+' Z" fill="#214e4966"/><path d="'+d+'" fill="none" stroke="#67e7bf" stroke-width="2.4" stroke-linejoin="round"/>';
+  if(points.length)body+='<path d="'+d+' L'+w+','+bottom+' L0,'+bottom+' Z" fill="#304b6b66"/><path d="'+d+'" fill="none" stroke="#8bbcff" stroke-width="2.4" stroke-linejoin="round"/>';
   $('tokenChart').innerHTML=svg('<title>Native output tokens by fifteen-minute bucket</title>'+body,w,h);
  }
  function states(){const entries=Object.entries(data.summary.states||{}).filter(([,n])=>n>0),total=Math.max(1,data.summary.agents),r=44,c=2*Math.PI*r;let offset=0,body='<circle cx="68" cy="63" r="44" fill="none" stroke="#1c3044" stroke-width="14"/>';
