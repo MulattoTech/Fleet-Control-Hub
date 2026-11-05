@@ -73,6 +73,9 @@ test('native pages link back to the same Hub and BabyTracker theme is generated 
   assert.match(read('packages/mjobs-controller/public/app.js'),/location\.hostname/);
   assert.match(read('packages/babytracker-controller/public/index.html'),/href="http:\/\/127\.0\.0\.1:4320\/"/);
   assert.match(read('packages/babytracker-controller/public/index.html'),/fleet-theme\.css/);
+  assert.match(read('packages/babytracker-controller/public/index.html'),/src="app\.js"/);
+  assert.match(read('packages/babytracker-controller/public/app.js'),/get\('api\/state'\)/);
+  assert.match(read('public/workspace.js'),/link:'\/babytracker\/'/);
   assert.match(read('packages/babytracker-controller/public/fleet-theme.css'),/--fd-ground/);
   assert.match(read('public/index.html'),/id="mission-control"/);
   assert.match(read('public/index.html'),/id="add-project-form"/);

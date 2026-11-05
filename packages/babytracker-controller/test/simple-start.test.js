@@ -46,8 +46,8 @@ test('the dashboard Start click submits once without confirmation and polls actu
     confirm() { throw Error('Start must not require confirmation'); },
     fetch: async (url, options = {}) => {
       calls.push({ url, options });
-      if (url === '/api/session') return { ok: true, json: async () => ({ token: 'local-token' }) };
-      if (url === '/api/action') { await submitted; mode = 'running'; return { ok: true, json: async () => ({ ok: true }) }; }
+      if (url === 'api/session') return { ok: true, json: async () => ({ token: 'local-token' }) };
+      if (url === 'api/action') { await submitted; mode = 'running'; return { ok: true, json: async () => ({ ok: true }) }; }
       return { ok: true, json: async () => ({ mode, sessions: [], quotaPolicy: { blocked: false } }) };
     }, observed
   });
@@ -58,8 +58,8 @@ test('the dashboard Start click submits once without confirmation and polls actu
   await start.click();
   assert.equal(start.disabled, true);
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(calls.filter(c => c.url === '/api/action').length, 1);
-  assert.equal(JSON.parse(calls.find(c => c.url === '/api/action').options.body).action, 'simpleStart');
+  assert.equal(calls.filter(c => c.url === 'api/action').length, 1);
+  assert.equal(JSON.parse(calls.find(c => c.url === 'api/action').options.body).action, 'simpleStart');
   release(); await first;
   assert.equal(observed.at(-1), 'running');
   mode = 'paused'; await timers[0]();

@@ -1,9 +1,14 @@
 'use strict';
+const localBabyFleet=typeof location==='undefined'||['127.0.0.1','localhost'].includes(location.hostname);
+if(typeof document.querySelectorAll==='function'){
+  document.querySelectorAll('[data-hub-home]').forEach(a=>{a.href=localBabyFleet?'http://127.0.0.1:4320/':'/';});
+  document.querySelectorAll('[data-mjobs-control]').forEach(a=>{a.href=localBabyFleet?'http://127.0.0.1:4320/fleet/':'/fleet/';});
+}
 const $ = id => document.getElementById(id);
 const esc = x => String(x ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 function metric(value) { return Number.isInteger(value) ? String(value) : 'unavailable'; }
 function card(p) {
-  const allowedUrl = p.controlUrl === '/' ? '/' : p.controlUrl === 'http://127.0.0.1:8787' ? p.controlUrl : null;
+  const allowedUrl = p.controlUrl === '/' ? './' : p.controlUrl === 'http://127.0.0.1:8787' ? (localBabyFleet ? p.controlUrl : '/fleet/') : null;
   const action = allowedUrl ? '<a class="primary-button project-open" href="' + allowedUrl + '">Open ' + esc(p.name) + ' controls</a>'
     : '<span class="small-muted">Project controller not yet installed</span>';
   return '<article class="panel project-card"><div class="section-kicker">' + esc(p.kind) + ' / ' + esc(p.id) + '</div>' +
@@ -17,7 +22,7 @@ function card(p) {
 async function refresh() {
   $('lastSync').textContent = 'Refreshing...';
   try {
-    const r = await fetch('/api/projects', { signal: AbortSignal.timeout(7000) });
+    const r = await fetch('api/projects', { signal: AbortSignal.timeout(7000) });
     const data = await r.json();
     if (!r.ok) throw Error(data.error || 'Projects read failed');
     $('hubStatus').textContent = data.aoOnline ? 'AO CONNECTED' : 'AO UNAVAILABLE';

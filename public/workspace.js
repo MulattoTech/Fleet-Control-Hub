@@ -7,7 +7,7 @@
     const a=node('a','project-repo',repo);a.href='https://github.com/'+repo;a.rel='noopener noreferrer';a.target='_blank';return a;
   };
   const builtins=[{name:'MJobs',repository:'MulattoTech/MJobs',link:'/fleet/',description:'Installed project controller · native MJobs Fleet'},
-    {name:'BabyTracker',repository:'MulattoTech/BabyTracker',link:'http://127.0.0.1:4319/',description:'Installed local project controller · shared Hub actions available above'}];
+    {name:'BabyTracker',repository:'MulattoTech/BabyTracker',link:'/babytracker/',description:'Installed project controller · same owner-authenticated native view locally and online'}];
   const isLocal=['127.0.0.1','localhost'].includes(location.hostname);
 
   function renderProjects(projects){
@@ -17,7 +17,7 @@
       const name=node('h3','',p.name),badge=node('span','tracked-mode',p.kind==='read-only'?'Tracking only':'Controller installed');header.append(name,badge);
       const description=node('p','',p.description||'GitHub repository tracked without automatic agent execution.');
       const links=node('div','tracked-card-links');links.append(repositoryLink(p.repository));
-      if(p.link&&!(p.name==='BabyTracker'&&!isLocal)){
+      if(p.link){
         const open=node('a','action',p.name==='MJobs'?'Fleet controls':'BabyTracker controls');open.href=p.link;links.append(open);
       }
       card.append(header,description,links);
@@ -90,6 +90,8 @@
     finally{loadingMission=false;}
   }
 
+  const babyNav=document.querySelector('aside nav a[href="http://127.0.0.1:4319/"]');
+  if(babyNav){babyNav.href='/babytracker/';babyNav.classList.remove('local-only');}
   if(!isLocal)document.querySelectorAll('.local-only').forEach(n=>{n.hidden=true;});
   $('add-project-form').addEventListener('submit',registerProject);
   refreshProjects();refreshMission();setInterval(refreshProjects,15000);setInterval(refreshMission,5000);

@@ -8,11 +8,12 @@ const {configuredRemote,createRemoteAuth}=require('./remote-auth');
 const {createServiceLaunchpad}=require('./service-launchpad');
 const {createParityTracker}=require('./parity');
 const {createNativeFleetBridge}=require('./native-fleet-bridge');
+const {createBabyTrackerBridge}=require('./babytracker-bridge');
 const {createProjectRegistry}=require('./project-registry');
 const {createMissionStatus}=require('./mission-status');
 const root=path.join(__dirname,'..','public');
 
-function makeServer({adapters=createAdapters(),services=createServiceLaunchpad(),parity=createParityTracker(),nativeFleetBridge=createNativeFleetBridge(),registry=createProjectRegistry(),mission=createMissionStatus(),port=Number(process.env.FLEET_HUB_PORT||4320),remote=configuredRemote(),verifyRemote=remote?createRemoteAuth(remote):null}={}) {
+function makeServer({adapters=createAdapters(),services=createServiceLaunchpad(),parity=createParityTracker(),nativeFleetBridge=createNativeFleetBridge(),babyTrackerBridge=createBabyTrackerBridge(),registry=createProjectRegistry(),mission=createMissionStatus(),port=Number(process.env.FLEET_HUB_PORT||4320),remote=configuredRemote(),verifyRemote=remote?createRemoteAuth(remote):null}={}) {
   if(!Number.isInteger(port)||port<1||port>65535)throw Error('Invalid port');
   const token=randomBytes(32).toString('hex');
   const serviceNonces=new Map();
@@ -30,6 +31,8 @@ function makeServer({adapters=createAdapters(),services=createServiceLaunchpad()
     try {
       if(url.pathname==='/fleet'||url.pathname.startsWith('/fleet/'))
         return await nativeFleetBridge(req,res,{url,publicOrigin:remoteRequest?'https://'+remote.hostname:'http://'+host});
+      if(url.pathname==='/babytracker'||url.pathname.startsWith('/babytracker/'))
+        return await babyTrackerBridge(req,res,{url,publicOrigin:remoteRequest?'https://'+remote.hostname:'http://'+host});
       if(req.method==='GET') {
         if(url.pathname==='/api/session')return json(200,{token});
         if(url.pathname==='/api/status')return json(200,{observedAt:new Date().toISOString(),fleets:await Promise.all(['mjobs','babytracker'].map(adapters.status))});

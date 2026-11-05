@@ -25,13 +25,13 @@
       "smoke-capacity-browser.cjs": "5d669681b2406c362840b827e17bee6919af3a8fd9de7a20c7cc474fa3cd9d23",
       "UNIFIED_FLEET_HUB.md": "fc1b37bf54c5e383ae26be0eaf1ed1b12e81753a0182a8a5d7eb5c5354a443ba",
       "WINDOWS_STARTUP.md": "12c4858e2ad1b75e4cedaeb45e57e92fb495ea46910ad02b2e0ad2fcf0eda138",
-      "public/app.js": "513429e4cb827af2edcbe0cb4359471b3cf56ea84040b40c7864be5432b55b09",
+      "public/app.js": "21a69ba50eef46537b614e93c742766580b1e038678587aba0f5f4b75f4a81fc",
       "public/babytracker.css": "5732ab8995989c23c4b6bf7c973486aa82c1c9be8f5000b82fa866a5d00b2917",
-      "public/index.html": "29151797c60b4dad238ae89bb594f3f5a9547dd7e38b3f38c9c3ab2c5382523f",
+      "public/index.html": "eef0c579d6929c57a6530648736f37953653992e6385c413fd55d7c74606891a",
       "public/mjobs-style.css": "88f2365fbae8c2fc4eea38adb55b72475150f441ba4c949bba0c16c72867b263",
-      "public/projects.html": "7687d3d35d019700f4b8620d74637b4d24a06a00703473176dcc6ded5f970dbc",
+      "public/projects.html": "ff77f9cd7aae5f986e846c6761997f3238b38200a2ee41c0ade2ebcbfd81cc0e",
       "public/fleet-theme.css": "448aa96cb7924617159ac9c1b7577234015906e5f28ae8c8ecf39916f2010187",
-      "public/projects.js": "dda06d8e2577706b17e1a8d4d9336736e39fd10b85aac640c84bd360999192b3",
+      "public/projects.js": "8e11dcc454355faaeee935c8c81fa82a13ce71db3247b612d3acd78b5c40f7c6",
       "test/adapter-http.test.js": "4dc551db8e8c0e8cc411243bc79e17f27142d9ec50d7f0ba83b9beccea35483f",
       "test/agent-provision.test.js": "50e33c508acdd706f18682782e24b95fe2044928476e0a784e47e45757982ee7",
       "test/bootstrap.test.js": "0de85a82848d5b2b81c5b78a73e5ac3ed8984b6830f3d517c0a7dd6ff4db53e4",
@@ -50,7 +50,7 @@
       "vendor/mjobs/NOTICE": "feefd704c8c5871eecd27889eabfbd35dbdf71b8922b9f9ac846b12178114f2f",
       "vendor/mjobs/provider-catalog.js": "66f72d49fd50c9d98d156dd447cbcf5a142aaf97f146eec2cfdf2c51a1c94a05",
       "vendor/mjobs/THIRD_PARTY_NOTICES.md": "8e04816371f115a0124150297cd958981950275ad51adf5ecd87f90097a595b2",
-      "test/simple-start.test.js": "fda24f9b2519311acccfc61428d369b795e2feeb2897502e2dd22cfe9ebba59b"
+      "test/simple-start.test.js": "f029f4a861e424e2d63d9009fc4fbce3fc7477b21fdfe4422e7fcf300688fce2"
     },
     "mjobs-controller": {
       ".gitignore": "79be4e534224e550bcae97dc8ea1d687d86023ffd813ae522e131e19a4a80b2c",
