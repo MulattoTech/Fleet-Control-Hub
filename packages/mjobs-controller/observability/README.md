@@ -15,6 +15,24 @@ The polished Atlas overview has native-execution and queue scorecards, output-to
 
 `collect-analytics.py` reads the local Fleet API and opens AO's SQLite database in query-only/read-only mode. It imports native usage events into an owned cache with a seven-day retention limit; the published view covers the last 24 hours. Collection runs every 30 seconds. Each page expires a feed after 90 seconds rather than presenting an old success as live.
 
+`collector-status.json` is a separate, bounded source-health receipt. It reports the
+current check time, an allowlisted reason, and the original last-success time;
+it contains no raw exception, path, identifier, or database content. Atlas requires
+a fresh successful receipt matching the observation before displaying **LIVE**.
+Grafana shows the receipt above its data panels; those panels retain their
+90-second observation cutoff. If the controller serves an offline saved roster,
+collection stops before opening the analytics cache. A changed native database
+identity remains unavailable until separately reconciled; this release neither
+resets its cache nor rewrites its identity. Failures preserve `analytics.json`
+bytes, timestamps, and counts, rather than publishing zeros or fresh-looking history.
+
+After a source-only collector update, restart only **MJobs Fleet - Analytics Standard**
+so its Python process loads the reviewed source. Confirm the new status receipt is
+fresh and its reason is accurate; an unavailable native runtime is not a successful
+telemetry sample. The read-only data server must include the exact
+`/collector-status.json` location and be reloaded after that configuration changes.
+No Fleet dispatch, AO session, database, or authentication change is needed.
+
 Usage values are native per-event reports, not sums of cumulative conversation totals. Cached input is a subset of input, not an additional token category. Tokens indicate resources used, not accepted productivity or a bill. Per-turn token attribution is available only when a completed native conversation/time interval uniquely owns an event. Missing or overlapping attribution remains unavailable, not zero. Recorded turn occupancy is the union of completed intervals; an open prompt is not credited as continuous work. Internal provider subagents that lack a stable AO binding are not invented as separate workers.
 
 Published fields exclude native conversation identifiers, prompts, responses, command lines, terminal output, credentials, and absolute private paths. Private drafts and result receipts stay in `C:\Tools\AO-Fleet-Control\artifacts\productive-work`; publishing their counts does not approve their content.
