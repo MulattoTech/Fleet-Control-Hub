@@ -58,6 +58,37 @@ activity. Reuse the Flight Deck presentation tokens rather than duplicate
 hand-maintained CSS themes. Native controllers retain their separate budgets,
 state directories, stop scopes and permissions.
 
+## Single desktop entry
+
+Use **Fleet Control Hub** as the desktop entry. Its hidden wrapper should call
+`scripts/Open-Fleet-Workspace.ps1` from the installed, verified Hub release and
+show a helpful error if that script exits unsuccessfully. Preserve existing
+project shortcuts; an alias does not require a second controller installation.
+
+For source-checkout startup verification without opening a browser:
+
+```powershell
+powershell.exe -NoProfile -NonInteractive -File "C:\Tools\Dev\Fleet-Control-Hub\scripts\Open-Fleet-Workspace.ps1" -NoBrowser
+```
+
+`-NoBrowser` is startup verification, **not a dry run**: missing dashboards may
+be started, but no Fleet Start/control API or agent work is requested. The
+launcher preflights the three existing dashboard tasks and their enabled,
+`IgnoreNew` settings. It reuses running tasks and healthy detached dashboards
+instead of starting duplicates. Fleet dashboard readiness is bounded to
+20 seconds; standalone Mission Control is reused when healthy or launched once
+through the canonical MJobs root launcher with `-Port 18726 -NoBrowser`, with a
+separate 80-second startup bound. Existing services and workers are not stopped.
+Concurrent clicks are guarded by a per-port Mission startup mutex; another
+launch in progress produces a bounded, explicit message instead of a duplicate
+Mission Control process. Loopback health checks do not follow redirects.
+
+Missing tasks, denied startup, unsafe task settings, failed health checks, and
+Mission Control startup errors fail visibly; they cannot produce a successful
+readiness result. The helper does not change execution policy or repair access
+restrictions. Without `-NoBrowser`, it opens `http://127.0.0.1:4320/` only after
+both the Fleet dashboards and standalone Mission Control are verified ready.
+
 ## Deployment checklist
 
 1. Run `npm run build:ui`, `npm run verify:ui`, `npm run verify:packages`,

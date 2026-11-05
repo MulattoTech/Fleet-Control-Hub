@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).parent
 DS = {"type": "yesoreyeram-infinity-datasource", "uid": "fleet-native"}
 URL = "http://fleet-analytics-data:8080/analytics.json"
+STATUS_URL = "http://fleet-analytics-data:8080/collector-status.json"
 PANELS = []
 
 
@@ -102,7 +103,7 @@ intro["options"] = {
 }
 for i, (title, key, unit) in enumerate(
     [
-        ("Executing now", "executing", "short"),
+        ("Executing · last observation", "executing", "short"),
         ("Queued", "queued", "short"),
         ("On-call reserve", "reserved", "short"),
         ("Completed turns · 24h", "completedTurns", "short"),
@@ -256,6 +257,39 @@ panel(
     ),
     description="Do not infer current activity when the feed timestamp is over 90 seconds old. Fleet Atlas marks stale data explicitly.",
 )
+for item in PANELS:
+    if item["gridPos"]["y"] >= 3:
+        item["gridPos"]["y"] += 5
+status_target = query(
+    "$",
+    [
+        ("state", "Source status", "string"),
+        ("reasonCode", "Reason code", "string"),
+        ("message", "Reason", "string"),
+        ("checkedAt", "Source checked", "timestamp"),
+        ("lastSuccessAt", "Last successful observation", "timestamp"),
+    ],
+)
+status_target["url"] = STATUS_URL
+status_target["root_selector"] = (
+    "($age := $millis() - $toMillis(checkedAt); "
+    "$sampleAge := lastSuccessAt ? $millis() - $toMillis(lastSuccessAt) : 90001; "
+    "$fresh := schemaVersion = 1 and staleAfterSeconds = 90 and $type(available) = 'boolean' "
+    "and $age >= -10000 and $age <= 90000; "
+    "$live := $fresh and available = true and reasonCode = 'OK' "
+    "and $sampleAge >= -10000 and $sampleAge <= 90000; "
+    "[{'state': $live ? 'LIVE' : ($fresh ? 'SOURCE UNAVAILABLE' : 'COLLECTOR OFFLINE'), "
+    "'reasonCode': $fresh ? (available = true and $not($live) ? 'OBSERVATION_UNVERIFIED' : reasonCode) : 'COLLECTOR_STATUS_STALE', "
+    "'message': $fresh ? (available = true and $not($live) ? 'The last successful observation is stale or unverified.' : message) "
+    ": 'Collector status is stale; old observations are not current activity.', "
+    "'checkedAt': checkedAt, 'lastSuccessAt': lastSuccessAt}])"
+)
+panel(
+    "Source health · last check",
+    "table", 0, 3, 24, 5, status_target,
+    description="This check is separate from the last successful data observation. An offline source or identity mismatch never re-dates old counts. Data panels show the last observation for at most 90 seconds, then become unavailable.",
+)
+PANELS.sort(key=lambda item: (item["gridPos"]["y"], item["gridPos"]["x"]))
 agents = [
     "mjobs-luna-" + str(n)
     for n in [

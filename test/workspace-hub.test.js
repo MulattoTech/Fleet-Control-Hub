@@ -133,7 +133,7 @@ test('native pages link back to the same Hub and BabyTracker theme is generated 
   assert.match(read('public/index.html'),/id="add-project-form"/);
   const grafana=JSON.parse(read('packages/mjobs-controller/observability/dashboards/fleet-atlas.json'));
   assert.equal(grafana.refresh,'30s');
-  assert.equal(grafana.panels.length,19);
+  assert.equal(grafana.panels.length,20);
   assert.ok(grafana.links.some(x=>x.title==='Fleet Overview'&&x.url==='https://fleet.m-techlabs.com/'));
   assert.ok(grafana.panels.filter(x=>x.type==='stat').every(x=>x.fieldConfig.defaults.color.fixedColor==='#8bbcff'));
 });

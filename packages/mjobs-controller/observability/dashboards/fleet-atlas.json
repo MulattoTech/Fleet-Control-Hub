@@ -259,13 +259,101 @@
       }
     },
     {
+      "id": 20,
+      "title": "Source health \u00b7 last check",
+      "description": "This check is separate from the last successful data observation. An offline source or identity mismatch never re-dates old counts. Data panels show the last observation for at most 90 seconds, then become unavailable.",
+      "type": "table",
+      "gridPos": {
+        "x": 0,
+        "y": 3,
+        "w": 24,
+        "h": 5
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "fleet-native"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "fleet-native"
+          },
+          "type": "json",
+          "source": "url",
+          "url": "http://fleet-analytics-data:8080/collector-status.json",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "parser": "backend",
+          "format": "table",
+          "root_selector": "($age := $millis() - $toMillis(checkedAt); $sampleAge := lastSuccessAt ? $millis() - $toMillis(lastSuccessAt) : 90001; $fresh := schemaVersion = 1 and staleAfterSeconds = 90 and $type(available) = 'boolean' and $age >= -10000 and $age <= 90000; $live := $fresh and available = true and reasonCode = 'OK' and $sampleAge >= -10000 and $sampleAge <= 90000; [{'state': $live ? 'LIVE' : ($fresh ? 'SOURCE UNAVAILABLE' : 'COLLECTOR OFFLINE'), 'reasonCode': $fresh ? (available = true and $not($live) ? 'OBSERVATION_UNVERIFIED' : reasonCode) : 'COLLECTOR_STATUS_STALE', 'message': $fresh ? (available = true and $not($live) ? 'The last successful observation is stale or unverified.' : message) : 'Collector status is stale; old observations are not current activity.', 'checkedAt': checkedAt, 'lastSuccessAt': lastSuccessAt}])",
+          "columns": [
+            {
+              "selector": "state",
+              "text": "Source status",
+              "type": "string"
+            },
+            {
+              "selector": "reasonCode",
+              "text": "Reason code",
+              "type": "string"
+            },
+            {
+              "selector": "message",
+              "text": "Reason",
+              "type": "string"
+            },
+            {
+              "selector": "checkedAt",
+              "text": "Source checked",
+              "type": "timestamp"
+            },
+            {
+              "selector": "lastSuccessAt",
+              "text": "Last successful observation",
+              "type": "timestamp"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#8bbcff",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        },
+        "sortBy": []
+      }
+    },
+    {
       "id": 2,
-      "title": "Executing now",
+      "title": "Executing \u00b7 last observation",
       "description": "",
       "type": "stat",
       "gridPos": {
         "x": 0,
-        "y": 3,
+        "y": 8,
         "w": 6,
         "h": 4
       },
@@ -293,7 +381,7 @@
           "columns": [
             {
               "selector": "executing",
-              "text": "Executing now",
+              "text": "Executing \u00b7 last observation",
               "type": "number"
             }
           ]
@@ -341,7 +429,7 @@
       "type": "stat",
       "gridPos": {
         "x": 6,
-        "y": 3,
+        "y": 8,
         "w": 6,
         "h": 4
       },
@@ -417,7 +505,7 @@
       "type": "stat",
       "gridPos": {
         "x": 12,
-        "y": 3,
+        "y": 8,
         "w": 6,
         "h": 4
       },
@@ -493,7 +581,7 @@
       "type": "stat",
       "gridPos": {
         "x": 18,
-        "y": 3,
+        "y": 8,
         "w": 6,
         "h": 4
       },
@@ -569,7 +657,7 @@
       "type": "timeseries",
       "gridPos": {
         "x": 0,
-        "y": 7,
+        "y": 12,
         "w": 16,
         "h": 8
       },
@@ -652,7 +740,7 @@
       "type": "barchart",
       "gridPos": {
         "x": 16,
-        "y": 7,
+        "y": 12,
         "w": 8,
         "h": 8
       },
@@ -729,7 +817,7 @@
       "type": "stat",
       "gridPos": {
         "x": 0,
-        "y": 15,
+        "y": 20,
         "w": 6,
         "h": 4
       },
@@ -805,7 +893,7 @@
       "type": "stat",
       "gridPos": {
         "x": 6,
-        "y": 15,
+        "y": 20,
         "w": 6,
         "h": 4
       },
@@ -881,7 +969,7 @@
       "type": "stat",
       "gridPos": {
         "x": 12,
-        "y": 15,
+        "y": 20,
         "w": 6,
         "h": 4
       },
@@ -957,7 +1045,7 @@
       "type": "stat",
       "gridPos": {
         "x": 18,
-        "y": 15,
+        "y": 20,
         "w": 6,
         "h": 4
       },
@@ -1033,7 +1121,7 @@
       "type": "table",
       "gridPos": {
         "x": 0,
-        "y": 19,
+        "y": 24,
         "w": 24,
         "h": 10
       },
@@ -1131,7 +1219,7 @@
       "type": "stat",
       "gridPos": {
         "x": 0,
-        "y": 29,
+        "y": 34,
         "w": 6,
         "h": 4
       },
@@ -1207,7 +1295,7 @@
       "type": "stat",
       "gridPos": {
         "x": 6,
-        "y": 29,
+        "y": 34,
         "w": 6,
         "h": 4
       },
@@ -1283,7 +1371,7 @@
       "type": "stat",
       "gridPos": {
         "x": 12,
-        "y": 29,
+        "y": 34,
         "w": 6,
         "h": 4
       },
@@ -1359,7 +1447,7 @@
       "type": "stat",
       "gridPos": {
         "x": 18,
-        "y": 29,
+        "y": 34,
         "w": 6,
         "h": 4
       },
@@ -1435,7 +1523,7 @@
       "type": "state-timeline",
       "gridPos": {
         "x": 0,
-        "y": 33,
+        "y": 38,
         "w": 24,
         "h": 7
       },
@@ -1501,7 +1589,7 @@
       "type": "table",
       "gridPos": {
         "x": 0,
-        "y": 40,
+        "y": 45,
         "w": 24,
         "h": 10
       },
@@ -1604,7 +1692,7 @@
       "type": "table",
       "gridPos": {
         "x": 0,
-        "y": 50,
+        "y": 55,
         "w": 24,
         "h": 5
       },

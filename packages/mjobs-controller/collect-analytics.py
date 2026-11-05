@@ -15,6 +15,22 @@ import urllib.request
 from pathlib import Path
 
 UTC = dt.UTC
+STATUS_MESSAGES = {
+    "OK": "Native observations are current.",
+    "NATIVE_ROSTER_OFFLINE": "Native runtime is offline; the saved roster is historical.",
+    "NATIVE_ROSTER_STALE": "Native roster is stale or unavailable.",
+    "SOURCE_IDENTITY_CHANGED": "Native database identity changed; historical telemetry needs reconciliation.",
+    "COLLECTION_UNAVAILABLE": "Native telemetry collection is unavailable.",
+    "STATUS_PUBLICATION_FAILED": "Collector status could not be published.",
+}
+
+
+class CollectionUnavailable(ValueError):
+    """Fixed public availability code, never an exception message or private path."""
+
+    def __init__(self, code):
+        self.code = code if code in STATUS_MESSAGES and code != "OK" else "COLLECTION_UNAVAILABLE"
+        super().__init__(STATUS_MESSAGES[self.code])
 
 
 def epoch(value):
@@ -133,13 +149,9 @@ def import_native(cache, ids, now, home):
                 (identity, old[0]),
             )
             if migration.rowcount != 1:
-                raise ValueError(
-                    "Native database identity changed during reconciliation"
-                )
+                raise CollectionUnavailable("SOURCE_IDENTITY_CHANGED")
         else:
-            raise ValueError(
-                "Native database identity changed; historical telemetry needs reconciliation"
-            )
+            raise CollectionUnavailable("SOURCE_IDENTITY_CHANGED")
     cache.execute("INSERT OR IGNORE INTO meta VALUES('source_identity',?)", (identity,))
     cursor = cache.execute("SELECT v FROM meta WHERE k='cursor'").fetchone()
     cursor = int(cursor[0]) if cursor else 0
@@ -560,12 +572,18 @@ def assemble(cache, roster, sustain, master, quota, turns, source, now):
 def collect(root, publish, home):
     now = time.time()
     roster = get("state")
+    if not isinstance(roster, dict):
+        raise CollectionUnavailable("NATIVE_ROSTER_STALE")
+    # The controller timestamps its response even when serving an old saved
+    # roster. Do not turn that wrapper timestamp into fresh native evidence.
+    if roster.get("offline", False) is not False:
+        raise CollectionUnavailable("NATIVE_ROSTER_OFFLINE")
+    stamp = epoch(roster.get("timestamp"))
+    if stamp is None or now - stamp > 30 or stamp > now + 10:
+        raise CollectionUnavailable("NATIVE_ROSTER_STALE")
     sustain = get("sustain")
     master = get("master")
     quota = get("quota")
-    stamp = epoch(roster.get("timestamp"))
-    if stamp is None or now - stamp > 30 or stamp > now + 10:
-        raise ValueError("Stale live roster")
     directory = root / "telemetry"
     directory.mkdir(parents=True, exist_ok=True)
     with sqlite3.connect(directory / "analytics.sqlite", timeout=2) as cache:
@@ -587,6 +605,50 @@ def collect(root, publish, home):
     }
 
 
+def _last_success_at(publish):
+    """Read only a bounded published observation; never re-date its metrics."""
+    try:
+        with (publish / "analytics.json").open("rb") as stream:
+            raw = stream.read(4 * 1024 * 1024 + 1)
+        if len(raw) > 4 * 1024 * 1024:
+            return None
+        value = json.loads(raw)
+        return iso(epoch(value.get("generatedAt"))) if isinstance(value, dict) else None
+    except (OSError, ValueError, TypeError, OverflowError):
+        return None
+
+
+def collect_with_status(root, publish, home):
+    """Publish current source health separately from the last successful sample."""
+    try:
+        result = collect(root, publish, home)
+    except Exception as error:
+        code = error.code if isinstance(error, CollectionUnavailable) else "COLLECTION_UNAVAILABLE"
+        available, last_success = False, _last_success_at(publish)
+        result = {"ok": False, "reasonCode": code, "modelRequests": 0}
+    else:
+        code, available, last_success = "OK", True, result["at"]
+        result = {**result, "ok": True}
+    status = {
+        "schemaVersion": 1,
+        "checkedAt": iso(time.time()),
+        "staleAfterSeconds": 90,
+        "available": available,
+        "reasonCode": code,
+        "message": STATUS_MESSAGES[code],
+        "lastSuccessAt": last_success,
+    }
+    result.setdefault("at", status["checkedAt"])
+    try:
+        atomic_json(root / "telemetry" / "collector-status.json", status)
+        atomic_json(publish / "collector-status.json", status)
+    except Exception:
+        # Keep logging bounded even if paths, permissions, or disks fail.
+        return {"at": status["checkedAt"], "ok": False,
+                "reasonCode": "STATUS_PUBLICATION_FAILED", "modelRequests": 0}
+    return result
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--root", type=Path, required=True)
@@ -595,26 +657,12 @@ def main():
     a = p.parse_args()
     while True:
         start = time.monotonic()
-        try:
-            print(json.dumps(collect(a.root, a.publish, Path.home())), flush=True)
-        except Exception as error:
-            # Retain old data and let its timestamp expire, rather than publish a fresh success.
-            print(
-                json.dumps(
-                    {
-                        "at": iso(time.time()),
-                        "ok": False,
-                        "reason": clean(type(error).__name__ + ": " + str(error), 180),
-                    }
-                ),
-                flush=True,
-            )
-            if not a.loop:
-                raise
+        result = collect_with_status(a.root, a.publish, Path.home())
+        print(json.dumps(result), flush=True)
         if not a.loop:
-            break
+            return 0 if result["ok"] else 1
         time.sleep(max(5, 30 - (time.monotonic() - start)))
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
