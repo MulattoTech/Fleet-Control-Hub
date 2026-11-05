@@ -261,7 +261,7 @@
     {
       "id": 20,
       "title": "Source health \u00b7 last check",
-      "description": "This check is separate from the last successful data observation. An offline source or identity mismatch never re-dates old counts. Data panels show the last observation for at most 90 seconds, then become unavailable.",
+      "description": "No data means the source-health receipt is stale or invalid, not zero activity. This check is separate from the last successful observation. An offline source or identity mismatch never re-dates old counts. Data panels expire after 90 seconds.",
       "type": "table",
       "gridPos": {
         "x": 0,
@@ -289,10 +289,10 @@
           },
           "parser": "backend",
           "format": "table",
-          "root_selector": "($age := $millis() - $toMillis(checkedAt); $sampleAge := lastSuccessAt ? $millis() - $toMillis(lastSuccessAt) : 90001; $fresh := schemaVersion = 1 and staleAfterSeconds = 90 and $type(available) = 'boolean' and $age >= -10000 and $age <= 90000; $live := $fresh and available = true and reasonCode = 'OK' and $sampleAge >= -10000 and $sampleAge <= 90000; [{'state': $live ? 'LIVE' : ($fresh ? 'SOURCE UNAVAILABLE' : 'COLLECTOR OFFLINE'), 'reasonCode': $fresh ? (available = true and $not($live) ? 'OBSERVATION_UNVERIFIED' : reasonCode) : 'COLLECTOR_STATUS_STALE', 'message': $fresh ? (available = true and $not($live) ? 'The last successful observation is stale or unverified.' : message) : 'Collector status is stale; old observations are not current activity.', 'checkedAt': checkedAt, 'lastSuccessAt': lastSuccessAt}])",
+          "root_selector": "($age := $millis() - $toMillis(checkedAt); $sampleAge := lastSuccessAt ? $millis() - $toMillis(lastSuccessAt) : 90001; $fresh := schemaVersion = 1 and staleAfterSeconds = 90 and $type(available) = 'boolean' and $age >= -10000 and $age <= 90000; $live := $fresh and available = true and reasonCode = 'OK' and $sampleAge >= -10000 and $sampleAge <= 90000; $fresh and (available = false or $live) ? [$] : [])",
           "columns": [
             {
-              "selector": "state",
+              "selector": "available",
               "text": "Source status",
               "type": "string"
             },
@@ -335,7 +335,34 @@
             ]
           }
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Source status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "true": {
+                        "text": "LIVE",
+                        "color": "#91d6b7"
+                      },
+                      "false": {
+                        "text": "SOURCE UNAVAILABLE",
+                        "color": "#edc67a"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
       },
       "options": {
         "showHeader": true,

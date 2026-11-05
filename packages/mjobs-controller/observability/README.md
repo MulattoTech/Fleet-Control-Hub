@@ -19,8 +19,10 @@ The polished Atlas overview has native-execution and queue scorecards, output-to
 current check time, an allowlisted reason, and the original last-success time;
 it contains no raw exception, path, identifier, or database content. Atlas requires
 a fresh successful receipt matching the observation before displaying **LIVE**.
-Grafana shows the receipt above its data panels; those panels retain their
-90-second observation cutoff. If the controller serves an offline saved roster,
+Grafana shows fresh, validated receipts above its data panels, with an explicit
+availability label. **No data** in that table means a stale or invalid receipt,
+not zero activity. Data panels retain their 90-second observation cutoff.
+If the controller serves an offline saved roster,
 collection stops before opening the analytics cache. A changed native database
 identity remains unavailable until separately reconciled; this release neither
 resets its cache nor rewrites its identity. Failures preserve `analytics.json`
@@ -73,3 +75,11 @@ python -m ruff check tools/fleet_control/collect-analytics.py tools/fleet_contro
 ```
 
 The isolated browser test uses inert fixture routes. Live Grafana query checks must confirm nonempty frames and no query errors; browser checks must separately verify rendering, freshness, mobile layout, agent drilldowns, and the owner-protected external login. An unauthenticated Access denial is not proof that an authenticated external browser session was tested.
+
+From a verified Fleet-Control-Hub source checkout, run
+`node scripts/verify-grafana-source-status.js --deployed` to compare the provisioned
+source-health query and labels to source, query the actual status feed, and run
+eight nonpersistent synthetic freshness cases through the installed Infinity
+backend. Omit `--deployed` to test a proposed source query before installing it.
+This opt-in check posts datasource queries only; it does not save dashboards,
+alter telemetry, start workers, or infer live activity from an empty result.
