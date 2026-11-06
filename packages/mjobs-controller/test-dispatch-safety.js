@@ -8,10 +8,11 @@ const source=fs.readFileSync(serverPath,'utf8');
 const marker="if(!fs.existsSync(AO)){";
 assert.ok(source.includes(marker),'server bootstrap marker exists');
 const calls=[],terminalCalls=[],daemonCalls=[],ledgerFinishes=[];let terminalState='native-observed',reservation=0;
-const daemonSession={id:'worker-1',mode:'tui',harness:'codex',isTerminated:false,terminalGeneration:'generation-1',activity:{state:'idle'}};
+const daemonSession={id:'worker-1',projectId:'mjobs',mode:'tui',harness:'codex',isTerminated:false,terminalGeneration:'generation-1',activity:{state:'idle'}};
 let daemonSessions=[daemonSession];
 const context=vm.createContext({
  require(id){
+  if(id==='./fleet-codex-scope')return {readScope:()=>({version:1,projectIds:['mjobs']})};
   if(id==='./native-delivery-receipts')return {NativeDeliveryReceipts:class{capture(){return {version:1};}inspect(){return null;}}};
   if(id==='node:child_process')return {execFile(file,args,options,callback){calls.push(args);callback(null,{stdout:'ok'});}};
   if(id==='./terminal-delivery')return {completeKnownPaste:async options=>{terminalCalls.push(options);await options.guard();assert.equal((await options.getSession()).id,'worker-1');return {state:terminalState,extraEnter:false};}};

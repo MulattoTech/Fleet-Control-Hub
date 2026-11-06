@@ -2,6 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
+const { BINDING } = require('./project-binding');
 
 // Ordinary Start owns one current project primary. Historical fleet restoration
 // is a separate advanced operation; a page load never submits native work.
@@ -26,7 +27,7 @@ class RunController {
   }
   status() {
     const quota = this.deps.quota();
-    return { ...structuredClone(this.state), projectId: 'mjobs-luna', active: !!this.task,
+    return { ...structuredClone(this.state), projectId: BINDING.id, active: !!this.task,
       running: this.state.phase === 'running' && this.deps.dispatchEnabled(), quota,
       emergencyLatched: this.deps.emergencyLocked?.() === true,
       blockedReasons: [this.readError, this.deps.recoveryBlockReason?.()].filter(Boolean) };

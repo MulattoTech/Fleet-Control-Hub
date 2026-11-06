@@ -1,4 +1,6 @@
 'use strict';
+// Standalone Hub releases only include src/ and public/. The native-binding parity test prevents ID drift.
+const MJOBS_PROJECT_ID = 'mjobs';
 const DEFAULT_ENDPOINTS = Object.freeze({
   mjobs: 'http://127.0.0.1:8787',
   babytracker: 'http://127.0.0.1:4319'
@@ -21,7 +23,7 @@ function loopbackEndpoint(value) {
 function int(value) { return Number.isSafeInteger(value) && value >= 0 ? value : null; }
 function safeMode(value) { return typeof value === 'string' ? value.slice(0, 50) : 'unknown'; }
 function summarizeMJobs(raw, master) {
-  if (raw?.projectId !== 'mjobs-luna' || !Array.isArray(raw.sessions)) throw Error('MJobs identity or session feed changed');
+  if (raw?.projectId !== MJOBS_PROJECT_ID || !Array.isArray(raw.sessions)) throw Error('MJobs identity or session feed changed');
   return { id:'mjobs', name:'MJobs', online:!raw.offline, mode: master?.dispatch?.sustainedEnabled ? 'sustained' : master?.dispatch?.turboEnabled ? 'turbo' : 'paused or manual',
     total:int(raw.summary?.total), working:int(raw.summary?.working), idle:int(raw.summary?.idle),
     pending:int(raw.summary?.idlePending), attention:int(raw.summary?.ciAttention),
@@ -63,7 +65,7 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
           read(id,'/api/quota').catch(()=>null),
           read(id,'/api/run').catch(()=>null)
         ]);
-        const run=runResult?.projectId==='mjobs-luna'?runResult:null;
+        const run=runResult?.projectId===MJOBS_PROJECT_ID?runResult:null;
         const evidence=progressReader(),lifecycle=mjobsLifecycle(sustain),summary=summarizeMJobs(raw,master);
         summary.start={known:!!run,phase:run?.phase,active:run?.active===true,running:run?.running===true,pendingKind:run?.pending?.kind||null,quota:run?.quota?{fresh:run.quota.fresh===true,remainingPercent:run.quota.remainingPercent,minimumRemainingPercent:run.quota.minimumRemainingPercent,blocked:run.quota.blocked===true,reason:typeof run.quota.reason==='string'?run.quota.reason.slice(0,300):null}:null,blockedReasons:Array.isArray(run?.blockedReasons)?run.blockedReasons.filter(x=>typeof x==='string').map(x=>x.slice(0,300)):[],lastFailure:run?.phase==='blocked'&&typeof run?.error==='string'?run.error.slice(0,300):null,emergencyLatched:run?.emergencyLatched===true};
         if(run){summary.mode=run.active===true?'starting':run.running===true?'running':safeMode(run.phase);if(run.error)summary.detail=String(run.error).slice(0,200);}
@@ -77,7 +79,7 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
     if(!['mjobs','babytracker'].includes(id))throw Error('Unknown fleet');
     if(id==='mjobs'){
       const run=await read(id,'/api/run');
-      if(run.projectId!=='mjobs-luna')throw Error('MJobs run identity changed');
+      if(run.projectId!==MJOBS_PROJECT_ID)throw Error('MJobs run identity changed');
       const quota=run.quota||{},reasons=Array.isArray(run.blockedReasons)?run.blockedReasons.filter(r=>typeof r==='string'):[];
       if(!['idle','starting','running','paused','blocked','uncertain'].includes(run.phase))reasons.push('Native run phase is unknown');
       if(run.phase==='uncertain'&&!['spawn','resume'].includes(run.pending?.kind)&&!reasons.length)reasons.push('Native MJobs run needs reconciliation');
@@ -229,4 +231,4 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
   }
   return {status,startPreview,start,boundedStartPreview,boundedStart,control,limits,saveLimits,reviewCandidates,assessReview,pause:id=>control(id,'pause'),urls};
 }
-module.exports={DEFAULT_ENDPOINTS,loopbackEndpoint,summarizeMJobs,summarizeBaby,createAdapters};
+module.exports={MJOBS_PROJECT_ID,DEFAULT_ENDPOINTS,loopbackEndpoint,summarizeMJobs,summarizeBaby,createAdapters};

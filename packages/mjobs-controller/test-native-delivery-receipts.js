@@ -5,7 +5,7 @@ const {DeliveryReconciliation}=require('./delivery-reconciliation');
 function fixture(t){const root=fs.mkdtempSync(path.join(os.tmpdir(),'native-receipt-'));const file=path.join(root,'ao.db');const db=new DatabaseSync(file);t.after(()=>{db.close();fs.rmSync(root,{recursive:true,force:true});});
  db.exec('CREATE TABLE sessions(id TEXT PRIMARY KEY,project_id TEXT,created_at TEXT,agent_session_id TEXT,runtime_launch_id TEXT,session_mode TEXT,harness TEXT,is_terminated INTEGER); CREATE TABLE session_terminal_turns(id INTEGER PRIMARY KEY,session_id TEXT,harness TEXT,native_session_id TEXT,user_request TEXT,requested_at TEXT,responded_at TEXT)');
  const now=Date.parse('2026-10-27T12:00:10Z'),sentAt=now-5000,createdAt='2026-10-26T00:00:00Z',message='Test only: inspect exact module and give bounded evidence.';
- db.prepare('INSERT INTO sessions VALUES(?,?,?,?,?,?,?,?)').run('mjobs-worker','mjobs-luna',createdAt,'native-private','generation','tui','codex',0);
+ db.prepare('INSERT INTO sessions VALUES(?,?,?,?,?,?,?,?)').run('mjobs-worker','mjobs',createdAt,'native-private','generation','tui','codex',0);
  const reader=new NativeDeliveryReceipts({database:file,now:()=>now}),baseline=reader.capture({id:'mjobs-worker',generation:'generation',createdAt});
  baseline.capturedAt=sentAt-100;
  const request={id:'mjobs-worker',sentAt,messageHash:hash(message),normalizedHash:hash(message),baseline};

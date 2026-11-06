@@ -102,7 +102,7 @@ const FleetRunUI = (() => {
     if (disposed) return; if (reading) { refreshQueued = true; return; } reading = true; const observed = epoch;
     try {
       const value = await request('/api/run');
-      if (value.projectId !== 'mjobs-luna') throw Error('Unexpected project state');
+      if (value.projectId !== 'mjobs') throw Error('Unexpected project state');
       if (observed === epoch) { run = value; error = null; if (pending && run.requestId === pending) save(null); }
     } catch (e) { if (observed === epoch) error = e.message; }
     finally { reading = false; render(); if (refreshQueued && !disposed) { refreshQueued = false; queueMicrotask(refresh); } }

@@ -1,12 +1,13 @@
 'use strict';
 const fs = require('node:fs');
-const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { unresolvedNativeReason } = require('./restore-fleet');
 const { policyStatus } = require('./quota-policy');
-const PROJECT = 'mjobs-luna';
-const MODEL = 'gpt-5.6-sol';
-const MISSION = 'Resume productive MJobs orchestration. Read AGENTS.md and the current requirement/acceptance checkpoint, inspect current GitHub main, existing workers, branches, PRs, review receipts and active task ownership refs/handoffs. Treat saved worker instructions and historical PR assignments as stale until revalidated; do not duplicate completed PR work. Then continue the highest-value unmet P0/P1 work. Reuse existing work before creating overlapping tasks. Default workers are GPT-5.6 Sol at Medium; recursive delegation is allowed within the configured project and resource limits. At most two GPT-6 Astra agents, both Medium, for difficult orchestration or independent review. Keep one integration owner, isolated worktrees and exact-head green required checks before protected PR merges. Preserve user work and production data. Do not send real employer submissions. Do not inflate acceptance or consume allowance with filler. Checkpoint and stop assigning when the provider allowance is exhausted or the user pauses/stops. Report actual commits, tests and remaining blockers.';
+const { BINDING, matchesProject } = require('./project-binding');
+const PROJECT = BINDING.id;
+const LEGACY_PROJECT = BINDING.legacyRestoreId;
+const MODEL = BINDING.primaryModel;
+const MISSION = 'Resume productive MJobs orchestration. Read AGENTS.md and the current requirement/acceptance checkpoint, inspect current GitHub main, existing workers, branches, PRs, review receipts and active task ownership refs/handoffs. Treat saved worker instructions and historical PR assignments as stale until revalidated; do not duplicate completed PR work. Then continue the highest-value unmet P0/P1 work. Reuse existing work before creating overlapping tasks. Prefer GPT-6 Astra at Medium for the primary, substantial implementation and independent review, while assigning bounded routine work to smaller models when that increases throughput. Up to eight Astra sessions may be active only when provider quota, machine resource budgets and independent task ownership permit. Recursive delegation is allowed within these limits; do not create duplicate writers or token-burning filler. Keep one integration owner, isolated worktrees and exact-head green required checks before protected PR merges. Preserve user work and production data. Do not send real employer submissions. Do not inflate acceptance or consume allowance with filler. Checkpoint and stop assigning when the provider allowance is exhausted or the user pauses/stops. Report actual commits, tests and remaining blockers.';
 const activity = s => s?.activity?.state || s?.activity;
 const primaryReady = s => !!s && !s.isTerminated && ['active','working','idle','waiting_input'].includes(activity(s)) &&
   (s.mode === 'chat' ? s.controllerVerified === true && ['ready','busy'].includes(s.controllerState) : s.mode === 'tui');
@@ -26,7 +27,7 @@ class RunAdapter {
         legacy.error?.message === 'Bounded restore requires only the saved MJobs primary and dispatch off' &&
         legacy.restoreStartAttempted === true && legacy.restoreStarted === false && legacy.restoreReceipt === null &&
         legacy.actionPending?.name === 'start existing RestoreFleet' &&
-        legacy.options?.expectedProjectId === PROJECT && /^mjobs-luna-\d+$/.test(legacy.options?.boundedPrimaryId || '') &&
+        legacy.options?.expectedProjectId === LEGACY_PROJECT && /^mjobs-luna-\d+$/.test(legacy.options?.boundedPrimaryId || '') &&
         legacy.options?.startWorkAfter === false && restore.state.phase === 'complete' &&
         typeof restore.state.source?.startupRunId === 'string' && restore.state.source.startupRunId !== legacy.runId &&
         Number.isFinite(Date.parse(restore.state.completedAt)) && Date.parse(restore.state.completedAt) <= Date.parse(legacy.startedAt) &&
@@ -85,8 +86,8 @@ class RunAdapter {
       for (;;) { check(); try { await this.getSessions(); break; } catch (e) { if (Date.now() >= until) throw Error('Orchestrator is unavailable after its launch request'); await new Promise(r => setTimeout(r, 500)); } }
     }
     check(); const project = await this.inspectProject(); check();
-    const repo = String(project?.repo || '').replace(/\.git$/, '').replace(/^git@github.com:/, 'https://github.com/').toLowerCase();
-    if (project?.id !== PROJECT || project.kind !== 'single_repo' || repo !== 'https://github.com/mulattotech/mjobs') throw Error('MJobs project/repository binding changed');
+    if (!matchesProject(project))
+      throw Error('MJobs AO project binding changed: expected registered ID "' + BINDING.id + '" at ' + BINDING.path + ' with MulattoTech/MJobs; no agent was launched. Repair the project registration before retrying.');
     if (legacyRevision !== this.startup.status().revision || this.recoveryBlockReason()) throw Error('Recovery state changed during Start');
     return { legacyRevision, repositoryHead: source?.head || null };
   }
@@ -96,7 +97,7 @@ class RunAdapter {
     const sessions = all.filter(s => s.projectId === PROJECT), roots = sessions.filter(s => !s.isTerminated && s.kind === 'orchestrator');
     if (roots.length > 1) throw Error('Multiple MJobs primaries exist; no duplicate was started');
     const primary = roots[0];
-    if (primary && (primary.harness !== 'codex' || !/^mjobs-luna-\d+$/.test(primary.id))) throw Error('Current primary identity is unsupported');
+    if (primary && (primary.harness !== 'codex' || !/^mjobs-\d+$/.test(primary.id))) throw Error('Current primary identity is unsupported');
     const ready = primaryReady(primary);
     const pendingIdentity = primary && (pending?.kind === 'resume' ? primary.id === pending.primaryId : pending?.kind === 'spawn' && Array.isArray(pending.previousIds) && !pending.previousIds.includes(primary.id) && primary.displayName === 'MJobs run ' + pending.requestId && primary.model === MODEL && primary.mode === 'chat');
     if (primary && !ready && !pendingIdentity && !(activity(primary) === 'exited' && (primary.mode === 'tui' || primary.controllerVerified && primary.controllerState === 'stopped'))) throw Error('Current primary health is unverified; no resume was sent');
@@ -126,7 +127,7 @@ class RunAdapter {
   }
   deps() {
     return { quota: () => this.quotaStatus(), recoveryBlockReason: () => this.recoveryBlockReason(), emergencyLocked: () => this.master.locked?.() === true,
-      dispatchEnabled: () => this.master.sustain.config.enabled,
+      dispatchEnabled: () => !!(this.master.sustain?.config.enabled || this.master.turbo?.config.enabled),
       blockReason: ({ prepared } = {}) => this.recoveryBlockReason() || (prepared ? this.master.locked() ? 'Emergency Stop is active' : this.quota.dispatchBlockReason() : null),
       pause: () => this.master.disableAutomaticDispatch(), prepare: check => this.prepare(check), inspect: pending => this.inspect({ pending }),
       launch: (pending, check) => this.launch(pending, check), instruct: (current, id, check) => this.instruct(current, id, check),

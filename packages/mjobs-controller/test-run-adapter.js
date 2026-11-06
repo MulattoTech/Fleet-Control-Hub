@@ -9,7 +9,7 @@ function fixture() {
   let sessions = [];
   const master = { restore, sustain: { config: { enabled: false }, enable: value => effects.push(['enable', value]) }, drainState: { enabled: false }, locked: () => false, disableAutomaticDispatch: () => effects.push(['pause']) };
   const quota = { status: () => ({ fresh: true }), prepareForStart: () => effects.push(['quota']), dispatchBlockReason: () => null };
-  const adapter = new RunAdapter({ startup: { status: () => legacy }, master, quota, busy: () => false, verifyCodex: async () => {}, launcher: { reconcile: () => ({}) }, getSessions: async () => sessions, inspectProject: async () => ({ id: 'mjobs-luna', kind: 'single_repo', repo: 'https://github.com/MulattoTech/MJobs.git' }), command: async args => { commands.push(args); } });
+  const adapter = new RunAdapter({ startup: { status: () => legacy }, master, quota, busy: () => false, verifyCodex: async () => {}, launcher: { reconcile: () => ({}) }, getSessions: async () => sessions, inspectProject: async () => ({ id: 'mjobs', kind: 'single_repo', path: 'C:\\Tools\\Dev\\MJobs', repo: 'https://github.com/MulattoTech/MJobs.git' }), command: async args => { commands.push(args); } });
   return { adapter, legacy, restore, master, quota, commands, effects, setSessions: value => { sessions = value; } };
 }
 function oldRejected(f) {
@@ -34,8 +34,23 @@ test('foreign project sessions never become MJobs primaries or native mutation t
   const current = await f.adapter.inspect(); assert.equal(current.primaryId, null); assert.deepEqual(current.sessionIds, []);
   await f.adapter.launch({ kind: 'spawn', previousIds: [], requestId: 'scope-request-001' }, () => {});
   assert.equal(f.commands.length, 1); const command = f.commands[0];
-  assert.equal(command[command.indexOf('--project') + 1], 'mjobs-luna'); assert.ok(!command.includes('baby-1'));
-  assert.equal(command[command.indexOf('--model') + 1], 'gpt-5.6-sol'); assert.equal(command[command.indexOf('--effort') + 1], 'medium');
+  assert.equal(command[command.indexOf('--project') + 1], 'mjobs'); assert.ok(!command.includes('baby-1'));
+  assert.equal(command[command.indexOf('--model') + 1], 'gpt-6-astra'); assert.equal(command[command.indexOf('--effort') + 1], 'medium');
+});
+test('AO project identity, repository and path drift fail before any agent submission', async () => {
+  const valid = { id: 'mjobs', kind: 'single_repo', path: 'C:\\Tools\\Dev\\MJobs', repo: 'https://github.com/MulattoTech/MJobs.git' };
+  const variants = [
+    { ...valid, id: 'mjobs-luna' },
+    { ...valid, path: 'C:\\Tools\\Dev\\BabyTracker-Master' },
+    { ...valid, repo: 'https://github.com/Other/MJobs.git' },
+    { ...valid, kind: 'workspace' }
+  ];
+  for (const project of variants) {
+    const f = fixture();
+    f.adapter.inspectProject = async () => project;
+    await assert.rejects(f.adapter.prepare(() => {}), /AO project binding changed/);
+    assert.equal(f.commands.length, 0);
+  }
 });
 test('zero allowance blocks preparation before watchdog release or launch', async () => {
   const f = fixture(); f.quota.dispatchBlockReason = () => 'Provider allowance exhausted';
@@ -65,14 +80,14 @@ test('watchdog release requires literal true rather than a truthy result object'
 });
 test('instruction precheck failure explicitly proves no native submission', async () => {
   const f = fixture();
-  await assert.rejects(f.adapter.instruct({ primaryId: 'mjobs-luna-1', mode: 'chat' }, 'message-id', () => {}), error => error.nativeSubmitted === false);
+  await assert.rejects(f.adapter.instruct({ primaryId: 'mjobs-1', mode: 'chat' }, 'message-id', () => {}), error => error.nativeSubmitted === false);
   assert.equal(f.commands.length, 0);
 });
 test('a failed native send remains an unknown submission rather than being labeled safe to replay', async () => {
-  const f = fixture(); f.setSessions([{ id: 'mjobs-luna-1', projectId: 'mjobs-luna', kind: 'orchestrator', harness: 'codex', mode: 'chat', activity: 'idle', controllerVerified: true, controllerState: 'ready' }]);
+  const f = fixture(); f.setSessions([{ id: 'mjobs-1', projectId: 'mjobs', kind: 'orchestrator', harness: 'codex', mode: 'chat', activity: 'idle', controllerVerified: true, controllerState: 'ready' }]);
   let submissions = 0;
   f.adapter.command = async () => { submissions++; throw Error('native process lost its response'); };
-  await assert.rejects(f.adapter.instruct({ primaryId: 'mjobs-luna-1', mode: 'chat' }, 'original-message', () => {}), error => error.nativeSubmitted !== false);
+  await assert.rejects(f.adapter.instruct({ primaryId: 'mjobs-1', mode: 'chat' }, 'original-message', () => {}), error => error.nativeSubmitted !== false);
   assert.equal(submissions, 1);
 });
 for (const kind of ['spawn', 'resume']) for (const restart of [false, true]) test(`real adapter waits for exact ${kind} initialization${restart ? ' after restart without replay' : ' on the first Start'}`, async t => {
@@ -81,8 +96,8 @@ for (const kind of ['spawn', 'resume']) for (const restart of [false, true]) tes
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mjobs-adapter-run-test-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const f = fixture(), originalRequest = 'native-initialization-001';
-  const pending = kind === 'spawn' ? { kind, requestId: originalRequest, previousIds: [] } : { kind, requestId: originalRequest, primaryId: 'mjobs-luna-1' };
-  const base = { id: 'mjobs-luna-1', projectId: 'mjobs-luna', kind: 'orchestrator', harness: 'codex', mode: 'chat', model: 'gpt-5.6-sol', displayName: 'MJobs run ' + originalRequest };
+  const pending = kind === 'spawn' ? { kind, requestId: originalRequest, previousIds: [] } : { kind, requestId: originalRequest, primaryId: 'mjobs-1' };
+  const base = { id: 'mjobs-1', projectId: 'mjobs', kind: 'orchestrator', harness: 'codex', mode: 'chat', model: 'gpt-6-astra', displayName: 'MJobs run ' + originalRequest };
   let launched = restart, initializingReads = 0, nativeLaunches = 0;
   f.adapter.getSessions = async () => {
     if (!launched) return kind === 'spawn' ? [] : [{ ...base, activity: 'exited', controllerVerified: true, controllerState: 'stopped' }];
@@ -101,11 +116,21 @@ for (const kind of ['spawn', 'resume']) for (const restart of [false, true]) tes
   assert.equal(run.status().running, true, run.status().error); assert.ok(initializingReads >= 3); assert.equal(nativeLaunches, restart ? 0 : 1); assert.equal(run.status().pending, null);
 });
 test('pending proof never legitimizes an unknown or foreign initializing primary', async () => {
-  for (const changes of [{ displayName: 'unrelated request' }, { model: 'gpt-other' }, { id: 'mjobs-luna-9' }]) {
+  for (const changes of [{ displayName: 'unrelated request' }, { model: 'gpt-other' }, { id: 'mjobs-9' }]) {
     const f = fixture();
-    f.setSessions([{ id: 'mjobs-luna-1', projectId: 'mjobs-luna', kind: 'orchestrator', harness: 'codex', mode: 'chat', model: 'gpt-5.6-sol', displayName: 'MJobs run expected-request', activity: 'initializing', ...changes }]);
-    const pending = changes.id ? { kind: 'resume', primaryId: 'mjobs-luna-1' } : { kind: 'spawn', requestId: 'expected-request', previousIds: [] };
+    f.setSessions([{ id: 'mjobs-1', projectId: 'mjobs', kind: 'orchestrator', harness: 'codex', mode: 'chat', model: 'gpt-6-astra', displayName: 'MJobs run expected-request', activity: 'initializing', ...changes }]);
+    const pending = changes.id ? { kind: 'resume', primaryId: 'mjobs-1' } : { kind: 'spawn', requestId: 'expected-request', previousIds: [] };
     await assert.rejects(f.adapter.inspect({ pending }), /unverified/);
     assert.equal(f.commands.length, 0);
   }
+});
+
+test('normal Start stays idempotent when Turbo has replaced Sustained dispatch', () => {
+  const f=fixture(), deps=f.adapter.deps();
+  assert.equal(deps.dispatchEnabled(),false);
+  f.master.turbo={config:{enabled:true}};
+  assert.equal(deps.dispatchEnabled(),true,'Turbo means the running MJobs fleet is already dispatched');
+  f.master.turbo.config.enabled=false;
+  f.master.sustain.config.enabled=true;
+  assert.equal(deps.dispatchEnabled(),true,'Sustained remains a supported dispatcher');
 });

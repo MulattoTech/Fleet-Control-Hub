@@ -1,7 +1,9 @@
 'use strict';
 const test=require('node:test');
 const assert=require('node:assert/strict');
-const {createAdapters,loopbackEndpoint}=require('../src/adapters');
+const {createAdapters,loopbackEndpoint,MJOBS_PROJECT_ID}=require('../src/adapters');
+const {BINDING}=require('../packages/mjobs-controller/project-binding');
+test('standalone Hub project identity matches native AO binding',()=>assert.equal(MJOBS_PROJECT_ID,BINDING.id));
 const {readMJobsProgress,babyProgress,mjobsLifecycle,mjobsPipeline,readMJobsReviewCandidates}=require('../src/progress');
 const {makeServer}=require('../src/server');
 const {configuredRemote}=require('../src/remote-auth');
@@ -9,10 +11,10 @@ const fs=require('node:fs');const os=require('node:os');const path=require('node
 const http=require('node:http');
 
 function fixture(){const calls=[];const fetcher=async(url,options={})=>{calls.push({url,options});
-  if(url.endsWith('/api/state')&&url.includes(':8787'))return {ok:true,json:async()=>({projectId:'mjobs-luna',sessions:[{id:'a'}],summary:{total:1,working:0,idle:1,idlePending:0,ciAttention:0}})};
+  if(url.endsWith('/api/state')&&url.includes(':8787'))return {ok:true,json:async()=>({projectId:'mjobs',sessions:[{id:'a'}],summary:{total:1,working:0,idle:1,idlePending:0,ciAttention:0}})};
   if(url.endsWith('/api/master'))return {ok:true,json:async()=>({dispatch:{sustainedEnabled:false,turboEnabled:false},emergency:{latched:false,scope:'machine'},drain:{enabled:true}})};
   if(url.endsWith('/api/sustain'))return {ok:true,json:async()=>({workItems:[{state:'approved'},{state:'leased'}],artifactReviews:{ready:1}})};
-  if(url.endsWith('/api/run'))return {ok:true,json:async()=>({projectId:'mjobs-luna',phase:'idle',active:false,running:false,primaryId:'mjobs-luna-40',quota:{fresh:true,remainingPercent:46,minimumRemainingPercent:0,blocked:false},blockedReasons:[]})};
+  if(url.endsWith('/api/run'))return {ok:true,json:async()=>({projectId:'mjobs',phase:'idle',active:false,running:false,primaryId:'mjobs-luna-40',quota:{fresh:true,remainingPercent:46,minimumRemainingPercent:0,blocked:false},blockedReasons:[]})};
   if(url.endsWith('/api/startup'))return {ok:true,json:async()=>({run:{phase:'idle',active:false},preview:{targetCount:2,projectIds:['mjobs-luna'],primaryIds:['mjobs-luna-40'],manifestRevision:'a'.repeat(64)}})};
   if(url.endsWith('/api/startup/mjobs-preview'))return {ok:true,json:async()=>({projectId:'mjobs-luna',targetCount:2,primaryIds:['mjobs-luna-40'],manifestRevision:'a'.repeat(64),scopedStartSupported:true})};
   if(url.endsWith('/api/quota'))return {ok:true,json:async()=>({fresh:true,policy:{blocked:false,remainingPercent:46}})};
@@ -158,19 +160,19 @@ test('status reads normalize both fleets and never mutate',async()=>{
   assert.ok(calls.every(x=>!x.options.method||x.options.method==='GET'));
 });
 test('MJobs status projects native run progress and errors while preserving observed worker counts',async()=>{
-  const {fetcher}=fixture();let run={projectId:'mjobs-luna',phase:'starting',active:true,running:false};
+  const {fetcher}=fixture();let run={projectId:'mjobs',phase:'starting',active:true,running:false};
   const api=createAdapters({fetcher:async(url,options)=>{if(url.endsWith('/api/run')){if(!run)throw Error('Older controller');return {ok:true,json:async()=>run};}return fetcher(url,options);},progressReader:()=>({available:false})});
   let status=await api.status('mjobs');assert.equal(status.mode,'starting');assert.equal(status.working,0);assert.equal(status.total,1);
-  run={projectId:'mjobs-luna',phase:'blocked',active:false,running:false,error:'Fresh Codex sample unavailable'};
+  run={projectId:'mjobs',phase:'blocked',active:false,running:false,error:'Fresh Codex sample unavailable'};
   status=await api.status('mjobs');assert.equal(status.mode,'blocked');assert.equal(status.detail,'Fresh Codex sample unavailable');assert.equal(status.working,0);
-  run={projectId:'mjobs-luna',phase:'running',active:false,running:true};assert.equal((await api.status('mjobs')).mode,'running');
+  run={projectId:'mjobs',phase:'running',active:false,running:true};assert.equal((await api.status('mjobs')).mode,'running');
   run=null;assert.equal((await api.status('mjobs')).mode,'paused or manual');
 });
 test('native MJobs controller stays actionable when the AO worker runtime is offline',async()=>{
   const {calls,fetcher}=fixture();
   const api=createAdapters({fetcher:async(url,options)=>{
-    if(url.endsWith('/api/state')&&url.includes(':8787'))return {ok:true,json:async()=>({projectId:'mjobs-luna',offline:true,sessions:[],summary:{total:70,working:null,idle:null}})};
-    if(url.endsWith('/api/run'))return {ok:true,json:async()=>({projectId:'mjobs-luna',phase:'blocked',active:false,running:false,error:'Outer MJobs checkout was not clean',quota:{fresh:true,remainingPercent:80,minimumRemainingPercent:7,blocked:false},blockedReasons:[]})};
+    if(url.endsWith('/api/state')&&url.includes(':8787'))return {ok:true,json:async()=>({projectId:'mjobs',offline:true,sessions:[],summary:{total:70,working:null,idle:null}})};
+    if(url.endsWith('/api/run'))return {ok:true,json:async()=>({projectId:'mjobs',phase:'blocked',active:false,running:false,error:'Outer MJobs checkout was not clean',quota:{fresh:true,remainingPercent:80,minimumRemainingPercent:7,blocked:false},blockedReasons:[]})};
     return fetcher(url,options);
   },progressReader:()=>({available:false})});
   const status=await api.status('mjobs');
@@ -192,7 +194,7 @@ test('BabyTracker Start can be offered by a healthy native controller before AO 
 test('Start preview preserves native reconciliation blockers without requiring a completed stop to be rearmed',async()=>{
   const {fetcher}=fixture();
   const api=createAdapters({fetcher:async(url,options)=>{
-    if(url.endsWith('/api/run'))return {ok:true,json:async()=>({projectId:'mjobs-luna',phase:'uncertain',quota:{fresh:true,remainingPercent:46},blockedReasons:['Native delivery requires reconciliation']})};
+    if(url.endsWith('/api/run'))return {ok:true,json:async()=>({projectId:'mjobs',phase:'uncertain',quota:{fresh:true,remainingPercent:46},blockedReasons:['Native delivery requires reconciliation']})};
     if(url.includes(':4319')&&url.endsWith('/api/state'))return {ok:true,json:async()=>({projectId:'babytracker',mode:'draining',bootstrap:{status:'uncertain'},quota:{fresh:true,remainingPercent:46},summary:{total:1},sessions:[],tasks:[]})};
     return fetcher(url,options);
   }});
@@ -203,7 +205,7 @@ test('Start preview preserves native reconciliation blockers without requiring a
 });
 test('MJobs uncertain spawn or resume may be verified by native Start while unknown delivery stays blocked',async()=>{
   const {calls,fetcher}=fixture();let pending={kind:'spawn'},blockedReasons=[];
-  const api=createAdapters({fetcher:async(url,options)=>url.endsWith('/api/run')?{ok:true,json:async()=>({projectId:'mjobs-luna',phase:'uncertain',pending,quota:{fresh:true,remainingPercent:46,minimumRemainingPercent:0,blocked:false},blockedReasons})}:fetcher(url,options)});
+  const api=createAdapters({fetcher:async(url,options)=>url.endsWith('/api/run')?{ok:true,json:async()=>({projectId:'mjobs',phase:'uncertain',pending,quota:{fresh:true,remainingPercent:46,minimumRemainingPercent:0,blocked:false},blockedReasons})}:fetcher(url,options)});
   for(const kind of ['spawn','resume']){
     pending={kind};assert.equal((await api.startPreview('mjobs')).blocked,false);
     await api.start('mjobs','START MJobs','verify-'+kind);
@@ -227,7 +229,7 @@ test('MJobs normal Start validates project identity and never reads the saved re
 });
 test('MJobs zero reserve allows one percent, blocks provider exhaustion and delegates stale refresh to native Start',async()=>{
   const {calls,fetcher}=fixture();let fresh=true,remainingPercent=1,blocked=false;
-  const api=createAdapters({fetcher:async(url,options)=>url.endsWith('/api/run')?{ok:true,json:async()=>({projectId:'mjobs-luna',phase:'paused',quota:{fresh,remainingPercent,minimumRemainingPercent:0,blocked},blockedReasons:[]})}:fetcher(url,options)});
+  const api=createAdapters({fetcher:async(url,options)=>url.endsWith('/api/run')?{ok:true,json:async()=>({projectId:'mjobs',phase:'paused',quota:{fresh,remainingPercent,minimumRemainingPercent:0,blocked},blockedReasons:[]})}:fetcher(url,options)});
   assert.equal((await api.startPreview('mjobs')).blocked,false);
   await api.start('mjobs','START MJobs','stable-123');
   remainingPercent=0;assert.equal((await api.startPreview('mjobs')).blocked,true);

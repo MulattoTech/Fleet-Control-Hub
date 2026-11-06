@@ -5,6 +5,8 @@ const os=require('node:os');
 const {spawn}=require('node:child_process');
 const {randomUUID}=require('node:crypto');
 const {RestoreFleet,unresolvedNativeReason}=require('./restore-fleet');
+const {ensureScope,readScope}=require('./fleet-codex-scope');
+const { BINDING } = require('./project-binding');
 
 const ROOT=__dirname;
 const INIT_DRAIN={enabled:false,phase:'idle',startedAt:null,completedAt:null,processed:{},errors:[],counts:null,lastCheck:null};
@@ -14,10 +16,12 @@ function write(file,value){
 }
 function error(e){return String(e?.message||e).slice(0,450)}
 class MasterControls{
- constructor({root=ROOT,sustain,turbo,command,audit,projectId='mjobs-luna',getState,getAllSessions=null,autoschedule=true,restoreOptions={},restoreCommand=null,startBlockReason=()=>null}){
+ constructor({root=ROOT,sustain,turbo,command,audit,projectId=BINDING.id,getState,getAllSessions=null,autoschedule=true,restoreOptions={},restoreCommand=null,startBlockReason=()=>null}){
   this.root=root;this.sustain=sustain;this.turbo=turbo;this.command=command;
   this.audit=audit;this.projectId=projectId;this.getState=getState;
   this.startBlockReason=startBlockReason;
+  // Register this controller's explicit project, not the global AO snapshot.
+  try{ensureScope(root,projectId)}catch(e){this.audit('fleet_stop_scope_invalid',{message:error(e)})}
   this.latchPath=path.join(root,'emergency-latch.json');
   this.statusPath=path.join(root,'emergency-status.json');
   this.drainPath=path.join(root,'drain-state.json');
@@ -62,7 +66,7 @@ class MasterControls{
   return {
    timestamp:new Date().toISOString(),
    dispatch:{sustainedEnabled:!!this.sustain?.config.enabled,turboEnabled:!!this.turbo?.config.enabled},
-   emergency:{latched:this.locked(),...emergency},
+   emergency:{...emergency,latched:this.locked(),configuredScope:'fleet-owned'},
    restore:this.restore.status(),
    drain:{
     enabled:!!this.drainState.enabled,phase:this.drainState.phase,
@@ -216,10 +220,10 @@ class MasterControls{
   const stat=read(this.statusPath,{});
   const age=Date.now()-Date.parse(stat.checkedAt||stat.startedAt||0);
   const fresh=Number.isFinite(age)&&age>=0&&age<35000;
-  if(fresh&&stat.active)return true;
+  if(fresh&&stat.active&&stat.scope==='fleet-owned')return true;
   if(Date.now()-this.lastWatchdogLaunch<14000)return true;
   // Publish starting state before launching; never overwrite the child's newer heartbeat.
-  write(this.statusPath,{active:true,phase:'starting',startedAt:new Date().toISOString(),watchdogPid:null,remainingTotal:null,dashboardPreserved:true});
+  write(this.statusPath,{active:true,phase:'starting',configuredScope:'fleet-owned',startedAt:new Date().toISOString(),watchdogPid:null,remainingTotal:null,dashboardPreserved:true});
   const pid=this.spawnWatchdog();
   const observed=read(this.statusPath,{});
   if(observed.phase==='starting'&&!observed.checkedAt)write(this.statusPath,{...observed,watchdogPid:pid});
@@ -230,7 +234,7 @@ class MasterControls{
    this.ensureWatchdog();
    return this.status();
   }
-  // Capture all AO-managed session IDs before killing the AO daemon.
+  // Preserve recovery metadata. The scoped watchdog never kills the AO daemon.
   const wasRestoring=this.restore.state.active;
   if(wasRestoring)this.restore.pause();
   if(!wasRestoring)await this.restore.captureSnapshot({force:true}).catch(()=>{});
@@ -240,7 +244,7 @@ class MasterControls{
   this.drainState.enabled=false;this.drainState.phase='interrupted_by_emergency';
   write(this.drainPath,this.drainState);
   this.stopDrainTimer();
-  this.latch={enabled:true,triggeredAt:new Date().toISOString(),scope:'all Codex processes across the host',explicitlyRequested:true};
+  this.latch={enabled:true,triggeredAt:new Date().toISOString(),scope:'fleet-owned',policyVersion:2,explicitlyRequested:true};
   write(this.latchPath,this.latch);
   this.audit('master_emergency_armed',{});
   try{this.ensureWatchdog()}
@@ -256,6 +260,8 @@ class MasterControls{
   return await this.restore.preview();
  }
  async restoreStart(options={}){
+  const scope=readScope(this.root);
+  if(!scope.projectIds.includes(this.projectId))throw Error('Controller project is not registered in the Codex stop scope');
   if(this.locked())throw Error('Emergency stop is latched. Explicitly release the lockout after quota resets, then re-arm the saved quota guard before restoring any agent.');
   if(this.restore.state.active)return this.status();
   if(this.restore.running)throw Error('A previous restore tick is still running');
@@ -274,6 +280,9 @@ class MasterControls{
   const saved=this.restore.getSnapshot();
   if(!saved.sessions?.length||!saved.restorableCount)await this.restore.captureSnapshot().catch(()=>{});
   const before=await this.restore.preview();
+  const currentScope=readScope(this.root);
+  if(!currentScope.projectIds.includes(this.projectId)||this.restore.targets(this.restore.getSnapshot()).some(target=>!currentScope.projectIds.includes(target.projectId)))
+   throw Error('Recovery includes a project outside the registered fleet Codex stop scope; no restore was started');
   if(before.totalTargets===0)throw Error('No AO-managed Codex sessions are available in the saved recovery manifest. Restore canceled safely.');
   if(before.alreadyOnline===before.totalTargets&&before.willResume===0)throw Error('All preserved session runtimes are already online. Nothing needs restoring. No dispatch settings changed.');
   const stopReason=unresolvedNativeReason(this.restore.state)||this.startBlockReason()||this.quota?.dispatchBlockReason?.();

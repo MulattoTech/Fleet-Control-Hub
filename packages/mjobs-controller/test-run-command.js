@@ -16,11 +16,11 @@ function fixture(t, { pauseBeforeExec = false, pauseAfterExec = false } = {}) {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const currentRun = { task: {}, prepared: true, generation: 1, state: { phase: 'starting' } };
   const calls = { exec: 0, enters: 0, capture: 0, deliveries: 0, finishes: [] };
-  const session = { id: 'mjobs-luna-1', mode: 'tui', harness: 'codex', activity: { state: 'idle' }, terminalGeneration: 'native-generation-1' };
+  const session = { id: 'mjobs-1', projectId: 'mjobs', mode: 'tui', harness: 'codex', activity: { state: 'idle' }, terminalGeneration: 'native-generation-1' };
   const message = 'Continue the next verified MJobs implementation task.';
   const pause = () => { currentRun.generation++; currentRun.state.phase = 'paused'; };
   const context = vm.createContext({
-    require, root, currentRun, AO: 'fake-native-command', master: { locked: () => false },
+    require, root, currentRun, projectId: 'mjobs', AO: 'fake-native-command', master: { locked: () => false },
     assertCanStartWork: () => {}, audit: () => {},
     dispatchLedger: { reserve: () => ({ id: 'reservation-1' }), attach() {}, finish: (id, receipt, outcome) => calls.finishes.push(outcome) },
     deliveryReceipts: { capture: () => ({}), inspect: () => null },

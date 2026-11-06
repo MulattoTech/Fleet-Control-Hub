@@ -80,7 +80,7 @@ function fixture() {
   };
   // Current-primary orchestration is bounded separately from preserved Startup.
   // Its native behavior has dedicated adapter/controller regression tests.
-  b.currentRunState = { projectId: 'mjobs-luna', phase: 'paused', active: false, running: false, requestId: null };
+  b.currentRunState = { projectId: 'mjobs', phase: 'paused', active: false, running: false, requestId: null };
   b.currentRunStarts = 0; b.currentRunPauses = [];
   b.currentRun = {
     task: null, ownsLegacy: () => false,
@@ -110,6 +110,9 @@ function fixture() {
   const modules = {
     './turbo': { Turbo: dummy }, './sustain': { Sustain: dummy }, './master-controls': { MasterControls: dummy },
     './run-control': { RunController: dummy }, './run-adapter': { RunAdapter: dummy },
+    './project-binding': nativeRequire('./project-binding'),
+    './fleet-codex-scope': { readScope: () => ({ version: 1, projectIds: ['mjobs', 'mjobs-luna', 'babytracker'] }), ensureScope: () => ({}) },
+    './startup-request': nativeRequire('./startup-request'),
     './main-reconcile': { createMainReconciler: () => ({ ensureCurrent: async () => ({ updated: false }) }) },
     './startup-control': { StartupController: dummy }, './startup-adapter': { StartupAdapter: dummy },
     './post-review-control': { completeReviewedRestore: async data => {
@@ -184,7 +187,7 @@ test('Startup route is explicit, local-only, available under emergency lock, and
     if (kind === 'bad origin') headers.origin = 'https://public.example';
     if (kind === 'bad action header') headers['x-ao-fleet'] = '0';
     const result = await f.post('/api/startup', { confirm: kind === 'no confirmation' ? '' : 'STARTUP', requestId: 'request-001' }, { headers });
-    assert.equal(result.status, kind === 'accepted' ? 202 : kind === 'bad host' ? 403 : 409);
+    assert.equal(result.status, kind === 'accepted' ? 202 : kind === 'bad host' ? 403 : kind === 'no confirmation' ? 400 : 409);
     assert.equal(f.b.startupCount, kind === 'accepted' ? 1 : 0); assert.deepEqual(f.b.native, []);
     assert.equal(f.locked(), false);
   });
@@ -453,7 +456,7 @@ test('every dashboard launch pauses saved dispatch, even without a startup block
 test('current run GET is read-only and reports current state without starting work', async () => {
   const f = fixture();
   const result = await f.get('/api/run');
-  assert.equal(result.status, 200); assert.equal(result.body.projectId, 'mjobs-luna'); assert.equal(result.body.phase, 'paused');
+  assert.equal(result.status, 200); assert.equal(result.body.projectId, 'mjobs'); assert.equal(result.body.phase, 'paused');
   assert.equal(f.b.currentRunStarts, 0); assert.deepEqual(f.b.currentRunPauses, []); assert.deepEqual(f.b.effects, []); assert.deepEqual(f.b.native, []);
 });
 test('current run Start requires local authenticated writes and accepts only a stable request ID', async t => {

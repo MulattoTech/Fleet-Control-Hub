@@ -2,6 +2,7 @@
 // Query-only native receipts. Exact message + session identity + time/cursor;
 // never uses an activity LED as delivery evidence and never returns prompt text.
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os'),crypto=require('node:crypto');
+const { BINDING } = require('./project-binding');
 const hash=value=>crypto.createHash('sha256').update(value).digest('hex');
 function epoch(value){
  if(typeof value!=='string')return NaN;
@@ -11,7 +12,7 @@ function epoch(value){
 const identity=s=>hash(JSON.stringify([s.id,s.project_id,s.created_at,s.agent_session_id,s.runtime_launch_id]));
 const fileIdentity=file=>{const s=fs.statSync(file,{bigint:true});return [String(s.dev),String(s.ino),String(s.birthtimeNs)].join(':');};
 class NativeDeliveryReceipts{
- constructor({projectId='mjobs-luna',database=path.join(os.homedir(),'.ao','data','ao.db'),now=Date.now}={}){this.projectId=projectId;this.database=database;this.now=now;}
+ constructor({projectId=BINDING.id,database=path.join(os.homedir(),'.ao','data','ao.db'),now=Date.now}={}){this.projectId=projectId;this.database=database;this.now=now;}
  query(fn){
   const fileBefore=fileIdentity(this.database);const {DatabaseSync}=require('node:sqlite');
   const db=new DatabaseSync(this.database,{readOnly:true});
