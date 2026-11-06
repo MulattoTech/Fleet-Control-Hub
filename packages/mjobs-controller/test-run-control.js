@@ -12,7 +12,7 @@ function fixture(t, initial = {}) {
   let enabled = false;
   let current = { primaryId: 'mjobs-luna-1', ready: true, busy: false, idle: true, sessionIds: ['mjobs-luna-1'], ...initial };
   let quota = { fresh: true, blocked: false, remainingPercent: 80 };
-  const calls = { launch: [], instruct: [], enable: 0 };
+  const calls = { launch: [], instruct: [], enable: 0, reconcile: 0 };
   const deps = {
     quota: () => quota, dispatchEnabled: () => enabled,
     pause: () => { enabled = false; }, blockReason: () => quota.blocked ? 'Provider allowance exhausted' : null,
@@ -22,7 +22,8 @@ function fixture(t, initial = {}) {
       current = { ...current, primaryId: pending.primaryId || 'mjobs-luna-2', ready: true, idle: true, busy: false, createdForRequest: pending.requestId };
     },
     instruct: async (primary, id) => { calls.instruct.push({ primary, id }); },
-    enable: async check => { check(); enabled = true; calls.enable++; }
+    enable: async check => { check(); enabled = true; calls.enable++; },
+    reconcile: async () => { calls.reconcile++; }
   };
   const controller = () => new RunController({ root, deps, pollMs: 0, readyTimeoutMs: 0 });
   return { root, deps, calls, controller, setCurrent: value => { current = value; }, setQuota: value => { quota = value; } };
@@ -31,6 +32,14 @@ test('a busy primary starts dispatch without steering active work', async t => {
   const f = fixture(t, { busy: true, idle: false }), run = f.controller();
   run.start({ requestId }); await run.waitForIdle();
   assert.equal(run.status().running, true); assert.equal(f.calls.instruct.length, 0); assert.equal(f.calls.launch.length, 0);
+});
+test('Start records migration-needed for an existing medium primary and reconciles after its task clears', async t => {
+  const f = fixture(t, { migrationNeeded: true }), run = f.controller();
+  f.deps.reconcile = async () => { assert.equal(run.task, null, 'Turbo reconciliation starts after Start releases its control lane'); f.calls.reconcile++; };
+  run.start({ requestId }); await run.waitForIdle();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(run.status().migrationNeeded, true);
+  assert.equal(f.calls.reconcile, 1);
 });
 test('idle Start submits one prompt and coalesces duplicate and overlapping requests', async t => {
   const f = fixture(t), run = f.controller();
@@ -84,6 +93,14 @@ test('Pause during prompt delivery preserves submission receipt but never enable
   while (!release) await new Promise(resolve => setImmediate(resolve));
   run.pause(); release(); await run.waitForIdle();
   assert.equal(f.calls.instruct.length, 1); assert.equal(f.calls.enable, 0); assert.equal(run.status().running, false); assert.equal(run.status().phase, 'paused');
+});
+test('Pause before deferred Turbo reconciliation prevents the post-Start cycle', async t => {
+  const f = fixture(t, { busy: true, idle: false }), run = f.controller();
+  f.deps.reconcile = async () => { if (f.deps.dispatchEnabled()) f.calls.reconcile++; };
+  run.start({ requestId }); await run.waitForIdle();
+  run.pause();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.calls.reconcile, 0);
 });
 test('independent idle Starts receive distinct native-compatible UUIDs', async t => {
   const f = fixture(t), run = f.controller();

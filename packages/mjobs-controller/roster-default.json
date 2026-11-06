@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "projectId": "mjobs",
+  "orchestrator": {
+    "count": 1,
+    "model": "gpt-6-astra",
+    "effort": "xhigh"
+  },
+  "workerGroups": [
+    {
+      "key": "astra",
+      "model": "gpt-6-astra",
+      "effort": "medium",
+      "desired": 24
+    },
+    {
+      "key": "sol",
+      "model": "gpt-6-sol",
+      "effort": "medium",
+      "desired": 0
+    },
+    {
+      "key": "luna",
+      "model": "gpt-6-luna",
+      "effort": "high",
+      "desired": 15
+    }
+  ],
+  "dispatch": {
+    "targetWorking": 40
+  },
+  "safety": {
+    "maxTotalSessions": 40,
+    "maxCpuPercent": 85,
+    "minFreeRamGiB": 12,
+    "minFreeDiskGiB": 80,
+    "minProviderRemainingPercent": 1
+  }
+}

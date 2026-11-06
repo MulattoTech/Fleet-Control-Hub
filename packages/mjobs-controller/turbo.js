@@ -11,7 +11,7 @@ const { BINDING } = require('./project-binding');
 const DEFAULTS = Object.freeze({
   enabled:false,
   profile:'aggressive',
-  targetWorking:12,
+  targetWorking:40,
   maxActionsPerCycle:3,
   maxActionsPerHour:18,
   perAgentCooldownMinutes:18,
@@ -37,6 +37,9 @@ function load(file,fallback){
 const {publicError,publicState,privateDiagnostic}=require('./control-errors');
 const {canReceiveInstruction}=require('./runtime-health');
 const {checks,prSignal,graphSignal,DispatchSignals,REPORT_POLICY}=require('./dispatch-policy');
+const {IssueQueue}=require('./issue-queue');
+const {RosterControl}=require('./roster-control');
+const {ProductiveFleet}=require('./productive-fleet');
 function errorText(e){return publicError('turbo',e)}
 function parseTime(value){const x=Date.parse(value||'');return Number.isFinite(x)?x:0}
 function recent(time,withinMs,now){return now-parseTime(time)<withinMs}
@@ -49,7 +52,7 @@ function configWithChanges(current,changes){
   for(const key of Object.keys(changes||{}))if(!keys.includes(key))throw Error('Unrecognized configuration setting: '+key);
   const n={...current,...changes};
   if(!['balanced','aggressive'].includes(n.profile))throw Error('Unsupported Turbo profile');
-  asNumber(n.targetWorking,1,25,'targetWorking');
+  asNumber(n.targetWorking,1,40,'targetWorking');
   asNumber(n.maxActionsPerCycle,1,6,'maxActionsPerCycle');
   asNumber(n.maxActionsPerHour,1,60,'maxActionsPerHour');
   asNumber(n.perAgentCooldownMinutes,5,120,'perAgentCooldownMinutes');
@@ -76,11 +79,18 @@ function extractRefs(snapshot){
   return [...byPR.values()];
 }
 class Turbo {
- constructor({root,getState,command,audit,isManualBusy,projectId=BINDING.id,githubRunner=null,clock=()=>Date.now(),autoSchedule=true}){
+ constructor({root,getState,command,audit,isManualBusy,projectId=BINDING.id,githubRunner=null,clock=()=>Date.now(),autoSchedule=true,quotaStatus=()=>null}){
    this.getState=getState;this.command=command;this.audit=audit;
    this.isManualBusy=isManualBusy||(()=>false);
-   this.projectId=projectId;this.dispatchSignals=new DispatchSignals(root);
+   this.projectId=projectId;this.dispatchSignals=new DispatchSignals(root);this.issueQueue=new IssueQueue(root);
    this.clock=clock;
+   this.roster=new RosterControl(root);
+   this.productive=new ProductiveFleet({queue:this.issueQueue,roster:this.roster,getState:force=>this.getState(force),
+    github:force=>this.github(force),resources:snap=>this.signals(snap),quota:quotaStatus,clock,
+    command:(args,ms)=>this.command(args,ms),eligible:s=>this.availableForDispatch(s)&&!this.withinCooldown(s.id,'issue',this.clock()),
+    guard:()=>!this.config.enabled||this.sustain?.config.enabled||this.isManualBusy(),
+    onAttempt:record=>{this.session.actions.push(record);this.save();},
+    onOutcome:(number,status)=>{const record=this.session.actions.find(a=>a.key==='issue:'+number);if(record)record.status=status;this.save();}});
    this.configPath=path.join(root,'turbo-config.json');
    this.statePath=path.join(root,'turbo-state.json');
    this.eventsPath=path.join(root,'turbo-events.jsonl');
@@ -123,6 +133,7 @@ class Turbo {
    const today=this.session.actions.filter(a=>recent(a.at,24*60*60*1000,now));
    return {
     config:clone(this.config),
+    roster:this.rosterStatus(),
     running:this.running,
     lastCycle:this.session.lastCycle||null,
     lastSuccess:this.session.lastSuccess||null,
@@ -133,6 +144,10 @@ class Turbo {
     activity:publicState(this.session.actions.slice(-15).reverse(),'turbo'),
     reviewsClaimed:Object.keys(this.session.reviewClaims).length
    };
+ }
+ rosterStatus(){
+   try{return {profile:this.roster.read(),lastReconciliation:this.productive.latest};}
+   catch{return {error:'Roster configuration unavailable; reconciliation paused'};}
  }
  update(changes){
    const value=configWithChanges(this.config,changes);
@@ -147,13 +162,15 @@ class Turbo {
    return this.summary();
  }
  async runGitHub(){
-   const args=['pr','list','--repo','MulattoTech/MJobs','--state','open','--limit','50','--json','number,headRefOid,title,isDraft,reviewDecision,statusCheckRollup'];
+   const args=['pr','list','--repo','MulattoTech/MJobs','--state','open','--limit','50','--json','number,headRefOid,title,isDraft,reviewDecision,statusCheckRollup,body,closingIssuesReferences'];
    const merged=['pr','list','--repo','MulattoTech/MJobs','--state','merged','--limit','100','--json','number,mergedAt'];
-   const [a,b]=await Promise.all([
+   const issueArgs=['issue','list','--repo','MulattoTech/MJobs','--state','open','--limit','100','--json','number,title,state,assignees,labels'];
+   const [a,b,c]=await Promise.all([
     execAsync('gh.exe',args,{windowsHide:true,timeout:20000,maxBuffer:2000000}),
-    execAsync('gh.exe',merged,{windowsHide:true,timeout:20000,maxBuffer:1000000})
+    execAsync('gh.exe',merged,{windowsHide:true,timeout:20000,maxBuffer:1000000}),
+    execAsync('gh.exe',issueArgs,{windowsHide:true,timeout:20000,maxBuffer:1000000})
    ]);
-   return {open:JSON.parse(a.stdout),merged:JSON.parse(b.stdout),at:new Date(this.clock()).toISOString()};
+   return {open:JSON.parse(a.stdout),merged:JSON.parse(b.stdout),issues:JSON.parse(c.stdout),at:new Date(this.clock()).toISOString()};
  }
  async github(force=false){
    if(!force&&this.githubErrorAt&&this.clock()-this.githubErrorAt<30000)return this.githubCache;
@@ -252,12 +269,14 @@ class Turbo {
     const msg='TURBO READ-ONLY REVIEW: Inspect MJobs PR #'+p.number+' at exact GitHub head '+full.headRefOid+' independently. Review the diff, negative tests, boundaries and acceptance evidence. Do not edit files, trigger additional agents, merge, or claim ownership. Send actionable blocker/high-confidence findings and current-head verification to primary '+root.id+', and report any outdated head. No duplicate review of unchanged head.';
     candidate(2,'review',reviewer,msg,'Review PR #'+p.number+' @ '+hash,'review:'+claimKey);
    }
-   const coordinators=sessions.filter(s=>this.availableForDispatch(s,now)&&s.role==='Orchestration'&&s.kind==='worker');
+   const coordinators=Array.isArray(gh?.issues)?[]:sessions.filter(s=>this.availableForDispatch(s,now)&&s.role==='Orchestration'&&s.kind==='worker');
    for(const coordinator of coordinators){
     const msg='TURBO COORDINATION CHECKPOINT. Report a concise list of concrete unclaimed P0/P1 issues or failing PRs to primary '+root.id+' in your assigned lane. Avoid duplicating coordinator reports. You may assign work only if the primary has explicitly delegated exclusive ownership. Do not independently spawn agents or merge.';
     candidate(3,'coord',coordinator,msg,'Refresh '+coordinator.name+' lane plan','coord:'+coordinator.id+':'+graph);
    }
-   const workAvailable=available.filter(s=>s.role!=='Orchestration'&&!s.role.toLowerCase().includes('review'));
+   // Legacy embedders without issue support retain their PR/refill behavior.
+   // Production always fetches issues; an empty authoritative queue sends no filler.
+   const workAvailable=Array.isArray(gh?.issues)?[]:available.filter(s=>s.role!=='Orchestration'&&!s.role.toLowerCase().includes('review'));
    for(const worker of workAvailable){
     const msg='TURBO TASK REFILL: Your agent turn is idle. Check prior assignments and owned branches first. If you have no unfinished task or uncommitted work, request a new bounded P0/P1 issue with acceptance criteria and exclusive file ownership from primary orchestrator '+root.id+'. Do not self-assign, duplicate existing file scope, run heavy tests or modify dirty main until delegated. When assigned, focus on completing a tested PR with exact-head CI evidence.';
     candidate(4,'refill',worker,msg,'Ask for scoped implementation work','refill:'+worker.id);
@@ -362,10 +381,15 @@ class Turbo {
       }
       this.save();
     }
+    const hour=this.session.actions.filter(a=>recent(a.at,3600000,this.clock())).length;
+    const productive=await this.productive.reconcile({rootId:detail.rootId,
+      budget:Math.max(0,Math.min(this.config.maxActionsPerCycle-sent.length,this.config.maxActionsPerHour-hour)),
+      targetWorking:Math.max(0,this.config.targetWorking-sent.length)});
+    this.latest.productive=productive;
     this.session.lastSuccess=new Date(this.clock()).toISOString();
-    this.latest.actionsThisCycle=sent.length;
+    this.latest.actionsThisCycle=sent.length+productive.attempted;
     this.save();
-    return {executed:sent,preview:this.latest,reason:null};
+    return {executed:sent,productive,preview:this.latest,reason:null};
    }catch(e){
     this.error(e);
     if(manual)throw new Error(errorText(e));

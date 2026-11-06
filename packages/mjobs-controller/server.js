@@ -6,6 +6,7 @@ const os = require('node:os');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { Turbo } = require('./turbo');
+const { RosterApi } = require('./roster-api');
 const { Sustain } = require('./sustain');
 const { MasterControls } = require('./master-controls');
 const {readScope}=require('./fleet-codex-scope');
@@ -241,7 +242,8 @@ function transform(s,replacements){
  const replacementFor=replacements.pairs.find(p=>p.newId===s.id);
  const replacedBy=replacements.pairs.find(p=>p.oldId===s.id);
  return {
-  id:s.id,name:s.displayName||s.id,model:s.model||null,harness:s.harness||'codex',
+  id:s.id,projectId:s.projectId,name:s.displayName||s.id,model:s.model||null,harness:s.harness||'codex',
+  effort:s.effort||null,issueNumber:s.issueNumber||null,task:s.task?{issueNumber:s.task.issueNumber}:null,
   kind:s.kind,role:getClass(s),status:s.status||'unknown',activity,
   lastActivity:s.activity?.lastActivityAt||s.updatedAt||null,
   createdAt:s.createdAt||null,branch:s.branch||null,
@@ -251,7 +253,7 @@ function transform(s,replacements){
   controllerState:s.controllerState||null,controllerVerified:s.controllerVerified??null,
   replacementFor:replacementFor?.oldId||null,replacedBy:replacedBy?.newId||null,
   ...operationalDetails(s,sustain),
-  effortKnown:false
+  effortKnown:typeof s.effort==='string'
  };
 }
 function emergencyOfflineSnapshot(reason='Orchestrator unavailable; fleet runtime state is unverified'){
@@ -496,6 +498,15 @@ async function main(req,res){
  if(master?.locked()&&req.method==='POST'&&!['/api/master/emergency','/api/master/rearm','/api/master/restore','/api/master/pause','/api/agent-plan','/api/startup','/api/startup/cancel','/api/startup/reconcile','/api/run/start','/api/quota/config'].includes(req.url))return json(res,423,{error:'Emergency shutdown lockout is active; use protected Startup after the allowance reset'});
  if(master?.drainState.enabled&&req.method==='POST'&&req.url!=='/api/agent-plan'&&!req.url.startsWith('/api/master/')&&!req.url.startsWith('/api/startup')&&req.url!=='/api/run/start')return json(res,423,{error:'Graceful shutdown is draining sessions. New work is disabled'});
  if(req.method==='GET'&&req.url==='/api/run')return json(res,200,currentRun.status());
+ if(['GET','POST'].includes(req.method)&&req.url==='/api/roster'){
+  try{
+   checkWrite(req);
+   if(req.method==='GET')return json(res,200,rosterApi.read(req));
+   rosterApi.authorize(req);
+   const data=await body(req);
+   return json(res,200,rosterApi.update(req,data));
+  }catch(e){return json(res,/authorization/.test(e.message)?401:409,{error:e.message});}
+ }
  if(req.method==='POST'&&req.url==='/api/run/start'){
   try{checkWrite(req);const data=await body(req);
    if(Object.keys(data).some(k=>k!=='requestId'))throw Error('Unsupported Start option');
@@ -733,7 +744,9 @@ dispatchLedger=new DispatchLedger({root});
 setInterval(()=>{if(mutationLock||sustain?.running||turbo?.running||startup?.status()?.active||master?.restore?.state?.active)return;try{receiptReconciliation.run(dispatchLedger,sustain);}catch(e){audit('delivery_reconcile_unavailable',{reason:String(e.message).slice(0,180)});}},15000);
 orchestratorLauncher=new OrchestratorLauncher({root});
 agentPlans=new AgentPlans({root,audit,validate:async x=>validateSelection(x,await providerRuntime.get())});
-turbo=new Turbo({root,getState:state,command,audit,isManualBusy:()=>mutationLock||!!sustain?.running||!!master?.locked()||!!master?.drainState.enabled||!!master?.restore.state.active||!!quota?.dispatchBlockReason()||!!startupBlockReason(),projectId});
+turbo=new Turbo({root,getState:freshMutationState,command,audit,quotaStatus:()=>{
+ const q=quota?.status();return q?{fresh:q.fresh,remainingPercent:q.selectedRemainingPercent,blocked:!!quota.dispatchBlockReason()}:null;
+},isManualBusy:()=>mutationLock||!!sustain?.running||!!master?.locked()||!!master?.drainState.enabled||!!master?.restore.state.active||!!quota?.dispatchBlockReason()||!!startupBlockReason(),projectId});
 sustain=new Sustain({root,getState:state,turbo,command,audit,isManualBusy:()=>mutationLock||!!master?.locked()||!!master?.drainState.enabled||!!master?.restore.state.active||!!quota?.dispatchBlockReason()||!!startupBlockReason(),projectId});
 turbo.sustain=sustain;sustain.deliveryLedger=dispatchLedger;turbo.deliveryLedger=dispatchLedger;
 master=new MasterControls({root,sustain,turbo,command,audit,getState:state,getAllSessions:getLiveSessions,projectId,
@@ -751,11 +764,13 @@ startupAdapter=new StartupAdapter({root,master,quota,launcher:orchestratorLaunch
 startup=new StartupController({root,deps:startupAdapter.deps(),audit,timeouts:{readMs:30000,actionMs:35000}});
 const mainReconciler=createMainReconciler({repoDir:'C:\\Tools\\Dev\\MJobs'});
 const runAdapter=new RunAdapter({root,master,quota,startup,launcher:orchestratorLauncher,
+ rosterLimit:()=>turbo.roster.read().safety.maxTotalSessions,
  ensureMainCurrent:check=>mainReconciler.ensureCurrent(check),audit,
  getSessions:getLiveSessions,verifyCodex:verifyCodexExecutable,command,
  busy:()=>mutationLock||sustain.running||turbo.running||!!findWork?.running,
  inspectProject:async()=>{const r=await exec(AO,['project','get',projectId,'--json'],{windowsHide:true,timeout:10000,maxBuffer:100000,cwd:root});return JSON.parse(r.stdout).project;}});
 currentRun=new RunController({root,deps:runAdapter.deps(),audit});
+const rosterApi=new RosterApi({root,roster:turbo.roster,busy:()=>mutationLock||turbo.running||sustain.running||!!findWork?.running||!!currentRun?.task});
 setInterval(()=>{try{currentRun.observeQuota();}catch(e){master.disableAutomaticDispatch();audit('run_quota_pause_failed',{reason:String(e.message).slice(0,180)});}},5000).unref();
 // A server restart never authorizes replay of a saved restore operation.
 if(master.restore.state.active)master.restore.pause();
