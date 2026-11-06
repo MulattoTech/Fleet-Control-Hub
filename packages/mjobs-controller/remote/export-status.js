@@ -40,6 +40,13 @@ const publicText = (value,limit=240) => {
   const clean=value.replace(/[\u0000-\u001f\u007f]/g,'').trim();
   return clean && clean.length<=limit && !unsafeNarrative.test(clean) ? clean : null;
 };
+const canonicalRequirementTitles=Object.freeze({'MJ-REQ-249':'Docker Health Checks','MJ-REQ-279':'Python Quality'});
+const requirementTitle=(id,value,limit=200)=>{
+  if(typeof value!=='string')return null;
+  const clean=value.replace(/[\u0000-\u001f\u007f]/g,'').trim();
+  if(!clean||clean.length>limit)return null;
+  return publicText(clean,limit) || (canonicalRequirementTitles[id]===clean?clean:null);
+};
 const revision = value => typeof value==='string' && /^[a-f0-9]{40}$/i.test(value) ? value : null;
 const digest = value => typeof value==='string' && /^[a-f0-9]{64}$/i.test(value) ? value : null;
 const metricValid = value => !!value && typeof value==='object' &&
@@ -70,7 +77,7 @@ function campaignValid(value) {
   const requirementById=new Map();
   for(const item of value.requirements){
     if(!item || !/^MJ-REQ-\d+(?:\.[A-Z0-9]+)*$/.test(item.id||'') || requirementIds.has(item.id) ||
-       !publicText(item.title,200) || !acceptanceStatus(item.status) || !priority(item.priority) ||
+       !requirementTitle(item.id,item.title,200) || !acceptanceStatus(item.status) || !priority(item.priority) ||
        (item.issue!==null && count(item.issue)===null))return false;
     requirementIds.add(item.id);
     requirementById.set(item.id,item);
@@ -238,7 +245,7 @@ function projectSnapshot(results, now = Date.now()) {
     original:acceptanceAvailable?acceptanceMetric(acceptanceRaw.original):null,
     reference:acceptanceAvailable?acceptanceMetric(acceptanceRaw.reference):null,
     priorities:acceptanceAvailable?acceptanceRaw.priorities.map(item=>({name:item.name,...acceptanceMetric(item)})):[]};
-  const requirements=campaignAvailable?campaignRaw.requirements.map(item=>({id:item.id,title:publicText(item.title,200),status:item.status,priority:item.priority,issue:count(item.issue)})):[];
+  const requirements=campaignAvailable?campaignRaw.requirements.map(item=>({id:item.id,title:requirementTitle(item.id,item.title,200),status:item.status,priority:item.priority,issue:count(item.issue)})):[];
   const campaigns=campaignAvailable?campaignRaw.campaigns.map(campaign=>({requirementId:campaign.requirement_id,title:publicText(campaign.title,200),
     issueUrl:campaign.issue_url,updatedAt:timestamp(campaign.updated_at_utc),observedAt:timestamp(campaignRaw.observed_at),sourceRevision:revision(campaign.source_revision),
     handoffRevision:revision(campaign.handoff_revision),ledgerSha256:digest(campaign.ledger_sha256),sourceKind:campaign.source_kind,

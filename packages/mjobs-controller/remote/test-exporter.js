@@ -229,6 +229,32 @@ test('campaign progress requires a fresh complete six-phase 60-step snapshot',as
   assert.notEqual(snapshot.campaignProgress.total,0,'missing campaign data must not synthesize zero progress');
 });
 
+test('canonical tool and product titles pass while command, secret, and path text remain rejected',async()=>{
+  const data=fixture();
+  const actualCatalogTitles={'MJ-REQ-249':'Docker Health Checks','MJ-REQ-279':'Python Quality'};
+  for(const [id,title] of Object.entries(actualCatalogTitles)){
+    const item=data.campaignProgress.data.requirements.find(requirement=>requirement.id===id);
+    assert.ok(item,`fixture includes ${id}`);item.title=title;
+  }
+  const collect=async sourceData=>collectSnapshot(async url=>{
+    const name=Object.keys(SOURCES).find(key=>SOURCES[key]===url);
+    return new Response(JSON.stringify(sourceData[name].data));
+  },()=>NOW);
+  const valid=await collect(data);
+  assert.equal(valid.sources.campaignProgress.available,true);
+  for(const [id,title] of Object.entries(actualCatalogTitles)){
+    assert.equal(valid.campaignProgress.requirements.find(requirement=>requirement.id===id).title,title);
+  }
+
+  for(const title of ['python -c "print(1)"','python foo','python -m module','docker run image','docker foo','docker buildx build image','api_key=SECRET_VALUE','C:\\Users\\Dylan\\private']){
+    const invalid=structuredClone(data);
+    invalid.campaignProgress.data.requirements.find(requirement=>requirement.id==='MJ-REQ-249').title=title;
+    const snapshot=await collect(invalid);
+    assert.equal(snapshot.sources.campaignProgress.available,false,`unsafe title rejected: ${title}`);
+    assert.deepEqual(snapshot.campaignProgress.requirements,[]);
+  }
+});
+
 test('campaign score and canonical overview must match the requirement rows and current totals',async()=>{
   const data=fixture();data.campaignProgress.data.campaigns[0].scoreboard.PARTIAL=32;data.campaignProgress.data.campaigns[0].scoreboard.NOT_RUN=21;
   const scoreMismatch=await collectSnapshot(async url=>{
@@ -271,6 +297,14 @@ test('unsafe or omitted optional next action does not invalidate a consistent ca
   },()=>NOW);
   assert.equal(redacted.campaignProgress.available,true);
   assert.equal(redacted.campaignProgress.campaigns[0].nextAction,null);
+  for(const action of ['python -c "print(1)"','python foo','python -m module','docker run image','docker foo','docker buildx build image']){
+    const command=fixture();command.campaignProgress.data.campaigns[0].next_action=action;
+    const projection=await collectSnapshot(async url=>{
+      const name=Object.keys(SOURCES).find(key=>SOURCES[key]===url);return new Response(JSON.stringify(command[name].data));
+    },()=>NOW);
+    assert.equal(projection.campaignProgress.available,true);
+    assert.equal(projection.campaignProgress.campaigns[0].nextAction,null,`command narrative omitted: ${action}`);
+  }
 });
 
 test('campaign endpoint unavailability is not projected as a healthy source',()=>{
