@@ -6,6 +6,7 @@ const os = require('node:os');
 const {execFile} = require('node:child_process');
 const {promisify} = require('node:util');
 const execAsync = promisify(execFile);
+const { BINDING } = require('./project-binding');
 
 const DEFAULTS = Object.freeze({
   enabled:false,
@@ -75,7 +76,7 @@ function extractRefs(snapshot){
   return [...byPR.values()];
 }
 class Turbo {
- constructor({root,getState,command,audit,isManualBusy,projectId='mjobs-luna',githubRunner=null,clock=()=>Date.now(),autoSchedule=true}){
+ constructor({root,getState,command,audit,isManualBusy,projectId=BINDING.id,githubRunner=null,clock=()=>Date.now(),autoSchedule=true}){
    this.getState=getState;this.command=command;this.audit=audit;
    this.isManualBusy=isManualBusy||(()=>false);
    this.projectId=projectId;this.dispatchSignals=new DispatchSignals(root);

@@ -4,7 +4,7 @@ const {createRequire}=require('node:module'),serverPath=path.join(__dirname,'ser
 const source=fs.readFileSync(serverPath,'utf8'),marker="if(!fs.existsSync(AO)){";
 const calls=[],fixtureWrites=[];
 const safeFs={...fs,mkdirSync(){},writeFileSync(file,data){fixtureWrites.push({file,data:String(data)})},renameSync(){},appendFileSync(){}};
-const ctx=vm.createContext({require(id){if(id==='node:child_process')return {execFile(file,args,opts,cb){calls.push(args);cb(null,{stdout:'ok'});}};if(id==='node:fs')return safeFs;return nativeRequire(id);},__dirname,process,Buffer,URL,console,fetch,setTimeout,clearTimeout,structuredClone,AbortSignal});
+const ctx=vm.createContext({require(id){if(id==='./fleet-codex-scope')return {readScope:()=>({version:1,projectIds:['mjobs']})};if(id==='node:child_process')return {execFile(file,args,opts,cb){calls.push(args);cb(null,{stdout:'ok'});}};if(id==='node:fs')return safeFs;return nativeRequire(id);},__dirname,process,Buffer,URL,console,fetch,setTimeout,clearTimeout,structuredClone,AbortSignal});
 vm.runInContext(source.slice(0,source.indexOf(marker))+'\nglobalThis.f={main,command,replace,retire,stateImpl:state};',ctx);
 vm.runInContext("master={locked:()=>false,drainState:{enabled:false}};quota={dispatchBlockReason:()=>null};sustain={running:false};turbo={running:false};findWork={running:false};startup={status:()=>({phase:'idle',active:false,reconciliationRequired:false})};audit=()=>{};",ctx);
 async function post(url,data,headers={}){let status,body;await ctx.f.main({url,method:'POST',headers:{host:'127.0.0.1:8787','x-ao-fleet':'1','content-type':'application/json',...headers},async *[Symbol.asyncIterator](){yield Buffer.from(JSON.stringify(data))}},{writeHead(n){status=n},end(x){body=JSON.parse(x)}});return {status,body};}

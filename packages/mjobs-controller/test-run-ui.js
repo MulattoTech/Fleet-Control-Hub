@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, 'public/run-ui.js'), 'utf8');
-const idle = { projectId: 'mjobs-luna', phase: 'paused', active: false, running: false, quota: { fresh: true, remainingPercent: 80, minimumRemainingPercent: 7, thresholdPercent: 7, autoKillArmed: false, blocked: false } };
+const idle = { projectId: 'mjobs', phase: 'paused', active: false, running: false, quota: { fresh: true, remainingPercent: 80, minimumRemainingPercent: 7, thresholdPercent: 7, autoKillArmed: false, blocked: false } };
 const response = value => ({ ok: true, json: async () => value });
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const flush = async () => { for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve)); };

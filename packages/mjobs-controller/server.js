@@ -8,7 +8,9 @@ const { promisify } = require('node:util');
 const { Turbo } = require('./turbo');
 const { Sustain } = require('./sustain');
 const { MasterControls } = require('./master-controls');
+const {readScope}=require('./fleet-codex-scope');
 const { StartupController } = require('./startup-control');
+const { startWithVerifiedRecovery } = require('./startup-request');
 const { StartupAdapter } = require('./startup-adapter');
 const { RunController } = require('./run-control');
 const { RunAdapter } = require('./run-adapter');
@@ -47,7 +49,8 @@ const statePath = path.join(root, 'replacement-state.json');
 const auditPath = path.join(root, 'audit.jsonl');
 const listenHost = '127.0.0.1';
 const port = Number(process.env.FLEET_DASHBOARD_PORT || 8787);
-const projectId = 'mjobs-luna';
+const { BINDING } = require('./project-binding');
+const projectId = BINDING.id;
 const MODEL_OPTIONS = [
   {id:'gpt-6-luna',name:'GPT-6 Luna'},
   {id:'gpt-5.6-sol',name:'GPT-5.6 Sol'},
@@ -118,7 +121,10 @@ function dispatchHealthBlockReason(){
   (sustain?.config.enabled&&typeof sustain.latest?.blocked==='string'?sustain.latest.blocked:null)||
   (turbo?.config.enabled&&typeof turbo.latest?.pausedReason==='string'?turbo.latest.pausedReason:null)||null;
 }
-function assertCanStartWork(options){
+function assertCanStartWork(options={}){
+ const scope=readScope(root);
+ if(![projectId,options.targetProjectId??projectId].every(id=>typeof id==='string'&&scope.projectIds.includes(id)))
+  throw Error('Fleet project is not registered in the Codex stop scope; no work was started');
  const reason=workBlockReason(options);
  if(reason)throw Error(reason);
 }
@@ -159,7 +165,10 @@ async function command(args,ms=30000,{windDown=false,startupRestore=false,runSta
  const runGeneration=currentRun?.generation;
  const assertCommand=()=>{
   if(runStart&&(!authorizedRun||currentRun?.generation!==runGeneration||currentRun?.state.phase!=='starting'))throw Object.assign(Error('Start was superseded before native submission'),{nativeSubmitted:false});
-  assertCanStartWork({allowStartupRestore:authorizedRestore,allowRunStart:authorizedRun});
+  const projects=args.flatMap((value,index)=>value==='--project'?[args[index+1]]:typeof value==='string'&&value.startsWith('--project=')?[value.slice(10)]:[]);
+  if(projects.length>1||projects.length===1&&(typeof projects[0]!=='string'||!projects[0]||projects[0].startsWith('-')))
+   throw Error('Ambiguous native project selection; no work was started');
+  assertCanStartWork({allowStartupRestore:authorizedRestore,allowRunStart:authorizedRun,targetProjectId:projects.length?projects[0]:projectId});
  };
  const id=args[args.indexOf('--session')+1];
  let reserved=null,nativeSubmitted=false;
@@ -172,6 +181,8 @@ async function command(args,ms=30000,{windDown=false,startupRestore=false,runSta
    const matches=Array.isArray(sessions)?sessions.filter(s=>s?.id===id):[];
    if(matches.length!==1)throw Error('Target changed before terminal delivery');
    before=matches[0];assertCommand();
+   if(typeof before.projectId!=='string')throw Error('Target project is unavailable before terminal delivery');
+   assertCanStartWork({allowStartupRestore:authorizedRestore,allowRunStart:authorizedRun,targetProjectId:before.projectId});
    const supportedHarness=['codex','agy'].includes(before.harness);
    const needsTerminalVerification=before.harness==='codex';
    if(before.isTerminated||before.mode!=='tui'||!supportedHarness||!['idle','waiting_input'].includes(before.activity?.state)||(needsTerminalVerification&&(typeof before.terminalGeneration!=='string'||!before.terminalGeneration)))throw Error('Target changed before terminal delivery');
@@ -243,22 +254,22 @@ function transform(s,replacements){
   effortKnown:false
  };
 }
-function emergencyOfflineSnapshot(reason='Emergency stop is locked; Orchestrator.inc daemon is intentionally offline'){
- // During Emergency Kill the AO daemon is intentionally stopped. A missing
- // daemon must not turn the dashboard into an error page or fake LIVE agents.
+function emergencyOfflineSnapshot(reason='Orchestrator unavailable; fleet runtime state is unverified'){
+ // A missing daemon is not proof providers exited. Show saved identities as
+ // unknown; preserve the shared daemon and standalone Codex sessions.
  const manifest=JSON.parse(fs.readFileSync(path.join(root,'restore-snapshot.json'),'utf8'));
  if(!Array.isArray(manifest.sessions)||!manifest.sessions.length)throw Error('No saved emergency roster');
  const replacements=readReplacements();
  const sessions=manifest.sessions.filter(s=>s.projectId===projectId&&!s.isTerminated).map(s=>({
   ...transform(s,replacements),busy:false,isIdle:false,blocked:false,openPRs:0,prs:[],
-  activity:'exited',status:'emergency_stopped',stateLabel:'Stopped · preserved snapshot',
+  activity:'unknown',status:'runtime_unverified',stateLabel:'Unverified · preserved snapshot',
   lastActivity:s.observedAt||manifest.at||null
  }));
  const metrics={cpu:calculateCPU(),ramTotal:os.totalmem(),ramFree:os.freemem(),logicalCores:os.cpus().length,uptime:os.uptime()};
  return {
   timestamp:new Date().toISOString(),projectId,version:'1.0.0',offline:true,
   snapshotAt:manifest.at,offlineReason:reason,
-  sessions,summary:{total:sessions.length,working:0,idle:0,idleFree:0,idlePending:0,ciAttention:0,other:sessions.length},
+  sessions,summary:{total:sessions.length,working:null,idle:null,idleFree:null,idlePending:null,ciAttention:0,other:sessions.length},
   metrics,models:MODEL_OPTIONS,efforts:EFFORT_OPTIONS,
   settings:{loopback:true,changeMode:'replacement',noAutomaticTaskAssignments:true},
   replacements:replacements.pairs
@@ -280,7 +291,7 @@ async function loadState(force=false){
  let res;
  try{res={sessions:await getLiveSessions()}}
  catch(e){
-  const reason=master?.locked()?'Emergency stop is locked; Orchestrator.inc daemon is intentionally offline':'Orchestrator daemon unavailable; displaying preserved sessions, not live activity';
+  const reason=master?.locked()?'Fleet stop is locked; Orchestrator is unavailable, so runtime termination is unverified':'Orchestrator daemon unavailable; displaying preserved sessions, not live activity';
   const result=emergencyOfflineSnapshot(reason);
   cached={at:Date.now(),result};
   return result;
@@ -514,7 +525,7 @@ async function main(req,res){
    if(req.url==='/api/startup/cancel'){dispatcherModeEpoch++;const r=startup.cancel(data);master.disableAutomaticDispatch();master.restore.pause();return json(res,r.statusCode,r);}
    if(mutationLock||sustain.running||turbo.running||findWork.running)return json(res,409,{error:'Another control operation is running; Startup did not submit work'});
    mutationLock=true;owns=true;
-   if(req.url==='/api/startup'){const policy=quota.status().policy;if(policy?.blocked)return json(res,409,{error:policy.reason,code:'QUOTA_BLOCKED',quotaPolicy:policy});const r=startup.start(data);return json(res,r.statusCode,r);}
+   if(req.url==='/api/startup'){const result=await startWithVerifiedRecovery({startup,quota,data});return json(res,result.statusCode,result.body);}
    if(req.url==='/api/startup/reconcile'){const r=await startup.reconcile(data);return json(res,r.statusCode||200,r);}
    assertCanStartWork();
    const r=await orchestratorLauncher.launch('ui',{beforeTrigger:()=>assertCanStartWork()});

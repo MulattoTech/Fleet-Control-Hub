@@ -81,7 +81,7 @@ function testCompletedPRClassification(){
 }
 function testServerUnicodeIntegrity(){
  const serverSource=fs.readFileSync(path.join(__dirname,'server.js'),'utf8');
- for(const expected of ['Idle · CI attention','Stopped · preserved snapshot','10–2400 characters','/^↪ /'])assert(serverSource.includes(expected),'Preserve server Unicode literal: '+expected);
+ for(const expected of ['Idle · CI attention','Unverified · preserved snapshot','10–2400 characters','/^↪ /'])assert(serverSource.includes(expected),'Preserve server Unicode literal: '+expected);
  assert(!/[Ââ][·€“†ª]/u.test(serverSource),'Reject mojibake in Fleet server literals');
 }
 async function testRefresh(){

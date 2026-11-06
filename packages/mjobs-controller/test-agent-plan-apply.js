@@ -6,7 +6,7 @@ const root=fs.mkdtempSync(path.join(os.tmpdir(),'fleet-apply-test-'));
 const plans=new AgentPlans({root,validate:async x=>({harness:'agy',model:'test-gemini',effort:'high',mode:'tui'})});
 const old={id:'worker-1',name:'Worker',kind:'worker',activity:'idle',isIdle:true,busy:false,harness:'codex',branch:'old-work',prs:[{number:17}],branchState:{commits:3,unpushed:1}};
 let snapshot={sessions:[old]},fail=false;const calls=[];
-const c=vm.createContext({require:nativeRequire,__dirname:root,process,Buffer,URL,console,fetch,setTimeout,clearTimeout,structuredClone,AbortSignal,plans,snapshot,calls,async commandMock(args){
+const c=vm.createContext({require(id){if(id==='./fleet-codex-scope')return {readScope:()=>({version:1,projectIds:['mjobs']})};return nativeRequire(id)},__dirname:root,process,Buffer,URL,console,fetch,setTimeout,clearTimeout,structuredClone,AbortSignal,plans,snapshot,calls,async commandMock(args){
  calls.push(args);
  if(args[0]==='session')old.activity='exited';
  if(args[0]==='spawn'){
