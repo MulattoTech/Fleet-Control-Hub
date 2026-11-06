@@ -46,10 +46,19 @@ class IssueQueue {
   for(const i of issues){
    if(!issueId(i?.number)||taken.has(i.number)||i.state!=='OPEN'||typeof i.title!=='string'||!i.title.trim()||!Array.isArray(i.assignees)||i.assignees.length)continue;
    if(/^(TalentHop Functional Parity|\[MJ-TH-FLEET\]|\[MJ-TH-RECON\])/i.test(i.title))continue;
-   if((i.labels||[]).some(l=>/in[ -]?progress|claimed|assigned|blocked|on[ -]?hold/i.test(typeof l==='string'?l:l.name||'')))continue;
+   // Only explicit current P0/P1 labels authorize automatic work. Titles and
+   // missing label data are not trusted to elevate lower-priority issues.
+   if(!Array.isArray(i.labels))continue;
+   const labels=i.labels.map(l=>typeof l==='string'?l:l?.name).filter(l=>typeof l==='string');
+   const p0=labels.includes('priority:P0'),p1=labels.includes('priority:P1');
+   if(p0===p1)continue;
+   if(labels.some(l=>/in[ -]?progress|claimed|assigned|blocked|on[ -]?hold/i.test(l)))continue;
+   // High-level bookkeeping/parent directives need primary review, not a new
+   // coding worktree claimed as though they were an independent feature.
+   if(labels.includes('category:bookkeeping')||labels.includes('category:major-feature'))continue;
    taken.add(i.number);result.push(i);
   }
-  const priority=i=>/\bP0\b|security|recovery/i.test(i.title)?0:/\bP1\b/i.test(i.title)?1:2;
+  const priority=i=>i.labels.some(l=>(typeof l==='string'?l:l?.name)==='priority:P0')?0:1;
   return result.sort((a,b)=>priority(a)-priority(b)||a.number-b.number);
  }
  available(issues,sessions,openPRs){
