@@ -11,7 +11,7 @@
       "key": "astra",
       "model": "gpt-6-astra",
       "effort": "medium",
-      "desired": 24
+      "desired": 14
     },
     {
       "key": "sol",
@@ -22,12 +22,12 @@
     {
       "key": "luna",
       "model": "gpt-6-luna",
-      "effort": "high",
-      "desired": 15
+      "effort": "medium",
+      "desired": 25
     }
   ],
   "dispatch": {
-    "targetWorking": 40
+    "targetWorking": 25
   },
   "safety": {
     "maxTotalSessions": 40,

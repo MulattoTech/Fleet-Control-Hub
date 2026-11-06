@@ -7,7 +7,7 @@ function validate(value){
  if(!Array.isArray(value.workerGroups)||value.workerGroups.length!==3)throw Error('Three model groups required');
  const seen=new Set();let total=1;
  for(const g of value.workerGroups){
-  if(!Object.hasOwn(models,g.key)||models[g.key]!==g.model||seen.has(g.key)||g.effort!==(g.key==='luna'?'high':'medium')||!Number.isInteger(g.desired)||g.desired<0||g.desired>39)throw Error('Invalid worker group');
+  if(!Object.hasOwn(models,g.key)||models[g.key]!==g.model||seen.has(g.key)||g.effort!=='medium'||!Number.isInteger(g.desired)||g.desired<0||g.desired>39)throw Error('Invalid worker group');
   seen.add(g.key);total+=g.desired;
  }
  const s=value.safety,d=value.dispatch;

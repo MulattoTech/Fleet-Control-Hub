@@ -22,10 +22,10 @@ function fixture(t) {
  const fleet=new ProductiveFleet(deps);
  return {root,queue,roster,commands,snapshot,gh,quota,resources,deps,fleet,run:options=>fleet.reconcile({rootId:'mjobs-1',budget:6,targetWorking:40,...options})};
 }
-test('durable default is 1 xhigh Astra plus 24 Astra Medium / 15 Luna High workers; settings persist',t=>{
+test('durable default is 1 xhigh Astra plus 14 Astra Medium / 25 Luna Medium workers; settings persist',t=>{
  const f=fixture(t), p=f.roster.read();
- assert.deepEqual(p.workerGroups.map(g=>[g.model,g.desired,g.effort]),[['gpt-6-astra',24,'medium'],['gpt-6-sol',0,'medium'],['gpt-6-luna',15,'high']]);
- assert.equal(p.orchestrator.effort,'xhigh');assert.equal(p.dispatch.targetWorking,40);
+ assert.deepEqual(p.workerGroups.map(g=>[g.model,g.desired,g.effort]),[['gpt-6-astra',14,'medium'],['gpt-6-sol',0,'medium'],['gpt-6-luna',25,'medium']]);
+ assert.equal(p.orchestrator.effort,'xhigh');assert.equal(p.dispatch.targetWorking,25);
  f.roster.update({astra:2,sol:3,luna:4,targetWorking:10});
  assert.equal(new RosterControl(f.root).read().safety.maxTotalSessions,10);
  for(const v of [{astra:40},{sol:-1},{luna:1.5},{targetWorking:41},{model:'gpt-other'}])assert.throws(()=>f.roster.update(v));
@@ -114,6 +114,6 @@ test('Turbo uses productive reconciliation for issue snapshots, without filler; 
  assert.equal(preview.preview.nextActions.length,0);
  turbo.enable(true);const r=await turbo.cycle();
  assert.equal(f.commands.length,2);assert.equal(r.productive.attempted,2);assert.equal(turbo.summary().sentThisHour,2);
- assert.equal(turbo.summary().roster.profile.dispatch.targetWorking,40);
+ assert.equal(turbo.summary().roster.profile.dispatch.targetWorking,25);
  f.gh.issues=[];await turbo.cycle();assert.equal(f.commands.length,2,'no issue means no filler');
 });

@@ -18,7 +18,7 @@ try{
  assert.equal(next.group.model,'gpt-6-astra');
  assert.equal(next.group.index,9);
  assert.equal(c.update({astra:8,sol:12,luna:15,targetWorking:22}).safety.maxTotalSessions,36);
- assert.equal(c.read().dispatch.targetWorking,22); assert.equal(c.read().workerGroups.find(g=>g.key==='luna').effort,'high');
+ assert.equal(c.read().dispatch.targetWorking,22); assert.equal(c.read().workerGroups.find(g=>g.key==='luna').effort,'medium');
  assert.throws(()=>c.update({astra:40,sol:40}),/exceeds|Invalid worker group/);
  assert.throws(()=>c.update({secret:'bad'}),/Unexpected/);
  assert.throws(()=>c.update({targetWorking:41}),/Invalid|Unsafe/);
