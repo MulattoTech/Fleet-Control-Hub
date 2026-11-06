@@ -1,13 +1,15 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { RunAdapter } = require('./run-adapter');
+const { RunAdapter, MISSION } = require('./run-adapter');
 function fixture() {
   const commands = [], effects = [];
   const legacy = { revision: 'legacy-revision', phase: 'idle' };
   const restore = { state: { phase: 'complete', inflight: {}, errors: {} }, config: { minFreeRamGiB: 5, minFreeDiskGiB: 10, maxCpuPercent: 90 }, watchdogDisarmed: async () => true, resourceReader: async () => ({ ramGiB: 20, diskGiB: 100, cpuPercent: 10 }) };
   let sessions = [];
-  const master = { restore, sustain: { config: { enabled: false }, enable: value => effects.push(['enable', value]) }, drainState: { enabled: false }, locked: () => false, disableAutomaticDispatch: () => effects.push(['pause']) };
+  const sustain = { config: { enabled: false }, enable(value) { this.config.enabled = value; effects.push(['sustain', value]); } };
+  const turbo = { config: { enabled: false }, enable(value) { this.config.enabled = value; effects.push(['turbo', value]); }, cycle: async () => effects.push(['reconcile']) };
+  const master = { restore, sustain, turbo, drainState: { enabled: false }, locked: () => false, disableAutomaticDispatch: () => effects.push(['pause']) };
   const quota = { status: () => ({ fresh: true }), prepareForStart: () => effects.push(['quota']), dispatchBlockReason: () => null };
   const adapter = new RunAdapter({ startup: { status: () => legacy }, master, quota, busy: () => false, verifyCodex: async () => {}, launcher: { reconcile: () => ({}) }, getSessions: async () => sessions, inspectProject: async () => ({ id: 'mjobs', kind: 'single_repo', path: 'C:\\Tools\\Dev\\MJobs', repo: 'https://github.com/MulattoTech/MJobs.git' }), command: async args => { commands.push(args); } });
   return { adapter, legacy, restore, master, quota, commands, effects, setSessions: value => { sessions = value; } };
@@ -35,7 +37,7 @@ test('foreign project sessions never become MJobs primaries or native mutation t
   await f.adapter.launch({ kind: 'spawn', previousIds: [], requestId: 'scope-request-001' }, () => {});
   assert.equal(f.commands.length, 1); const command = f.commands[0];
   assert.equal(command[command.indexOf('--project') + 1], 'mjobs'); assert.ok(!command.includes('baby-1'));
-  assert.equal(command[command.indexOf('--model') + 1], 'gpt-6-astra'); assert.equal(command[command.indexOf('--effort') + 1], 'medium');
+  assert.equal(command[command.indexOf('--model') + 1], 'gpt-6-astra'); assert.equal(command[command.indexOf('--effort') + 1], 'xhigh');
 });
 test('AO project identity, repository and path drift fail before any agent submission', async () => {
   const valid = { id: 'mjobs', kind: 'single_repo', path: 'C:\\Tools\\Dev\\MJobs', repo: 'https://github.com/MulattoTech/MJobs.git' };
@@ -125,6 +127,14 @@ test('pending proof never legitimizes an unknown or foreign initializing primary
   }
 });
 
+test('saved medium-model spawn identity remains verifiable after the default effort changes', async () => {
+  const f = fixture(), requestId = 'legacy-medium-spawn-001';
+  f.setSessions([{ id: 'mjobs-1', projectId: 'mjobs', kind: 'orchestrator', harness: 'codex', mode: 'chat', model: 'gpt-6-astra', effort: 'medium', displayName: 'MJobs run ' + requestId, activity: 'initializing', controllerVerified: false, controllerState: 'starting' }]);
+  const observed = await f.adapter.inspect({ pending: { kind: 'spawn', requestId, previousIds: [] } });
+  assert.equal(observed.primaryId, 'mjobs-1');
+  assert.equal(observed.migrationNeeded, true);
+});
+
 test('normal Start stays idempotent when Turbo has replaced Sustained dispatch', () => {
   const f=fixture(), deps=f.adapter.deps();
   assert.equal(deps.dispatchEnabled(),false);
@@ -133,4 +143,41 @@ test('normal Start stays idempotent when Turbo has replaced Sustained dispatch',
   f.master.turbo.config.enabled=false;
   f.master.sustain.config.enabled=true;
   assert.equal(deps.dispatchEnabled(),true,'Sustained remains a supported dispatcher');
+});
+test('new primary creation respects total roster cap, while an existing primary is preserved', async () => {
+ const f=fixture();
+ f.setSessions(Array.from({length:40},(_,i)=>({id:'mjobs-'+(i+1),projectId:'mjobs',kind:'worker'})));
+ await assert.rejects(f.adapter.launch({kind:'spawn',previousIds:Array.from({length:40},(_,i)=>'mjobs-'+(i+1)),requestId:'full-fleet-request'},()=>{}),/capacity/);
+ assert.equal(f.commands.length,0);
+ f.adapter.rosterLimit=()=>2;
+ f.setSessions([{id:'mjobs-1',projectId:'mjobs',kind:'worker'},{id:'mjobs-2',projectId:'mjobs',kind:'worker'}]);
+ await assert.rejects(f.adapter.inspect(),/capacity/);
+ f.setSessions([{id:'mjobs-1',projectId:'mjobs',kind:'worker'},{id:'mjobs-2',projectId:'mjobs',kind:'orchestrator',harness:'codex',mode:'chat',activity:'idle',controllerVerified:true,controllerState:'ready'}]);
+ assert.equal((await f.adapter.inspect()).ready,true);
+});
+
+test('an existing Astra Medium primary is preserved and marked migration-needed', async () => {
+  const f = fixture();
+  f.setSessions([{ id: 'mjobs-1', projectId: 'mjobs', kind: 'orchestrator', harness: 'codex', mode: 'chat', model: 'gpt-6-astra', effort: 'medium', activity: 'idle', controllerVerified: true, controllerState: 'ready' }]);
+  const observed = await f.adapter.inspect();
+  assert.equal(observed.primaryId, 'mjobs-1');
+  assert.equal(observed.migrationNeeded, true);
+  assert.equal(observed.ready, true);
+  assert.equal(f.commands.length, 0, 'an existing ready primary is preserved without replacement');
+});
+
+test('Start enables Turbo and never enables Sustained dispatch', async () => {
+  const f = fixture(), deps = f.adapter.deps();
+  f.setSessions([{ id: 'mjobs-1', projectId: 'mjobs', kind: 'orchestrator', harness: 'codex', mode: 'chat', model: 'gpt-6-astra', effort: 'high', activity: 'idle', controllerVerified: true, controllerState: 'ready' }]);
+  await deps.enable(() => {});
+  assert.ok(f.effects.some(effect => effect[0] === 'turbo' && effect[1] === true));
+  assert.equal(f.effects.some(effect => effect[0] === 'sustain' && effect[1] === true), false);
+});
+
+test('primary mission keeps integration singular and forbids recursive worker spawning', () => {
+  assert.match(MISSION, /do not spawn or recursively delegate agents/);
+  assert.match(MISSION, /single Astra xhigh primary as sole integration owner/);
+  assert.match(MISSION, /distinct file scopes/);
+  assert.match(MISSION, /40-session desired ratio/);
+  assert.match(MISSION, /do not fill unused capacity or create filler/);
 });

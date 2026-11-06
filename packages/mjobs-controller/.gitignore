@@ -3,6 +3,9 @@
 /codex-monitor/
 /node_modules/
 /*.json
+!/roster-default.json
+/.roster-token
+/*.lock
 /*.jsonl
 /*.log
 /*.pid

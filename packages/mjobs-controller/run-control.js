@@ -53,7 +53,15 @@ class RunController {
       this.state.phase = this.state.pending ? 'uncertain' : generation !== this.generation ? 'paused' : 'blocked';
       this.state.error = String(error.message || error).slice(0, 500); this.save();
       this.audit('run_start_blocked', { reason: this.state.error, pending: this.state.pending?.kind || null });
-    }).finally(() => { this.task = null; });
+    }).finally(() => {
+      this.task = null;
+      if (this.state.phase === 'running' && this.deps.dispatchEnabled() && this.deps.reconcile) {
+        setImmediate(() => {
+          if (this.state.phase !== 'running' || !this.deps.dispatchEnabled()) return;
+          Promise.resolve(this.deps.reconcile()).catch(error => this.audit('run_reconcile_failed', { reason: String(error.message || error).slice(0, 300) }));
+        });
+      }
+    });
     return { ok: true, idempotent: false, run: this.status() };
   }
   pause(reason = 'Paused by user') {
@@ -101,7 +109,7 @@ class RunController {
       check();
       try { current = await this.verifyNative(check, pending); } catch (e) { if (failure) e.message += ' ' + String(failure.message).slice(0, 180); throw e; }
     }
-    this.state.primaryId = current.primaryId; this.save(); check();
+    this.state.primaryId = current.primaryId; this.state.migrationNeeded = current.migrationNeeded === true; this.save(); check();
     // Never steer an active root. A resumed idle root receives one instruction;
     // its durable submission record prevents a lost HTTP response from replaying it.
     if (!current.busy) {

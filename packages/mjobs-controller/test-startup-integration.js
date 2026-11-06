@@ -122,6 +122,7 @@ function fixture() {
     } },
     './orchestrator-launcher': { OrchestratorLauncher: dummy }, './quota-control': { QuotaControl: dummy },
     './find-work': { FindWork: dummy }, './dispatch-ledger': { DispatchLedger: dummy }, './agent-plans': { AgentPlans: dummy },
+    './roster-api': { RosterApi: dummy },
     './preflight': { preflight: () => ({ ready: false }) }, './runtime-health': { runtimeHealthy: () => false },
     './provider-catalog': { createProviderRuntime: () => ({ get: async () => ({ providers: [] }) }), validateSelection: x => x },
     './gemini-usage': { readGeminiUsage: () => ({ providers: [] }) },

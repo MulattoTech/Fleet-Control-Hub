@@ -7,7 +7,7 @@ const { BINDING, matchesProject } = require('./project-binding');
 const PROJECT = BINDING.id;
 const LEGACY_PROJECT = BINDING.legacyRestoreId;
 const MODEL = BINDING.primaryModel;
-const MISSION = 'Resume productive MJobs orchestration. Read AGENTS.md and the current requirement/acceptance checkpoint, inspect current GitHub main, existing workers, branches, PRs, review receipts and active task ownership refs/handoffs. Treat saved worker instructions and historical PR assignments as stale until revalidated; do not duplicate completed PR work. Then continue the highest-value unmet P0/P1 work. Reuse existing work before creating overlapping tasks. Prefer GPT-6 Astra at Medium for the primary, substantial implementation and independent review, while assigning bounded routine work to smaller models when that increases throughput. Up to eight Astra sessions may be active only when provider quota, machine resource budgets and independent task ownership permit. Recursive delegation is allowed within these limits; do not create duplicate writers or token-burning filler. Keep one integration owner, isolated worktrees and exact-head green required checks before protected PR merges. Preserve user work and production data. Do not send real employer submissions. Do not inflate acceptance or consume allowance with filler. Checkpoint and stop assigning when the provider allowance is exhausted or the user pauses/stops. Report actual commits, tests and remaining blockers.';
+const MISSION = 'Resume productive MJobs orchestration. Read AGENTS.md and the current requirement/acceptance checkpoint, inspect current GitHub main, existing workers, branches, PRs, review receipts and active task ownership refs/handoffs. Treat saved worker instructions and historical PR assignments as stale until revalidated; do not duplicate completed PR work. Then continue the highest-value unmet P0/P1 work. The controller owns worker creation; do not spawn or recursively delegate agents. Reuse existing work before creating overlapping tasks. Keep the single Astra xhigh primary as sole integration owner. Allocate distinct file scopes to workers and serialize shared interfaces, canonical planning, migrations, and integration. Respect the 40-session desired ratio: one Astra xhigh primary, 14 Astra medium workers, and 25 Luna medium workers; obey current resource/provider limits; do not fill unused capacity or create filler. Use bounded routine work only when it increases throughput. Keep exact-head checks and protected integration requirements. Preserve user work and production data. Do not send real employer submissions. Stop assigning when the provider allowance is exhausted or the user pauses/stops. Report actual commits, tests and remaining blockers.';
 const activity = s => s?.activity?.state || s?.activity;
 const primaryReady = s => !!s && !s.isTerminated && ['active','working','idle','waiting_input'].includes(activity(s)) &&
   (s.mode === 'chat' ? s.controllerVerified === true && ['ready','busy'].includes(s.controllerState) : s.mode === 'tui');
@@ -97,6 +97,9 @@ class RunAdapter {
     const sessions = all.filter(s => s.projectId === PROJECT), roots = sessions.filter(s => !s.isTerminated && s.kind === 'orchestrator');
     if (roots.length > 1) throw Error('Multiple MJobs primaries exist; no duplicate was started');
     const primary = roots[0];
+    const capacity = this.rosterLimit ? this.rosterLimit() : 40;
+    if (!Number.isInteger(capacity) || capacity < 1 || capacity > 40) throw Error('Roster capacity unavailable');
+    if (!primary && sessions.filter(s => !s.isTerminated).length >= capacity) throw Error('Roster capacity reached; no new primary was started');
     if (primary && (primary.harness !== 'codex' || !/^mjobs-\d+$/.test(primary.id))) throw Error('Current primary identity is unsupported');
     const ready = primaryReady(primary);
     const pendingIdentity = primary && (pending?.kind === 'resume' ? primary.id === pending.primaryId : pending?.kind === 'spawn' && Array.isArray(pending.previousIds) && !pending.previousIds.includes(primary.id) && primary.displayName === 'MJobs run ' + pending.requestId && primary.model === MODEL && primary.mode === 'chat');
@@ -104,6 +107,7 @@ class RunAdapter {
     const name = String(primary?.displayName || '');
     return { primaryId: primary?.id || null, ready, busy: ready && (['active','working'].includes(activity(primary)) || primary.controllerState === 'busy'),
       idle: ready && ['idle','waiting_input'].includes(activity(primary)), mode: primary?.mode,
+      migrationNeeded: !!primary && (primary.model !== MODEL || primary.effort !== 'xhigh'),
       createdForRequest: primary?.model === MODEL && primary?.mode === 'chat' && name.startsWith('MJobs run ') ? name.slice(10) : null, sessionIds: sessions.map(s => s.id) };
   }
   async launch(pending, check) {
@@ -113,7 +117,7 @@ class RunAdapter {
       await this.command(['session','resume-agent', pending.primaryId, '--project', PROJECT, '--json'], 30000, { runStart: true });
     } else {
       if (current.primaryId || current.sessionIds.some(id => !pending.previousIds.includes(id))) throw Error('Project roster changed before primary creation');
-      await this.command(['spawn','--project',PROJECT,'--kind','orchestrator','--harness','codex','--mode','chat','--model',MODEL,'--effort','medium','--name','MJobs run ' + pending.requestId], 45000, { runStart: true });
+      await this.command(['spawn','--project',PROJECT,'--kind','orchestrator','--harness','codex','--mode','chat','--model',MODEL,'--effort','xhigh','--name','MJobs run ' + pending.requestId], 45000, { runStart: true });
     }
   }
   async instruct(current, messageId, check) {
@@ -131,7 +135,13 @@ class RunAdapter {
       blockReason: ({ prepared } = {}) => this.recoveryBlockReason() || (prepared ? this.master.locked() ? 'Emergency Stop is active' : this.quota.dispatchBlockReason() : null),
       pause: () => this.master.disableAutomaticDispatch(), prepare: check => this.prepare(check), inspect: pending => this.inspect({ pending }),
       launch: (pending, check) => this.launch(pending, check), instruct: (current, id, check) => this.instruct(current, id, check),
-      enable: async check => { check(); const current = await this.inspect(); check(); if (!current.ready) throw Error('Primary is no longer ready'); this.master.sustain.enable(true); } };
+      enable: async check => {
+        check(); const current = await this.inspect(); check();
+        if (!current.ready) throw Error('Primary is no longer ready');
+        if (this.master.sustain?.config.enabled) this.master.sustain.enable(false);
+        this.master.turbo.enable(true);
+      },
+      reconcile: () => this.master.turbo.cycle() };
   }
 }
 module.exports = { RunAdapter, primaryReady, MISSION };
