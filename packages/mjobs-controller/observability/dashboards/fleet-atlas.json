@@ -1,7 +1,7 @@
 {
   "uid": "fleet-atlas",
-  "title": "Fleet Atlas \u00b7 Operations Intelligence",
-  "description": "Fleet Control Flight Deck \u00b7 read-only native observations sampled every 30 seconds. Missing token attribution remains unknown.",
+  "title": "Fleet Atlas · Operations Intelligence",
+  "description": "Fleet Control Flight Deck · read-only native observations sampled every 30 seconds. Missing token attribution remains unknown.",
   "tags": [
     "fleet",
     "native-telemetry",
@@ -50,167 +50,17 @@
         "name": "agent",
         "label": "Inspect agent",
         "type": "custom",
-        "query": "mjobs-luna-3,mjobs-luna-4,mjobs-luna-5,mjobs-luna-6,mjobs-luna-7,mjobs-luna-8,mjobs-luna-9,mjobs-luna-10,mjobs-luna-11,mjobs-luna-12,mjobs-luna-17,mjobs-luna-18,mjobs-luna-19,mjobs-luna-20,mjobs-luna-21,mjobs-luna-22,mjobs-luna-23,mjobs-luna-24,mjobs-luna-25,mjobs-luna-26,mjobs-luna-27,mjobs-luna-28,mjobs-luna-29,mjobs-luna-30,mjobs-luna-31,mjobs-luna-32,mjobs-luna-33,mjobs-luna-36,mjobs-luna-37,mjobs-luna-38,mjobs-luna-39",
+        "query": "mjobs-1",
         "options": [
           {
-            "text": "mjobs-luna-3",
-            "value": "mjobs-luna-3",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-4",
-            "value": "mjobs-luna-4",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-5",
-            "value": "mjobs-luna-5",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-6",
-            "value": "mjobs-luna-6",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-7",
-            "value": "mjobs-luna-7",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-8",
-            "value": "mjobs-luna-8",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-9",
-            "value": "mjobs-luna-9",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-10",
-            "value": "mjobs-luna-10",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-11",
-            "value": "mjobs-luna-11",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-12",
-            "value": "mjobs-luna-12",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-17",
-            "value": "mjobs-luna-17",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-18",
-            "value": "mjobs-luna-18",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-19",
-            "value": "mjobs-luna-19",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-20",
-            "value": "mjobs-luna-20",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-21",
-            "value": "mjobs-luna-21",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-22",
-            "value": "mjobs-luna-22",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-23",
-            "value": "mjobs-luna-23",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-24",
-            "value": "mjobs-luna-24",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-25",
-            "value": "mjobs-luna-25",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-26",
-            "value": "mjobs-luna-26",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-27",
-            "value": "mjobs-luna-27",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-28",
-            "value": "mjobs-luna-28",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-29",
-            "value": "mjobs-luna-29",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-30",
-            "value": "mjobs-luna-30",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-31",
-            "value": "mjobs-luna-31",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-32",
-            "value": "mjobs-luna-32",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-33",
-            "value": "mjobs-luna-33",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-36",
-            "value": "mjobs-luna-36",
+            "text": "mjobs-1",
+            "value": "mjobs-1",
             "selected": true
-          },
-          {
-            "text": "mjobs-luna-37",
-            "value": "mjobs-luna-37",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-38",
-            "value": "mjobs-luna-38",
-            "selected": false
-          },
-          {
-            "text": "mjobs-luna-39",
-            "value": "mjobs-luna-39",
-            "selected": false
           }
         ],
         "current": {
-          "text": "mjobs-luna-36",
-          "value": "mjobs-luna-36"
+          "text": "mjobs-1",
+          "value": "mjobs-1"
         },
         "includeAll": false,
         "multi": false,
@@ -221,7 +71,7 @@
   "panels": [
     {
       "id": 1,
-      "title": "FLEET ATLAS \u00b7 Native telemetry, not simulated productivity",
+      "title": "FLEET ATLAS · Native telemetry, not simulated productivity",
       "description": "",
       "type": "text",
       "gridPos": {
@@ -255,12 +105,12 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "## Fleet workspace\n[\u2190 Fleet Overview](https://fleet.m-techlabs.com/) \u00b7 [Fleet Atlas](https://m-techlabs.com/mission-control/analytics/) \u00b7 [Mission Control](https://m-techlabs.com/mission-control/)\n\n**On this PC:** [Local Overview](http://127.0.0.1:4320/) \u00b7 [Local Atlas](http://127.0.0.1:20800/mission-control/analytics/) \u00b7 [Local Mission Control](http://127.0.0.1:18726/)\n\n**Executing** means a native active turn. Reserved agents are **on-call**, not busy. ETA values are conditional. Token use is not acceptance. Missing per-turn attribution remains unavailable."
+        "content": "## Fleet workspace\n[← Fleet Overview](https://fleet.m-techlabs.com/) · [Fleet Atlas](https://m-techlabs.com/mission-control/analytics/) · [Mission Control](https://m-techlabs.com/mission-control/)\n\n**On this PC:** [Local Overview](http://127.0.0.1:4320/) · [Local Atlas](http://127.0.0.1:20800/mission-control/analytics/) · [Local Mission Control](http://127.0.0.1:18726/)\n\n**Executing** means a native active turn. Reserved agents are **on-call**, not busy. ETA values are conditional. Token use is not acceptance. Missing per-turn attribution remains unavailable."
       }
     },
     {
       "id": 20,
-      "title": "Source health \u00b7 last check",
+      "title": "Source health · last check",
       "description": "No data means the source-health receipt is stale or invalid, not zero activity. This check is separate from the last successful observation. An offline source or identity mismatch never re-dates old counts. Data panels expire after 90 seconds.",
       "type": "table",
       "gridPos": {
@@ -375,7 +225,7 @@
     },
     {
       "id": 2,
-      "title": "Executing \u00b7 last observation",
+      "title": "Executing · last observation",
       "description": "",
       "type": "stat",
       "gridPos": {
@@ -408,7 +258,7 @@
           "columns": [
             {
               "selector": "executing",
-              "text": "Executing \u00b7 last observation",
+              "text": "Executing · last observation",
               "type": "number"
             }
           ]
@@ -603,7 +453,7 @@
     },
     {
       "id": 5,
-      "title": "Completed turns \u00b7 24h",
+      "title": "Completed turns · 24h",
       "description": "",
       "type": "stat",
       "gridPos": {
@@ -636,7 +486,7 @@
           "columns": [
             {
               "selector": "completedTurns",
-              "text": "Completed turns \u00b7 24h",
+              "text": "Completed turns · 24h",
               "type": "number"
             }
           ]
@@ -679,7 +529,7 @@
     },
     {
       "id": 6,
-      "title": "Output-token flow \u00b7 15-minute buckets",
+      "title": "Output-token flow · 15-minute buckets",
       "description": "Native reported usage. The underlying feed is a rolling 24-hour window.",
       "type": "timeseries",
       "gridPos": {
@@ -839,7 +689,7 @@
     },
     {
       "id": 8,
-      "title": "Input tokens \u00b7 24h",
+      "title": "Input tokens · 24h",
       "description": "",
       "type": "stat",
       "gridPos": {
@@ -872,7 +722,7 @@
           "columns": [
             {
               "selector": "inputTokens",
-              "text": "Input tokens \u00b7 24h",
+              "text": "Input tokens · 24h",
               "type": "number"
             }
           ]
@@ -915,7 +765,7 @@
     },
     {
       "id": 9,
-      "title": "Cache hits \u00b7 24h",
+      "title": "Cache hits · 24h",
       "description": "",
       "type": "stat",
       "gridPos": {
@@ -948,7 +798,7 @@
           "columns": [
             {
               "selector": "cachedInputTokens",
-              "text": "Cache hits \u00b7 24h",
+              "text": "Cache hits · 24h",
               "type": "number"
             }
           ]
@@ -1241,7 +1091,7 @@
     },
     {
       "id": 13,
-      "title": "Selected agent \u00b7 completed turns",
+      "title": "Selected agent · completed turns",
       "description": "",
       "type": "stat",
       "gridPos": {
@@ -1274,7 +1124,7 @@
           "columns": [
             {
               "selector": "turnsCompleted",
-              "text": "Selected agent \u00b7 completed turns",
+              "text": "Selected agent · completed turns",
               "type": "number"
             }
           ]
@@ -1545,7 +1395,7 @@
     },
     {
       "id": 17,
-      "title": "Selected agent \u00b7 recorded workflow states",
+      "title": "Selected agent · recorded workflow states",
       "description": "State observation begins when this collector was installed; no historical state is fabricated.",
       "type": "state-timeline",
       "gridPos": {
@@ -1611,7 +1461,7 @@
     },
     {
       "id": 18,
-      "title": "Selected agent \u00b7 latest 30 turns",
+      "title": "Selected agent · latest 30 turns",
       "description": "Per-turn usage requires a unique native-conversation and time-window match. Missing values are not zero; wall time includes tools and waiting.",
       "type": "table",
       "gridPos": {
