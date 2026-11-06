@@ -164,13 +164,16 @@ class Turbo {
  async runGitHub(){
    const args=['pr','list','--repo','MulattoTech/MJobs','--state','open','--limit','50','--json','number,headRefOid,title,isDraft,reviewDecision,statusCheckRollup,body,closingIssuesReferences'];
    const merged=['pr','list','--repo','MulattoTech/MJobs','--state','merged','--limit','100','--json','number,mergedAt'];
-   const issueArgs=['issue','list','--repo','MulattoTech/MJobs','--state','open','--limit','100','--json','number,title,state,assignees,labels'];
-   const [a,b,c]=await Promise.all([
+   const issueArgs=priority=>['issue','list','--repo','MulattoTech/MJobs','--state','open','--label','priority:'+priority,'--limit','100','--json','number,title,state,assignees,labels'];
+   const [a,b,c,d]=await Promise.all([
     execAsync('gh.exe',args,{windowsHide:true,timeout:20000,maxBuffer:2000000}),
     execAsync('gh.exe',merged,{windowsHide:true,timeout:20000,maxBuffer:1000000}),
-    execAsync('gh.exe',issueArgs,{windowsHide:true,timeout:20000,maxBuffer:1000000})
+    execAsync('gh.exe',issueArgs('P0'),{windowsHide:true,timeout:20000,maxBuffer:1000000}),
+    execAsync('gh.exe',issueArgs('P1'),{windowsHide:true,timeout:20000,maxBuffer:1000000})
    ]);
-   return {open:JSON.parse(a.stdout),merged:JSON.parse(b.stdout),issues:JSON.parse(c.stdout),at:new Date(this.clock()).toISOString()};
+   const issues=[...JSON.parse(c.stdout),...JSON.parse(d.stdout)];
+   if(issues.some(x=>!Number.isSafeInteger(x?.number)))throw Error('Malformed issue priority snapshot');
+   return {open:JSON.parse(a.stdout),merged:JSON.parse(b.stdout),issues,at:new Date(this.clock()).toISOString()};
  }
  async github(force=false){
    if(!force&&this.githubErrorAt&&this.clock()-this.githubErrorAt<30000)return this.githubCache;

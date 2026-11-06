@@ -7,7 +7,7 @@ const { IssueQueue } = require('./issue-queue');
 const { RosterControl } = require('./roster-control');
 const { ProductiveFleet } = require('./productive-fleet');
 const now = Date.parse('2026-11-06T00:00:00Z');
-const issue = number => ({number, title:'Implement bounded issue '+number, state:'OPEN', assignees:[], labels:[]});
+const issue = number => ({number, title:'Implement bounded issue '+number, state:'OPEN', assignees:[], labels:[{name:'priority:P1'}]});
 const worker = (id, extra={}) => ({id,projectId:'mjobs',kind:'worker',name:id,model:'gpt-6-luna',effort:'medium',mode:'chat',harness:'codex',activity:'idle',isIdle:true,busy:false,openPRs:0,prs:[],...extra});
 function fixture(t) {
  const root=fs.mkdtempSync(path.join(os.tmpdir(),'productive-fleet-'));
