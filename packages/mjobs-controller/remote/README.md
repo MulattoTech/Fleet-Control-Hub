@@ -48,11 +48,13 @@ Campaign-backed requirements appear first within P0 and show compact campaign co
 while collapsed. Campaign receipts remain scoped evidence and do not replace canonical
 requirement acceptance. The campaign catalog overview must agree with `/api/progress`
 before any requirement details are shown; disagreement clears campaign detail while
-retaining valid current totals. The checkpoint labels source and handoff revisions,
-recorded routing state and scope, observation time, and per-step result, remaining gap,
-test revision, execution, review and merged acceptance when those fields are safe to
-publish. User-open priority, requirement, phase and step disclosures survive refresh,
-temporary unavailability, and recovery.
+retaining valid current totals. Recorded date and status counts stay visible; source
+revisions, ledger digest, recorded routing state and scope live under “Evidence and
+source.” The first blocker and next action stay visible while secondary blockers are
+grouped under “All recorded blockers.” Per-step result, remaining gap, test revision,
+execution, review and merged acceptance are shown when those fields are safe to publish.
+User-open priority, requirement, evidence, blocker, phase and step disclosures survive
+refresh, temporary unavailability, and recovery.
 
 Raw API responses are never persisted. A fixed field projection excludes authorization
 tokens, local paths, commands, prompts, process trees and logs; unsafe free-text

@@ -108,7 +108,7 @@ function campaignValid(value) {
     const steps=new Set();
     for(let index=0;index<phaseRanges.length;index++){
       const expected=phaseRanges[index],phase=phases[index];
-      if(phase?.id!==expected.id || phase.label!=='Phase '+expected.id || !Array.isArray(phase.steps) ||
+      if(phase?.id!==expected.id || !publicText(phase.label,100) || !Array.isArray(phase.steps) ||
          phase.steps.length!==expected.last-expected.first+1)return false;
       for(const step of phase.steps){
         if(!Number.isSafeInteger(step?.number) || step.number<expected.first || step.number>expected.last ||

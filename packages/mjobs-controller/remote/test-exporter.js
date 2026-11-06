@@ -11,7 +11,8 @@ const NOW = Date.parse('2026-10-26T01:00:00Z');
 const ISO = new Date(NOW).toISOString();
 function fixture() {
   const phaseCounts=[8,14,9,4,18,7];let number=1;
-  const phases=phaseCounts.map((total,phase)=>({id:String.fromCharCode(65+phase),label:'Phase '+String.fromCharCode(65+phase),steps:Array.from({length:total},()=>{
+  const phaseLabels=['Setup and résumé (1–8)','Job sources and matching (9–22)','Employer discovery (23–31)','Tailored documents (32–35)','Applications and tracking (36–53)','Restart and recovery (54–60)'];
+  const phases=phaseCounts.map((total,phase)=>({id:String.fromCharCode(65+phase),label:phaseLabels[phase],steps:Array.from({length:total},()=>{
     const stepNumber=number++,status=stepNumber<=7?'PASS':stepNumber<=40?'PARTIAL':'NOT_RUN';
     return {number:stepNumber,title:'Step '+stepNumber,status,...(stepNumber===1?{observed_result:'C:\\Users\\Dylan\\private\\token=SECRET_STEP',remaining_gap:'Complete remaining local work.',tested_commit:'d'.repeat(40),executed_at_utc:ISO,review_status:'APPROVED',merge_status:'UNMERGED'}:stepNumber===2?{observed_result:'Synthetic acceptance verified.'}:{})};
   })}));
@@ -49,7 +50,7 @@ function fixture() {
       campaigns:[{requirement_id:'MJ-REQ-292',title:'P0 acceptance <img src=x onerror=alert(1)>',issue_url:'https://github.com/MulattoTech/MJobs/issues/293',updated_at_utc:ISO,
         source_revision:'a'.repeat(40),handoff_revision:'b'.repeat(40),ledger_sha256:'c'.repeat(64),source_kind:'working_tree',acceptance_claim_scope:'Synthetic local journey only',
         scoreboard:{total:60,verified_pass:7,PARTIAL:33,NOT_RUN:20,FAIL:0,BLOCKED:0},phases,routing_state:'PAUSED',routing_state_scope:'recorded checkpoint; not live process state',
-        blockers:['No external submission is enabled','C:\\Users\\Dylan\\private\\token=SECRET_TOKEN'],next_action:'<svg onload=alert(1)>'}]},
+        blockers:['No external submission is enabled','C:\\Users\\Dylan\\private\\token=SECRET_TOKEN','Independent review remains pending.'],next_action:'<svg onload=alert(1)>'}]},
   };
   return Object.fromEntries(Object.entries(data).map(([name,value])=>[name,{available:true,checkedAt:ISO,data:value}]));
 }
@@ -80,12 +81,15 @@ test('only operational allowlisted fields leave the local control planes',()=>{
   require('./public/app').renderAcceptance(doc,displayModel(snapshot,NOW),create,value=>value||'Unknown');
   assert.match(fs.readFileSync(path.join(__dirname,'public','index.html'),'utf8'),/aria-label="Overall acceptance"/);
   assert.match(root.textContent,/P0 · 14\/26 PASS/);
-  assert.match(root.textContent,/MJ-REQ-292/);assert.match(root.textContent,/Phase A/);assert.match(root.textContent,/Step 1:/);
+  assert.match(root.textContent,/MJ-REQ-292/);assert.match(root.textContent,/Setup and résumé \(1–8\)/);assert.match(root.textContent,/Step 1:/);
   assert.match(root.textContent,/Observed result:/);assert.match(root.textContent,/Tested commit:/);assert.match(root.textContent,/Review state: APPROVED/);
   assert.match(root.textContent,/Merged acceptance: each step’s merge state is shown separately/);
   assert.match(root.textContent,/campaign 7 PASS · 33 PARTIAL · 20 NOT_RUN/);
   assert.match(root.textContent,/Source checkpoint:/);assert.match(root.textContent,/Handoff checkpoint: .*differs from source/);
   assert.match(root.textContent,/Last recorded checkpoint state: PAUSED · recorded checkpoint; not live process state/);
+  assert.match(root.textContent,/Evidence and source/);assert.match(root.textContent,/Blocker: No external submission is enabled/);
+  assert.match(root.textContent,/Next action:/);assert.match(root.textContent,/All recorded blockers \(2\)/);
+  assert.doesNotMatch(root.textContent,/0 FAIL|0 BLOCKED/,'zero-valued failure states are omitted from phase summaries');
   assert.match(root.textContent,/Remaining gap:/);
   assert.match(root.textContent,/<svg onload=alert\(1\)>/);assert.doesNotMatch(root.textContent,/SECRET_STEP|SECRET_TOKEN|C:\\Users/);
 });
@@ -101,14 +105,17 @@ test('campaign disclosures stay first in P0 and preserve keyed open state throug
   assert.equal(find(root,'priority:P0').children[1].dataset.disclosureKey,'requirement:MJ-REQ-292','campaign-backed requirement sorts before other P0 rows');
   const row=find(root,'requirement:MJ-REQ-292');assert.equal(row.open,false,'large campaign drilldown starts collapsed');
   row.open=true;find(root,'phase:MJ-REQ-292:A').open=true;find(root,'step:MJ-REQ-292:1').open=true;
+  find(root,'evidence:MJ-REQ-292').open=true;find(root,'blockers:MJ-REQ-292').open=true;
   const changed=structuredClone(model);changed.campaignProgress.campaigns[0].sourceRevision='f'.repeat(40);
   require('./public/app').renderAcceptance(doc,changed,create,value=>value||'Unknown',state);
   assert.equal(find(root,'requirement:MJ-REQ-292').open,true);assert.equal(find(root,'phase:MJ-REQ-292:A').open,true);assert.equal(find(root,'step:MJ-REQ-292:1').open,true);
+  assert.equal(find(root,'evidence:MJ-REQ-292').open,true);assert.equal(find(root,'blockers:MJ-REQ-292').open,true);
   const unavailable=displayModel({...snapshot,generatedAt:new Date(NOW-46000).toISOString()},NOW);
   require('./public/app').renderAcceptance(doc,unavailable,create,value=>value||'Unknown',state);
   assert.match(root.textContent,/Acceptance progress unavailable/);
   require('./public/app').renderAcceptance(doc,model,create,value=>value||'Unknown',state);
   assert.equal(find(root,'requirement:MJ-REQ-292').open,true);assert.equal(find(root,'phase:MJ-REQ-292:A').open,true);assert.equal(find(root,'step:MJ-REQ-292:1').open,true);
+  assert.equal(find(root,'evidence:MJ-REQ-292').open,true);assert.equal(find(root,'blockers:MJ-REQ-292').open,true);
 });
 
 test('quota armed with a full allowance is distinct from working or dispatch enabled',()=>{

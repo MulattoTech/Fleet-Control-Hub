@@ -97,15 +97,30 @@
   }
   function renderCampaign(doc,campaign,create,localTime,disclosureState=new Map()) {
     const panel=create('div',undefined,'campaign-detail');
-    const issue=create('a','Open issue','issue-link');issue.href=campaign.issueUrl;issue.target='_blank';issue.rel='noopener noreferrer';
-    panel.append(issue);
-    panel.append(create('p','Source checkpoint: '+(campaign.sourceRevision||'Unavailable')+' ('+campaign.sourceKind+') · observed '+localTime(campaign.observedAt),'caption'));
-    if(campaign.handoffRevision)panel.append(create('p','Handoff checkpoint: '+campaign.handoffRevision+(campaign.handoffRevision===campaign.sourceRevision?' (matches source)':' (differs from source)'),'caption'));
-    if(campaign.routingState)panel.append(create('p','Last recorded checkpoint state: '+campaign.routingState+(campaign.routingStateScope?' · '+campaign.routingStateScope:''),'caption'));
-    panel.append(create('p','Acceptance scope: '+campaign.acceptanceClaimScope,'caption'));
-    panel.append(create('p','Merged acceptance: each step’s merge state is shown separately.','caption'));
+    panel.append(create('p','Recorded checkpoint · updated '+localTime(campaign.updatedAt)+' · each step shows its own merge state.','caption'));
     const score=campaign.scoreboard;
-    panel.append(create('p',score.verifiedPass+' verified PASS · '+score.partial+' PARTIAL · '+score.notRun+' NOT_RUN · '+score.fail+' FAIL · '+score.blocked+' BLOCKED / '+score.total+' steps','campaign-score'));
+    const counts=[score.verifiedPass+' verified PASS',score.partial+' PARTIAL',score.notRun+' NOT_RUN'];
+    if(score.fail>0)counts.push(score.fail+' FAIL');
+    if(score.blocked>0)counts.push(score.blocked+' BLOCKED');
+    counts.push(score.total+' steps');
+    panel.append(create('p',counts.join(' · '),'campaign-score'));
+    const blockers=(campaign.blockers||[]).filter(Boolean);
+    if(blockers.length)panel.append(create('p','Blocker: '+blockers[0],'campaign-blocker'));
+    if(campaign.nextAction)panel.append(create('p','Next action: '+campaign.nextAction,'campaign-next-action'));
+    const evidence=create('details',undefined,'campaign-evidence');
+    evidence.dataset.disclosureKey='evidence:'+campaign.requirementId;
+    if(disclosureState.has(evidence.dataset.disclosureKey))evidence.open=disclosureState.get(evidence.dataset.disclosureKey);
+    evidence.append(create('summary','Evidence and source'));
+    const evidenceBody=create('div',undefined,'campaign-evidence-body');
+    evidenceBody.append(create('p','Source checkpoint: '+(campaign.sourceRevision||'Unavailable')+' ('+campaign.sourceKind+')','caption'));
+    if(campaign.handoffRevision)evidenceBody.append(create('p','Handoff checkpoint: '+campaign.handoffRevision+(campaign.handoffRevision===campaign.sourceRevision?' (matches source)':' (differs from source)'),'caption'));
+    if(campaign.ledgerSha256)evidenceBody.append(create('p','Ledger digest: '+campaign.ledgerSha256,'caption'));
+    if(campaign.routingState)evidenceBody.append(create('p','Last recorded checkpoint state: '+campaign.routingState+(campaign.routingStateScope?' · '+campaign.routingStateScope:''),'caption'));
+    evidenceBody.append(create('p','Acceptance scope: '+campaign.acceptanceClaimScope,'caption'));
+    const issue=create('a','Open issue','issue-link');issue.href=campaign.issueUrl;issue.target='_blank';issue.rel='noopener noreferrer';
+    evidenceBody.append(issue,create('p','Merged acceptance: each step’s merge state is shown separately.','caption'));
+    evidence.append(evidenceBody);
+    panel.append(evidence);
     for(const phase of campaign.phases) {
       const details=create('details',undefined,'campaign-phase');
       details.dataset.disclosureKey='phase:'+campaign.requirementId+':'+phase.id;
@@ -115,7 +130,10 @@
       const notRun=phase.steps.filter(step=>step.status==='NOT_RUN').length;
       const failed=phase.steps.filter(step=>step.status==='FAIL').length;
       const blocked=phase.steps.filter(step=>step.status==='BLOCKED').length;
-      details.append(create('summary',phase.label+' · '+passed+' PASS · '+partial+' PARTIAL · '+notRun+' NOT_RUN · '+failed+' FAIL · '+blocked+' BLOCKED'));
+      const phaseCounts=[passed+' PASS',partial+' PARTIAL',notRun+' NOT_RUN'];
+      if(failed>0)phaseCounts.push(failed+' FAIL');
+      if(blocked>0)phaseCounts.push(blocked+' BLOCKED');
+      details.append(create('summary',phase.label+' · '+phaseCounts.join(' · ')));
       for(const step of phase.steps) {
         const item=create('details',undefined,'campaign-step');
         item.dataset.disclosureKey='step:'+campaign.requirementId+':'+step.number;
@@ -131,8 +149,14 @@
       }
       panel.append(details);
     }
-    for(const blocker of campaign.blockers||[])if(blocker)panel.append(create('p','Blocker: '+blocker,'campaign-blocker'));
-    if(campaign.nextAction)panel.append(create('p','Next action: '+campaign.nextAction,'caption'));
+    if(blockers.length>1) {
+      const all= create('details',undefined,'campaign-blockers');
+      all.dataset.disclosureKey='blockers:'+campaign.requirementId;
+      if(disclosureState.has(all.dataset.disclosureKey))all.open=disclosureState.get(all.dataset.disclosureKey);
+      all.append(create('summary','All recorded blockers ('+blockers.length+')'));
+      const list=create('ul');for(const blocker of blockers)list.append(create('li',blocker));
+      all.append(list);panel.append(all);
+    }
     return panel;
   }
   function acceptanceRenderKey(model) {
