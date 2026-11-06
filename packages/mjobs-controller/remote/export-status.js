@@ -15,6 +15,8 @@ const SOURCES = Object.freeze({
   quota: 'http://127.0.0.1:8787/api/quota',
   missionHealth: 'http://127.0.0.1:18729/api/launcher/health',
   missionState: 'http://127.0.0.1:18729/api/state',
+  acceptanceProgress: 'http://127.0.0.1:18729/api/progress',
+  campaignProgress: 'http://127.0.0.1:18729/api/progress/campaigns',
 });
 const INTERVAL_MS = 10000;
 const STALE_AFTER_SECONDS = 45;
@@ -27,6 +29,106 @@ const bool = value => typeof value === 'boolean' ? value : null;
 const timestamp = value => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : null;
 const count = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
 const code = value => typeof value === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(value) ? value : null;
+const priority = value => typeof value === 'string' && /^P[0-6]$/.test(value);
+const acceptanceStatus = value => ['PASS','PARTIAL','NOT_RUN'].includes(value);
+const stepStatus = value => ['PASS','PARTIAL','NOT_RUN','FAIL','BLOCKED'].includes(value);
+const phaseRanges = Object.freeze([{id:'A',first:1,last:8},{id:'B',first:9,last:22},{id:'C',first:23,last:31},
+  {id:'D',first:32,last:35},{id:'E',first:36,last:53},{id:'F',first:54,last:60}]);
+const unsafeNarrative = /(?:[A-Z]:[\\/]|\\\\[^\\\s]+\\|(?:^|\s)\/(?:Users|home|root|private|mnt|tmp|var|etc)(?:\/|\b)|\b(?:api[_ -]?key|access[_ -]?token|token|password|secret|credential|authorization|cookie)\s*[:=]|\b(?:bearer|basic)\s+\S+|\bgh[pousr]_[A-Za-z0-9_]{16,}|\bsk-[A-Za-z0-9_-]{16,}|[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}|^(?:powershell|pwsh|python|node|npm|pytest|git|gh|docker)(?:\s|$))/i;
+const publicText = (value,limit=240) => {
+  if(typeof value!=='string')return null;
+  const clean=value.replace(/[\u0000-\u001f\u007f]/g,'').trim();
+  return clean && clean.length<=limit && !unsafeNarrative.test(clean) ? clean : null;
+};
+const revision = value => typeof value==='string' && /^[a-f0-9]{40}$/i.test(value) ? value : null;
+const digest = value => typeof value==='string' && /^[a-f0-9]{64}$/i.test(value) ? value : null;
+const metricValid = value => !!value && typeof value==='object' &&
+  ['pass','partial','not_run','total'].every(key=>count(value[key])!==null) &&
+  value.pass+value.partial+value.not_run===value.total && value.total>0;
+const metricEqual = (left,right) => !!left && !!right &&
+  ['pass','partial','not_run','total'].every(key=>left[key]===right[key]);
+
+function acceptanceValid(value) {
+  if(value?.available===false)return true;
+  if(value?.available!==true || !timestamp(value.observed_at) || !metricValid(value.original) || !metricValid(value.reference) ||
+      !Array.isArray(value.priorities) || value.priorities.length>7)return false;
+  const seen=new Set();
+  if(!value.priorities.every(item=>priority(item?.name) && !seen.has(item.name) && metricValid(item) && (seen.add(item.name),true)))return false;
+  const sum={pass:0,partial:0,not_run:0,total:0};
+  for(const item of value.priorities)for(const key of Object.keys(sum))sum[key]+=item[key];
+  return ['pass','partial','not_run','total'].every(key=>sum[key]===value.original[key]);
+}
+
+function campaignValid(value) {
+  if(value?.available===false)return true;
+  if(value?.schema_version!==1 || value.available!==true || !timestamp(value.observed_at) ||
+      !value.overview || !metricValid(value.overview.original) || !metricValid(value.overview.reference) ||
+      !value.overview.priorities || typeof value.overview.priorities!=='object' || Array.isArray(value.overview.priorities) ||
+      !Array.isArray(value.requirements) || !value.requirements.length || value.requirements.length>500 ||
+      !Array.isArray(value.campaigns) || !value.campaigns.length || value.campaigns.length>20)return false;
+  const requirementIds=new Set();
+  const requirementById=new Map();
+  for(const item of value.requirements){
+    if(!item || !/^MJ-REQ-\d+(?:\.[A-Z0-9]+)*$/.test(item.id||'') || requirementIds.has(item.id) ||
+       !publicText(item.title,200) || !acceptanceStatus(item.status) || !priority(item.priority) ||
+       (item.issue!==null && count(item.issue)===null))return false;
+    requirementIds.add(item.id);
+    requirementById.set(item.id,item);
+  }
+  if(value.requirements.length!==value.overview.original.total)return false;
+  const totalFromRequirements={pass:0,partial:0,not_run:0,total:0},byPriority=new Map();
+  for(const item of value.requirements){
+    const statusKey=item.status==='PASS'?'pass':item.status==='PARTIAL'?'partial':'not_run';
+    totalFromRequirements[statusKey]++;totalFromRequirements.total++;
+    const group=byPriority.get(item.priority)||{pass:0,partial:0,not_run:0,total:0};group[statusKey]++;group.total++;
+    byPriority.set(item.priority,group);
+  }
+  if(!metricEqual(totalFromRequirements,value.overview.original) ||
+     Object.keys(value.overview.priorities).length!==byPriority.size ||
+     Array.from(byPriority).some(([name,metric])=>!metricValid(value.overview.priorities[name])||!metricEqual(metric,value.overview.priorities[name])))return false;
+  const campaignRequirement=requirementById.get('MJ-REQ-292');
+  if(!campaignRequirement || campaignRequirement.priority!=='P0' || campaignRequirement.issue!==293)return false;
+  if(value.campaigns.length!==1 || value.campaigns[0]?.requirement_id!=='MJ-REQ-292')return false;
+  const campaigns=new Set();
+  for(const campaign of value.campaigns){
+    const scoreboard=campaign?.scoreboard,phases=campaign?.phases;
+    if(!requirementIds.has(campaign?.requirement_id) || campaigns.has(campaign.requirement_id) ||
+       !publicText(campaign.title,200) || !timestamp(campaign.updated_at_utc) ||
+       campaign.issue_url!=='https://github.com/MulattoTech/MJobs/issues/293' ||
+       !revision(campaign.source_revision) || (campaign.handoff_revision!=null && !revision(campaign.handoff_revision)) ||
+       !digest(campaign.ledger_sha256) || !/^[a-z][a-z0-9_-]{0,31}$/.test(campaign.source_kind||'') ||
+       !publicText(campaign.acceptance_claim_scope,400) ||
+       (campaign.routing_state!=null && !['EXECUTE','RESUME','DELEGATE','VERIFY','INTEGRATE','REPLAN','PARTIALLY_BLOCKED','BLOCKED','COMPLETE','PAUSED'].includes(campaign.routing_state)) ||
+       (campaign.routing_state_scope!=null && !publicText(campaign.routing_state_scope,120)) ||
+       !scoreboard || count(scoreboard.total)!==60 ||
+       ['verified_pass','PARTIAL','NOT_RUN','FAIL','BLOCKED'].some(key=>count(scoreboard[key])===null) ||
+       scoreboard.verified_pass+scoreboard.PARTIAL+scoreboard.NOT_RUN+scoreboard.FAIL+scoreboard.BLOCKED!==60 ||
+       !Array.isArray(phases) || phases.length!==phaseRanges.length || !Array.isArray(campaign.blockers) ||
+       campaign.blockers.length>20 || (campaign.next_action!=null && typeof campaign.next_action!=='string'))return false;
+    const steps=new Set();
+    for(let index=0;index<phaseRanges.length;index++){
+      const expected=phaseRanges[index],phase=phases[index];
+      if(phase?.id!==expected.id || !publicText(phase.label,100) || !Array.isArray(phase.steps) ||
+         phase.steps.length!==expected.last-expected.first+1)return false;
+      for(const step of phase.steps){
+        if(!Number.isSafeInteger(step?.number) || step.number<expected.first || step.number>expected.last ||
+           steps.has(step.number) || !publicText(step.title,200) || !stepStatus(step.status) ||
+           (step.observed_result!=null && typeof step.observed_result!=='string') ||
+           (step.tested_commit!=null && !revision(step.tested_commit)) ||
+           (step.executed_at_utc!=null && !timestamp(step.executed_at_utc)) ||
+           (step.review_status!=null && !/^[A-Z][A-Z0-9_ -]{0,39}$/.test(step.review_status)) ||
+           (step.merge_status!=null && !/^[A-Z][A-Z0-9_ -]{0,39}$/.test(step.merge_status)))return false;
+        steps.add(step.number);
+      }
+    }
+    if(steps.size!==60 || Array.from(steps).some((number,index)=>number!==index+1))return false;
+    const derived={verified_pass:0,PARTIAL:0,NOT_RUN:0,FAIL:0,BLOCKED:0};
+    for(const phase of phases)for(const step of phase.steps)derived[step.status==='PASS'?'verified_pass':step.status]++;
+    if(Object.keys(derived).some(key=>derived[key]!==scoreboard[key]))return false;
+    campaigns.add(campaign.requirement_id);
+  }
+  return campaigns.size===1 && campaigns.has('MJ-REQ-292');
+}
 
 function schemaValid(name, value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
@@ -36,6 +138,8 @@ function schemaValid(name, value) {
   if (name === 'missionHealth') return value.service === 'mjobs-mission-control' && value.status === 'ready';
   if (name === 'fleetMaster') return !!value.dispatch && !!value.emergency;
   if (name === 'quota') return typeof value.fresh === 'boolean' && !!value.config;
+  if (name === 'acceptanceProgress') return acceptanceValid(value);
+  if (name === 'campaignProgress') return campaignValid(value);
   return false;
 }
 
@@ -63,7 +167,9 @@ async function fetchSource(name, fetcher = fetch, now = () => Date.now()) {
       }
       const data = JSON.parse(Buffer.concat(chunks).toString('utf8'));
       if (!schemaValid(name, data)) return { available: false, error: 'INVALID_STATUS' };
-      const sourceTime = name === 'fleetState' || name === 'fleetMaster' ? data.timestamp : name === 'missionState' ? data.time : null;
+      const sourceTime = name === 'fleetState' || name === 'fleetMaster' ? data.timestamp
+        : name === 'missionState' ? data.time
+        : name === 'acceptanceProgress' || name === 'campaignProgress' ? data.observed_at : null;
       if (sourceTime) {
         const age = now() - Date.parse(sourceTime);
         if (age < -10000 || age > STALE_AFTER_SECONDS * 1000) return { available: false, error: 'STALE_SOURCE' };
@@ -82,6 +188,9 @@ async function fetchSource(name, fetcher = fetch, now = () => Date.now()) {
 function projectSnapshot(results, now = Date.now()) {
   const get = name => results[name]?.available === true ? record(results[name].data) : {};
   const available = name => results[name]?.available === true;
+  const sourceAvailable = name => available(name) &&
+    (name==='acceptanceProgress' ? get(name).available===true
+      : name==='campaignProgress' ? campaignConsistent : true);
   const fleet = get('fleetState'), health = get('fleetHealth'), master = get('fleetMaster');
   const quota = get('quota'), mission = get('missionState');
   const dispatch = record(master.dispatch), emergency = record(master.emergency);
@@ -116,6 +225,30 @@ function projectSnapshot(results, now = Date.now()) {
   const quotaFresh = available('quota') && quota.fresh === true && quota.monitorOnline === true
     && Number.isFinite(quotaAge) && quotaAge >= -10000 && quotaAge <= STALE_AFTER_SECONDS * 1000;
   const sessions = Array.isArray(fleet.sessions) ? fleet.sessions.slice(0,256).map(session => projectAgent(session,{live:runtimeAvailable,readiness:current,now})) : [];
+  const acceptanceRaw=get('acceptanceProgress'),campaignRaw=get('campaignProgress');
+  const acceptanceAvailable=available('acceptanceProgress') && acceptanceRaw.available===true;
+  const campaignConsistent=campaignRaw.available===true && acceptanceRaw.available===true &&
+    metricEqual(campaignRaw.overview?.original,acceptanceRaw.original) &&
+    metricEqual(campaignRaw.overview?.reference,acceptanceRaw.reference) &&
+    Object.keys(record(campaignRaw.overview?.priorities)).length===acceptanceRaw.priorities?.length &&
+    (acceptanceRaw.priorities||[]).every(item=>metricEqual(item,campaignRaw.overview?.priorities?.[item.name]));
+  const campaignAvailable=available('campaignProgress') && campaignConsistent;
+  const acceptanceMetric=metric=>({pass:count(metric.pass),partial:count(metric.partial),notRun:count(metric.not_run),total:count(metric.total)});
+  const acceptance={available:acceptanceAvailable,observedAt:acceptanceAvailable?timestamp(acceptanceRaw.observed_at):null,
+    original:acceptanceAvailable?acceptanceMetric(acceptanceRaw.original):null,
+    reference:acceptanceAvailable?acceptanceMetric(acceptanceRaw.reference):null,
+    priorities:acceptanceAvailable?acceptanceRaw.priorities.map(item=>({name:item.name,...acceptanceMetric(item)})):[]};
+  const requirements=campaignAvailable?campaignRaw.requirements.map(item=>({id:item.id,title:publicText(item.title,200),status:item.status,priority:item.priority,issue:count(item.issue)})):[];
+  const campaigns=campaignAvailable?campaignRaw.campaigns.map(campaign=>({requirementId:campaign.requirement_id,title:publicText(campaign.title,200),
+    issueUrl:campaign.issue_url,updatedAt:timestamp(campaign.updated_at_utc),observedAt:timestamp(campaignRaw.observed_at),sourceRevision:revision(campaign.source_revision),
+    handoffRevision:revision(campaign.handoff_revision),ledgerSha256:digest(campaign.ledger_sha256),sourceKind:campaign.source_kind,
+    routingState:code(campaign.routing_state),routingStateScope:publicText(campaign.routing_state_scope,120),
+    acceptanceClaimScope:publicText(campaign.acceptance_claim_scope,400),scoreboard:{total:count(campaign.scoreboard.total),verifiedPass:count(campaign.scoreboard.verified_pass),
+      partial:count(campaign.scoreboard.PARTIAL),notRun:count(campaign.scoreboard.NOT_RUN),fail:count(campaign.scoreboard.FAIL),blocked:count(campaign.scoreboard.BLOCKED)},
+    phases:campaign.phases.map(phase=>({id:phase.id,label:phase.label,steps:phase.steps.map(step=>({number:step.number,title:publicText(step.title,200),status:step.status,
+      observedResult:publicText(step.observed_result,400),remainingGap:publicText(step.remaining_gap,400),testedCommit:revision(step.tested_commit),executedAt:timestamp(step.executed_at_utc),
+      reviewStatus:publicText(step.review_status,40),mergeStatus:publicText(step.merge_status,40)}))})),
+    blockers:campaign.blockers.slice(0,20).map(item=>publicText(item,400)),nextAction:publicText(campaign.next_action,400)})):[];
   const summary = record(fleet.summary);
   const independentLanes = Object.entries(record(mission.lanes)).slice(0,24).map(([id, lane]) => {
     const runtime = record(lane.runtime), cfg = record(lane.config), activity = record(lane.activity);
@@ -127,8 +260,8 @@ function projectSnapshot(results, now = Date.now()) {
     schemaVersion: 1, readOnly: true, generatedAt: new Date(now).toISOString(),
     refreshSeconds: INTERVAL_MS / 1000, staleAfterSeconds: STALE_AFTER_SECONDS,
     sources: Object.fromEntries(Object.keys(SOURCES).map(name => [name, {
-      available: available(name), checkedAt: timestamp(results[name]?.checkedAt),
-      error: available(name) ? null : code(results[name]?.error) || 'UNAVAILABLE',
+      available: sourceAvailable(name), checkedAt: timestamp(results[name]?.checkedAt),
+      error: sourceAvailable(name) ? null : code(results[name]?.error) || 'UNAVAILABLE',
     }])),
     fleet: { available: available('fleetState'), runtimeAvailable,
       observedAt: timestamp(fleet.timestamp), preservedSnapshot: fleet.offline === true,
@@ -161,6 +294,8 @@ function projectSnapshot(results, now = Date.now()) {
       })) : [] },
     missionControl: { available: runtimeAvailable || (available('missionHealth') && available('missionState')),
       observedAt: timestamp(mission.time), lanes: providerOverview(sessions,independentLanes,{fleetAvailable:runtimeAvailable,missionAvailable:available('missionHealth')&&available('missionState')}) },
+    acceptance,
+    campaignProgress:{available:campaignAvailable,observedAt:campaignAvailable?timestamp(campaignRaw.observed_at):null,requirements,campaigns},
   };
 }
 
