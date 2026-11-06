@@ -39,9 +39,19 @@
       campaignProgress:campaignFresh?s.campaignProgress:{available:false,observedAt:null,requirements:[],campaigns:[]},
     };
   }
-  function renderAcceptance(doc,model,create,localTime) {
+  function renderAcceptance(doc,model,create,localTime,disclosureState=new Map()) {
     const root=doc.getElementById('acceptance-content');
     if(!root)return;
+    const remember=node=>{
+      if(node?.dataset?.disclosureKey)disclosureState.set(node.dataset.disclosureKey,node.open===true);
+      for(const child of node?.children||[])remember(child);
+    };
+    remember(root);
+    const disclosure=(key,defaultOpen=false)=>{
+      const node=create('details');node.dataset.disclosureKey=key;
+      node.open=disclosureState.has(key)?disclosureState.get(key):defaultOpen;
+      return node;
+    };
     root.replaceChildren();
     if(!model.acceptance) {root.append(create('p','Acceptance progress unavailable. No current totals are reported.','empty'));return;}
     const overview=create('div',undefined,'acceptance-overview');
@@ -57,46 +67,49 @@
     const priorities=create('div',undefined,'acceptance-priorities');
     const priorityRows=[...(model.acceptance.priorities||[])].sort((a,b)=>a.name.localeCompare(b.name));
     for(const counts of priorityRows) {
-      const disclosure=create('details',undefined,'priority-group');
-      if(counts.name==='P0')disclosure.open=true;
-      disclosure.append(create('summary',counts.name+' · '+counts.pass+'/'+counts.total+' PASS · '+counts.partial+' PARTIAL · '+counts.notRun+' NOT_RUN'));
-      const items=reqs.filter(item=>item.priority===counts.name).sort((a,b)=>a.id.localeCompare(b.id));
+      const group=disclosure('priority:'+counts.name,counts.name==='P0');group.className='priority-group';
+      group.append(create('summary',counts.name+' · '+counts.pass+'/'+counts.total+' PASS · '+counts.partial+' PARTIAL · '+counts.notRun+' NOT_RUN'));
+      const items=reqs.filter(item=>item.priority===counts.name).sort((a,b)=>Number(campaigns.has(b.id))-Number(campaigns.has(a.id))||a.id.localeCompare(b.id));
       if(!model.campaignProgress?.available) {
-        disclosure.append(create('p',counts.name==='P0'?'MJ-REQ-292 · Campaign details unavailable.':'Requirement details unavailable.','empty'));
+        group.append(create('p',counts.name==='P0'?'MJ-REQ-292 · Campaign details unavailable.':'Requirement details unavailable.','empty'));
       } else {
         for(const item of items) {
-          const row=create('details',undefined,'requirement-group');
-          if(item.id==='MJ-REQ-292')row.open=true;
-          const summary=create('summary',item.id+' · '+item.title+' · '+item.status);
+          const campaign=campaigns.get(item.id);
+          const row=disclosure('requirement:'+item.id);row.className='requirement-group';
+          let summaryLabel=item.id+' · '+item.title+' · '+item.status;
+          if(campaign)summaryLabel+=' · campaign '+campaign.scoreboard.verifiedPass+' PASS · '+campaign.scoreboard.partial+' PARTIAL · '+campaign.scoreboard.notRun+' NOT_RUN';
+          const summary=create('summary',summaryLabel);
           if(Number.isInteger(item.issue)&&item.issue>0) {
             const issue=create('a','#'+item.issue,'issue-link');issue.href='https://github.com/MulattoTech/MJobs/issues/'+item.issue;
             issue.target='_blank';issue.rel='noopener noreferrer';summary.append(' ',issue);
           }
           row.append(summary);
-          const campaign=campaigns.get(item.id);
-          if(campaign)row.append(renderCampaign(doc,campaign,create,localTime));
+          if(campaign)row.append(renderCampaign(doc,campaign,create,localTime,disclosureState));
           else if(item.id==='MJ-REQ-292')row.append(create('p','Campaign details unavailable.','empty'));
-          disclosure.append(row);
+          group.append(row);
         }
-        if(!items.length)disclosure.append(create('p','No requirement details are available for this priority.','empty'));
+        if(!items.length)group.append(create('p','No requirement details are available for this priority.','empty'));
       }
-      priorities.append(disclosure);
+      priorities.append(group);
     }
     root.append(priorities);
     root.append(create('p','Overall acceptance is canonical requirement status. Campaign step receipts are scoped evidence and do not replace requirement acceptance.','caption'));
   }
-  function renderCampaign(doc,campaign,create,localTime) {
+  function renderCampaign(doc,campaign,create,localTime,disclosureState=new Map()) {
     const panel=create('div',undefined,'campaign-detail');
     const issue=create('a','Open issue','issue-link');issue.href=campaign.issueUrl;issue.target='_blank';issue.rel='noopener noreferrer';
     panel.append(issue);
-    panel.append(create('p','Working checkpoint: '+(campaign.sourceRevision||'Unavailable')+' ('+campaign.sourceKind+') · observed '+localTime(campaign.observedAt),'caption'));
-    if(campaign.handoffRevision)panel.append(create('p','Handoff checkpoint: '+campaign.handoffRevision,'caption'));
+    panel.append(create('p','Source checkpoint: '+(campaign.sourceRevision||'Unavailable')+' ('+campaign.sourceKind+') · observed '+localTime(campaign.observedAt),'caption'));
+    if(campaign.handoffRevision)panel.append(create('p','Handoff checkpoint: '+campaign.handoffRevision+(campaign.handoffRevision===campaign.sourceRevision?' (matches source)':' (differs from source)'),'caption'));
+    if(campaign.routingState)panel.append(create('p','Last recorded checkpoint state: '+campaign.routingState+(campaign.routingStateScope?' · '+campaign.routingStateScope:''),'caption'));
     panel.append(create('p','Acceptance scope: '+campaign.acceptanceClaimScope,'caption'));
     panel.append(create('p','Merged acceptance: each step’s merge state is shown separately.','caption'));
     const score=campaign.scoreboard;
     panel.append(create('p',score.verifiedPass+' verified PASS · '+score.partial+' PARTIAL · '+score.notRun+' NOT_RUN · '+score.fail+' FAIL · '+score.blocked+' BLOCKED / '+score.total+' steps','campaign-score'));
     for(const phase of campaign.phases) {
       const details=create('details',undefined,'campaign-phase');
+      details.dataset.disclosureKey='phase:'+campaign.requirementId+':'+phase.id;
+      if(disclosureState.has(details.dataset.disclosureKey))details.open=disclosureState.get(details.dataset.disclosureKey);
       const passed=phase.steps.filter(step=>step.status==='PASS').length;
       const partial=phase.steps.filter(step=>step.status==='PARTIAL').length;
       const notRun=phase.steps.filter(step=>step.status==='NOT_RUN').length;
@@ -105,8 +118,11 @@
       details.append(create('summary',phase.label+' · '+passed+' PASS · '+partial+' PARTIAL · '+notRun+' NOT_RUN · '+failed+' FAIL · '+blocked+' BLOCKED'));
       for(const step of phase.steps) {
         const item=create('details',undefined,'campaign-step');
+        item.dataset.disclosureKey='step:'+campaign.requirementId+':'+step.number;
+        if(disclosureState.has(item.dataset.disclosureKey))item.open=disclosureState.get(item.dataset.disclosureKey);
         item.append(create('summary','Step '+step.number+': '+step.title+' · '+step.status,'step-summary'));
         if(step.observedResult)item.append(create('p','Observed result: '+step.observedResult));
+        if(step.remainingGap)item.append(create('p','Remaining gap: '+step.remainingGap));
         if(step.testedCommit)item.append(create('p','Tested commit: '+step.testedCommit));
         if(step.executedAt)item.append(create('p','Executed: '+localTime(step.executedAt)));
         if(step.reviewStatus)item.append(create('p','Review state: '+step.reviewStatus));
@@ -130,6 +146,7 @@
     const home=$('fleet-overview');
     if(home&&typeof location!=='undefined'&&['localhost','127.0.0.1'].includes(location.hostname))home.href='http://127.0.0.1:4320/';
     let last = null, failed = false, loading = false, renderedAcceptance = null;
+    const acceptanceDisclosureState=new Map();
     const control=globalThis.FleetRemoteControls?.start(doc,()=>last);
     const detail=globalThis.FleetAgentDetails?.start(doc,()=>last,control);
     const set = (id,value) => {$(id).textContent=value ?? '—';};
@@ -141,7 +158,7 @@
       set('verified',m.verified);set('verified-detail',m.verifiedDetail);
       set('quota',m.quota);set('quota-detail',m.quotaDetail);set('startup',m.startup);set('startup-detail',m.startupDetail);
       const acceptanceKey=acceptanceRenderKey(m);
-      if(acceptanceKey!==renderedAcceptance){renderAcceptance(doc,m,create,localTime);renderedAcceptance=acceptanceKey;}
+      if(acceptanceKey!==renderedAcceptance){renderAcceptance(doc,m,create,localTime,acceptanceDisclosureState);renderedAcceptance=acceptanceKey;}
       $('dispatch').className=m.stale?'':m.dispatch==='Enabled'?'good':m.dispatch==='Blocked'?'bad':m.dispatch==='Paused'?'warn':'';
       $('freshness').className='notice '+(m.stale?'bad':failed || sourceErrors?'warn':'good');
       set('freshness',m.stale ? (last?'Status feed is stale. Current fleet activity cannot be verified. Last update: '+localTime(last.generatedAt)+'.':'Status feed is unavailable. The PC or remote monitor may be offline.') : (failed?'Refresh failed; showing the most recent snapshot. ':sourceErrors?sourceErrors+' local status source'+(sourceErrors===1?' is':'s are')+' unavailable. ':'Status feed is current. ')+(m.age ?? 0)+' seconds since publication.');

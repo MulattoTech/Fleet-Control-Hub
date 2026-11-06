@@ -45,41 +45,66 @@ const digest = value => typeof value==='string' && /^[a-f0-9]{64}$/i.test(value)
 const metricValid = value => !!value && typeof value==='object' &&
   ['pass','partial','not_run','total'].every(key=>count(value[key])!==null) &&
   value.pass+value.partial+value.not_run===value.total && value.total>0;
+const metricEqual = (left,right) => !!left && !!right &&
+  ['pass','partial','not_run','total'].every(key=>left[key]===right[key]);
 
 function acceptanceValid(value) {
   if(value?.available===false)return true;
   if(value?.available!==true || !timestamp(value.observed_at) || !metricValid(value.original) || !metricValid(value.reference) ||
       !Array.isArray(value.priorities) || value.priorities.length>7)return false;
   const seen=new Set();
-  return value.priorities.every(item=>priority(item?.name) && !seen.has(item.name) && metricValid(item) && (seen.add(item.name),true));
+  if(!value.priorities.every(item=>priority(item?.name) && !seen.has(item.name) && metricValid(item) && (seen.add(item.name),true)))return false;
+  const sum={pass:0,partial:0,not_run:0,total:0};
+  for(const item of value.priorities)for(const key of Object.keys(sum))sum[key]+=item[key];
+  return ['pass','partial','not_run','total'].every(key=>sum[key]===value.original[key]);
 }
 
 function campaignValid(value) {
   if(value?.available===false)return true;
   if(value?.schema_version!==1 || value.available!==true || !timestamp(value.observed_at) ||
+      !value.overview || !metricValid(value.overview.original) || !metricValid(value.overview.reference) ||
+      !value.overview.priorities || typeof value.overview.priorities!=='object' || Array.isArray(value.overview.priorities) ||
       !Array.isArray(value.requirements) || !value.requirements.length || value.requirements.length>500 ||
       !Array.isArray(value.campaigns) || !value.campaigns.length || value.campaigns.length>20)return false;
   const requirementIds=new Set();
+  const requirementById=new Map();
   for(const item of value.requirements){
     if(!item || !/^MJ-REQ-\d+(?:\.[A-Z0-9]+)*$/.test(item.id||'') || requirementIds.has(item.id) ||
        !publicText(item.title,200) || !acceptanceStatus(item.status) || !priority(item.priority) ||
        (item.issue!==null && count(item.issue)===null))return false;
     requirementIds.add(item.id);
+    requirementById.set(item.id,item);
   }
+  if(value.requirements.length!==value.overview.original.total)return false;
+  const totalFromRequirements={pass:0,partial:0,not_run:0,total:0},byPriority=new Map();
+  for(const item of value.requirements){
+    const statusKey=item.status==='PASS'?'pass':item.status==='PARTIAL'?'partial':'not_run';
+    totalFromRequirements[statusKey]++;totalFromRequirements.total++;
+    const group=byPriority.get(item.priority)||{pass:0,partial:0,not_run:0,total:0};group[statusKey]++;group.total++;
+    byPriority.set(item.priority,group);
+  }
+  if(!metricEqual(totalFromRequirements,value.overview.original) ||
+     Object.keys(value.overview.priorities).length!==byPriority.size ||
+     Array.from(byPriority).some(([name,metric])=>!metricValid(value.overview.priorities[name])||!metricEqual(metric,value.overview.priorities[name])))return false;
+  const campaignRequirement=requirementById.get('MJ-REQ-292');
+  if(!campaignRequirement || campaignRequirement.priority!=='P0' || campaignRequirement.issue!==293)return false;
+  if(value.campaigns.length!==1 || value.campaigns[0]?.requirement_id!=='MJ-REQ-292')return false;
   const campaigns=new Set();
   for(const campaign of value.campaigns){
     const scoreboard=campaign?.scoreboard,phases=campaign?.phases;
     if(!requirementIds.has(campaign?.requirement_id) || campaigns.has(campaign.requirement_id) ||
        !publicText(campaign.title,200) || !timestamp(campaign.updated_at_utc) ||
-       !/^https:\/\/github\.com\/MulattoTech\/MJobs\/issues\/\d+$/.test(campaign.issue_url||'') ||
+       campaign.issue_url!=='https://github.com/MulattoTech/MJobs/issues/293' ||
        !revision(campaign.source_revision) || (campaign.handoff_revision!=null && !revision(campaign.handoff_revision)) ||
        !digest(campaign.ledger_sha256) || !/^[a-z][a-z0-9_-]{0,31}$/.test(campaign.source_kind||'') ||
        !publicText(campaign.acceptance_claim_scope,400) ||
+       (campaign.routing_state!=null && !['EXECUTE','RESUME','DELEGATE','VERIFY','INTEGRATE','REPLAN','PARTIALLY_BLOCKED','BLOCKED','COMPLETE','PAUSED'].includes(campaign.routing_state)) ||
+       (campaign.routing_state_scope!=null && !publicText(campaign.routing_state_scope,120)) ||
        !scoreboard || count(scoreboard.total)!==60 ||
        ['verified_pass','PARTIAL','NOT_RUN','FAIL','BLOCKED'].some(key=>count(scoreboard[key])===null) ||
        scoreboard.verified_pass+scoreboard.PARTIAL+scoreboard.NOT_RUN+scoreboard.FAIL+scoreboard.BLOCKED!==60 ||
        !Array.isArray(phases) || phases.length!==phaseRanges.length || !Array.isArray(campaign.blockers) ||
-       campaign.blockers.length>20 || (campaign.next_action!==null && !publicText(campaign.next_action,400)))return false;
+       campaign.blockers.length>20 || (campaign.next_action!=null && typeof campaign.next_action!=='string'))return false;
     const steps=new Set();
     for(let index=0;index<phaseRanges.length;index++){
       const expected=phaseRanges[index],phase=phases[index];
@@ -97,9 +122,12 @@ function campaignValid(value) {
       }
     }
     if(steps.size!==60 || Array.from(steps).some((number,index)=>number!==index+1))return false;
+    const derived={verified_pass:0,PARTIAL:0,NOT_RUN:0,FAIL:0,BLOCKED:0};
+    for(const phase of phases)for(const step of phase.steps)derived[step.status==='PASS'?'verified_pass':step.status]++;
+    if(Object.keys(derived).some(key=>derived[key]!==scoreboard[key]))return false;
     campaigns.add(campaign.requirement_id);
   }
-  return campaigns.has('MJ-REQ-292');
+  return campaigns.size===1 && campaigns.has('MJ-REQ-292');
 }
 
 function schemaValid(name, value) {
@@ -161,7 +189,8 @@ function projectSnapshot(results, now = Date.now()) {
   const get = name => results[name]?.available === true ? record(results[name].data) : {};
   const available = name => results[name]?.available === true;
   const sourceAvailable = name => available(name) &&
-    (!['acceptanceProgress','campaignProgress'].includes(name) || get(name).available===true);
+    (name==='acceptanceProgress' ? get(name).available===true
+      : name==='campaignProgress' ? campaignConsistent : true);
   const fleet = get('fleetState'), health = get('fleetHealth'), master = get('fleetMaster');
   const quota = get('quota'), mission = get('missionState');
   const dispatch = record(master.dispatch), emergency = record(master.emergency);
@@ -198,7 +227,12 @@ function projectSnapshot(results, now = Date.now()) {
   const sessions = Array.isArray(fleet.sessions) ? fleet.sessions.slice(0,256).map(session => projectAgent(session,{live:runtimeAvailable,readiness:current,now})) : [];
   const acceptanceRaw=get('acceptanceProgress'),campaignRaw=get('campaignProgress');
   const acceptanceAvailable=available('acceptanceProgress') && acceptanceRaw.available===true;
-  const campaignAvailable=available('campaignProgress') && campaignRaw.available===true;
+  const campaignConsistent=campaignRaw.available===true && acceptanceRaw.available===true &&
+    metricEqual(campaignRaw.overview?.original,acceptanceRaw.original) &&
+    metricEqual(campaignRaw.overview?.reference,acceptanceRaw.reference) &&
+    Object.keys(record(campaignRaw.overview?.priorities)).length===acceptanceRaw.priorities?.length &&
+    (acceptanceRaw.priorities||[]).every(item=>metricEqual(item,campaignRaw.overview?.priorities?.[item.name]));
+  const campaignAvailable=available('campaignProgress') && campaignConsistent;
   const acceptanceMetric=metric=>({pass:count(metric.pass),partial:count(metric.partial),notRun:count(metric.not_run),total:count(metric.total)});
   const acceptance={available:acceptanceAvailable,observedAt:acceptanceAvailable?timestamp(acceptanceRaw.observed_at):null,
     original:acceptanceAvailable?acceptanceMetric(acceptanceRaw.original):null,
@@ -208,10 +242,11 @@ function projectSnapshot(results, now = Date.now()) {
   const campaigns=campaignAvailable?campaignRaw.campaigns.map(campaign=>({requirementId:campaign.requirement_id,title:publicText(campaign.title,200),
     issueUrl:campaign.issue_url,updatedAt:timestamp(campaign.updated_at_utc),observedAt:timestamp(campaignRaw.observed_at),sourceRevision:revision(campaign.source_revision),
     handoffRevision:revision(campaign.handoff_revision),ledgerSha256:digest(campaign.ledger_sha256),sourceKind:campaign.source_kind,
+    routingState:code(campaign.routing_state),routingStateScope:publicText(campaign.routing_state_scope,120),
     acceptanceClaimScope:publicText(campaign.acceptance_claim_scope,400),scoreboard:{total:count(campaign.scoreboard.total),verifiedPass:count(campaign.scoreboard.verified_pass),
       partial:count(campaign.scoreboard.PARTIAL),notRun:count(campaign.scoreboard.NOT_RUN),fail:count(campaign.scoreboard.FAIL),blocked:count(campaign.scoreboard.BLOCKED)},
     phases:campaign.phases.map(phase=>({id:phase.id,label:phase.label,steps:phase.steps.map(step=>({number:step.number,title:publicText(step.title,200),status:step.status,
-      observedResult:publicText(step.observed_result,400),testedCommit:revision(step.tested_commit),executedAt:timestamp(step.executed_at_utc),
+      observedResult:publicText(step.observed_result,400),remainingGap:publicText(step.remaining_gap,400),testedCommit:revision(step.tested_commit),executedAt:timestamp(step.executed_at_utc),
       reviewStatus:publicText(step.review_status,40),mergeStatus:publicText(step.merge_status,40)}))})),
     blockers:campaign.blockers.slice(0,20).map(item=>publicText(item,400)),nextAction:publicText(campaign.next_action,400)})):[];
   const summary = record(fleet.summary);

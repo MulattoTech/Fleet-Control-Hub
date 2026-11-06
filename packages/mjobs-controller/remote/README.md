@@ -44,10 +44,15 @@ sources are `GET /api/progress` for the canonical original/reference and priorit
 totals, and `GET /api/progress/campaigns` for the read-only campaign checkpoint. The
 remote page keeps overall acceptance first, then expands priority → requirement →
 phase → step; MJ-REQ-292 is shown as six canonical phases and 60 numbered steps.
-Campaign receipts remain scoped evidence and do not replace canonical requirement
-acceptance. The checkpoint identifies its source revision and observation time, and
-each step keeps its own observed result, test revision, execution, review and merged
-acceptance state when those fields are safe to publish.
+Campaign-backed requirements appear first within P0 and show compact campaign counts
+while collapsed. Campaign receipts remain scoped evidence and do not replace canonical
+requirement acceptance. The campaign catalog overview must agree with `/api/progress`
+before any requirement details are shown; disagreement clears campaign detail while
+retaining valid current totals. The checkpoint labels source and handoff revisions,
+recorded routing state and scope, observation time, and per-step result, remaining gap,
+test revision, execution, review and merged acceptance when those fields are safe to
+publish. User-open priority, requirement, phase and step disclosures survive refresh,
+temporary unavailability, and recovery.
 
 Raw API responses are never persisted. A fixed field projection excludes authorization
 tokens, local paths, commands, prompts, process trees and logs; unsafe free-text
