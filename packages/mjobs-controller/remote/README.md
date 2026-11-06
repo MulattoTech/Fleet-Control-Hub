@@ -39,13 +39,24 @@ hidden Limited scheduled task wrapper, with `MultipleInstances=IgnoreNew`, so du
 dashboard launches do not create duplicate monitors. The exporter itself never starts or
 stops agents. It only writes `status.json` via a same-directory temporary file and rename.
 
-The six source URLs are hardcoded GETs to ports 8787 and 18729. Raw API responses are
-never persisted. A fixed field projection excludes authorization tokens, local paths,
-commands, prompts, process trees, and logs. Source failures replace the affected readings
-with unavailable values on the next snapshot; the exporter never copies a previous
-healthy reading into a new publication. Preserved emergency rosters are labeled and
+The eight source URLs are hardcoded GETs to ports 8787 and 18729. The two acceptance
+sources are `GET /api/progress` for the canonical original/reference and priority
+totals, and `GET /api/progress/campaigns` for the read-only campaign checkpoint. The
+remote page keeps overall acceptance first, then expands priority → requirement →
+phase → step; MJ-REQ-292 is shown as six canonical phases and 60 numbered steps.
+Campaign receipts remain scoped evidence and do not replace canonical requirement
+acceptance. The checkpoint identifies its source revision and observation time, and
+each step keeps its own observed result, test revision, execution, review and merged
+acceptance state when those fields are safe to publish.
+
+Raw API responses are never persisted. A fixed field projection excludes authorization
+tokens, local paths, commands, prompts, process trees and logs; unsafe free-text
+checkpoint values are omitted. Source failures, malformed/incomplete campaign data,
+and stale observations replace the affected readings with unavailable values on the
+next snapshot. The exporter never copies a previous healthy reading into a new
+publication or synthesizes zero progress. Preserved emergency rosters are labeled and
 cannot produce a working-agent count. Armed quota protection, remaining allowance,
-controller observations, and dispatch are separate facts.
+controller observations, dispatch, and acceptance progress remain separate facts.
 
 If the master status endpoint reports its runtime inspection is still pending, the
 exporter makes at most two additional GET requests, 250 milliseconds apart. All three

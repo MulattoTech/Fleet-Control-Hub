@@ -10,6 +10,11 @@ const { freshness, displayModel } = require('./public/app');
 const NOW = Date.parse('2026-10-26T01:00:00Z');
 const ISO = new Date(NOW).toISOString();
 function fixture() {
+  const phaseCounts=[8,14,9,4,18,7];let number=1;
+  const phases=phaseCounts.map((total,phase)=>({id:String.fromCharCode(65+phase),label:'Phase '+String.fromCharCode(65+phase),steps:Array.from({length:total},()=>{
+    const stepNumber=number++,status=stepNumber<=7?'PASS':stepNumber<=40?'PARTIAL':'NOT_RUN';
+    return {number:stepNumber,title:'Step '+stepNumber,status,...(stepNumber===1?{observed_result:'C:\\Users\\Dylan\\private\\token=SECRET_STEP',tested_commit:'d'.repeat(40),executed_at_utc:ISO,review_status:'APPROVED',merge_status:'UNMERGED'}:stepNumber===2?{observed_result:'Synthetic acceptance verified.'}:{})};
+  })}));
   const data = {
     fleetHealth: {ok:true,dispatchBlockedReason:null},
     fleetState: {timestamp:ISO,summary:{total:2,working:1,idle:1},sessions:[
@@ -20,6 +25,13 @@ function fixture() {
     quota: {fresh:true,monitorOnline:true,sampledAt:ISO,selectedRemainingPercent:88,guardAcknowledged:true,config:{autoKillArmed:true,thresholdPercent:7},windows:[{label:'5 hours',remainingPercent:88,resetsAt:'2026-10-26T05:00:00Z'}],token:'SECRET_QUOTA'},
     missionHealth: {service:'mjobs-mission-control',status:'ready',root:'C:\\private'},
     missionState: {time:ISO,lanes:{codex:{config:{model:'gpt-6.1',reasoning_effort:'high',prompt_override:'SECRET_OVERRIDE'},runtime:{status:'running',pid:999},activity:{state:'working',process_tree:[{command:'SECRET_COMMAND'}]},log_tail:'SECRET_LOG',command:'SECRET_COMMAND'}}},
+    acceptanceProgress: {available:true,observed_at:ISO,original:{pass:183,partial:82,not_run:101,total:366},reference:{pass:19,partial:4,not_run:36,total:59},priorities:[{name:'P0',pass:3,partial:2,not_run:4,total:9,accepted_percent:33.3}]},
+    campaignProgress: {schema_version:1,available:true,observed_at:ISO,
+      requirements:[{id:'MJ-REQ-292',title:'End-to-end acceptance test',status:'PARTIAL',priority:'P0',issue:293,private:'SECRET_FIELD'}],
+      campaigns:[{requirement_id:'MJ-REQ-292',title:'P0 acceptance <img src=x onerror=alert(1)>',issue_url:'https://github.com/MulattoTech/MJobs/issues/293',updated_at_utc:ISO,
+        source_revision:'a'.repeat(40),handoff_revision:'b'.repeat(40),ledger_sha256:'c'.repeat(64),source_kind:'working_tree',acceptance_claim_scope:'Synthetic local journey only',
+        scoreboard:{total:60,verified_pass:7,PARTIAL:33,NOT_RUN:20,FAIL:0,BLOCKED:0},phases,
+        blockers:['No external submission is enabled','C:\\Users\\Dylan\\private\\token=SECRET_TOKEN'],next_action:'<svg onload=alert(1)>'}]},
   };
   return Object.fromEntries(Object.entries(data).map(([name,value])=>[name,{available:true,checkedAt:ISO,data:value}]));
 }
@@ -33,6 +45,26 @@ test('only operational allowlisted fields leave the local control planes',()=>{
   assert.equal(snapshot.missionControl.lanes[0].agents,2);
   assert.equal(snapshot.missionControl.lanes[0].status,'WORKING');
   assert.equal(displayModel(snapshot,NOW).verified,'2 / 2');
+  assert.equal(snapshot.acceptance.original.total,366);assert.equal(snapshot.acceptance.reference.total,59);
+  assert.deepEqual(snapshot.acceptance.priorities.map(x=>x.name),['P0']);
+  assert.equal(snapshot.campaignProgress.requirements[0].id,'MJ-REQ-292');
+  assert.equal(snapshot.campaignProgress.campaigns[0].phases.length,6);
+  assert.equal(snapshot.campaignProgress.campaigns[0].phases.flatMap(x=>x.steps).length,60);
+  assert.equal(snapshot.campaignProgress.campaigns[0].blockers[1],null);
+  assert.equal(snapshot.campaignProgress.campaigns[0].nextAction,'<svg onload=alert(1)>');
+  assert.equal(JSON.stringify(snapshot).includes('SECRET_FIELD'),false);
+  assert.equal(JSON.stringify(snapshot).includes('SECRET_TOKEN'),false);
+  assert.equal(displayModel(snapshot,NOW).campaignProgress.available,true);
+  const element=(tag)=>({tag,className:'',children:[],_text:'',set textContent(value){this._text=String(value??'');this.children=[];},get textContent(){return this._text+this.children.map(child=>typeof child==='string'?child:child.textContent).join('');},append(...values){for(const value of values)this.children.push(value);},replaceChildren(...values){this._text='';this.children=[...values];}});
+  const root=element('div'),doc={getElementById:id=>id==='acceptance-content'?root:null,createElement:tag=>element(tag)};
+  const create=(tag,text,className)=>{const node=doc.createElement(tag);if(text!==undefined)node.textContent=text;if(className)node.className=className;return node;};
+  require('./public/app').renderAcceptance(doc,displayModel(snapshot,NOW),create,value=>value||'Unknown');
+  assert.match(fs.readFileSync(path.join(__dirname,'public','index.html'),'utf8'),/aria-label="Overall acceptance"/);
+  assert.match(root.textContent,/P0 · 3\/9 PASS/);
+  assert.match(root.textContent,/MJ-REQ-292/);assert.match(root.textContent,/Phase A/);assert.match(root.textContent,/Step 1:/);
+  assert.match(root.textContent,/Observed result:/);assert.match(root.textContent,/Tested commit:/);assert.match(root.textContent,/Review state: APPROVED/);
+  assert.match(root.textContent,/Merged acceptance: each step’s merge state is shown separately/);
+  assert.match(root.textContent,/<svg onload=alert\(1\)>/);assert.doesNotMatch(root.textContent,/SECRET_STEP|SECRET_TOKEN|C:\\Users/);
 });
 
 test('quota armed with a full allowance is distinct from working or dispatch enabled',()=>{
@@ -97,6 +129,7 @@ test('UI clears live claims after the exporter stops or the clock is invalid',()
   assert.equal(freshness(snapshot,NOW+44000).stale,false);
   const display=displayModel(snapshot,NOW+46000);assert.equal(display.stale,true);
   assert.equal(display.dispatch,'Unknown');assert.equal(display.working,'—');assert.equal(display.quota,'—');
+  assert.equal(display.acceptance,null);assert.equal(display.campaignProgress.available,false);
   assert.deepEqual(display.sessions,[]);assert.deepEqual(display.lanes,[]);
   assert.equal(freshness({...snapshot,generatedAt:'invalid'},NOW).stale,true);
   assert.equal(freshness({...snapshot,generatedAt:new Date(NOW+20000).toISOString()},NOW).stale,true);
@@ -106,6 +139,8 @@ test('UI expires provider and inspector observations before a newer publication 
   const data=fixture();
   data.quota.data.sampledAt=new Date(NOW-40000).toISOString();
   data.fleetMaster.data.currentReadiness.at=new Date(NOW-40000).toISOString();
+  data.acceptanceProgress.data.observed_at=new Date(NOW-40000).toISOString();
+  data.campaignProgress.data.observed_at=new Date(NOW-40000).toISOString();
   const snapshot=projectSnapshot(data,NOW);
   assert.equal(displayModel(snapshot,NOW+4000).quota,'88%');
   assert.equal(displayModel(snapshot,NOW+4000).verified,'2 / 2');
@@ -113,6 +148,8 @@ test('UI expires provider and inspector observations before a newer publication 
   assert.equal(later.stale,false,'publication remains fresh');
   assert.equal(later.quota,'—','provider observation expired independently');
   assert.equal(later.verified,'—','runtime inspection expired independently');
+  assert.equal(later.acceptance,null,'acceptance totals expire with their source observation');
+  assert.equal(later.campaignProgress.available,false,'campaign detail expires with its source observation');
 });
 
 test('exporter uses only fixed loopback GET routes and rejects redirected/error/stale responses',async()=>{
@@ -124,9 +161,42 @@ test('exporter uses only fixed loopback GET routes and rejects redirected/error/
     return new Response(JSON.stringify(item),{headers:{'content-type':'application/json'}});
   };
   const snapshot=await collectSnapshot(fakeFetch,()=>NOW);
-  assert.equal(calls.length,6);for(const call of calls){assert.equal(new URL(call.url).hostname,'127.0.0.1');assert.equal(call.options.method,'GET');assert.equal(call.options.redirect,'error');}
+  assert.equal(calls.length,8);for(const call of calls){assert.equal(new URL(call.url).hostname,'127.0.0.1');assert.equal(call.options.method,'GET');assert.equal(call.options.redirect,'error');}
   assert.equal(snapshot.sources.fleetState.error,'STALE_SOURCE');assert.equal(snapshot.fleet.runtimeAvailable,false);
   assert.equal(snapshot.sources.quota.available,false);assert.equal(snapshot.quota.remainingPercent,null);
+});
+
+test('campaign progress requires a fresh complete six-phase 60-step snapshot',async()=>{
+  const data=fixture();data.campaignProgress.data.campaigns[0].phases[5].steps.pop();
+  const snapshot=await collectSnapshot(async url=>{
+    const name=Object.keys(SOURCES).find(key=>SOURCES[key]===url);
+    return new Response(JSON.stringify(data[name].data));
+  },()=>NOW);
+  assert.equal(snapshot.sources.campaignProgress.available,false);
+  assert.equal(snapshot.campaignProgress.available,false);
+  assert.deepEqual(snapshot.campaignProgress.campaigns,[]);
+  assert.notEqual(snapshot.campaignProgress.total,0,'missing campaign data must not synthesize zero progress');
+});
+
+test('campaign endpoint unavailability is not projected as a healthy source',()=>{
+  const data=fixture();data.campaignProgress.data.available=false;data.campaignProgress.data.requirements=[];data.campaignProgress.data.campaigns=[];
+  const snapshot=projectSnapshot(data,NOW);
+  assert.equal(snapshot.campaignProgress.available,false);assert.deepEqual(snapshot.campaignProgress.campaigns,[]);
+  assert.equal(snapshot.sources.campaignProgress.available,false);
+});
+
+test('stale acceptance and campaign sources lose their current claims',async()=>{
+  const data=fixture();
+  data.acceptanceProgress.data.observed_at=new Date(NOW-46000).toISOString();
+  data.campaignProgress.data.observed_at=new Date(NOW-46000).toISOString();
+  const snapshot=await collectSnapshot(async url=>{
+    const name=Object.keys(SOURCES).find(key=>SOURCES[key]===url);
+    return new Response(JSON.stringify(data[name].data));
+  },()=>NOW);
+  assert.equal(snapshot.sources.acceptanceProgress.error,'STALE_SOURCE');
+  assert.equal(snapshot.sources.campaignProgress.error,'STALE_SOURCE');
+  assert.equal(snapshot.acceptance.available,false);assert.equal(snapshot.campaignProgress.available,false);
+  assert.deepEqual(snapshot.campaignProgress.requirements,[]);
 });
 
 test('bounded master retries observe a settling runtime inspection using one shared deadline',async()=>{
