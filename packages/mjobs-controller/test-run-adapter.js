@@ -124,3 +124,13 @@ test('pending proof never legitimizes an unknown or foreign initializing primary
     assert.equal(f.commands.length, 0);
   }
 });
+
+test('normal Start stays idempotent when Turbo has replaced Sustained dispatch', () => {
+  const f=fixture(), deps=f.adapter.deps();
+  assert.equal(deps.dispatchEnabled(),false);
+  f.master.turbo={config:{enabled:true}};
+  assert.equal(deps.dispatchEnabled(),true,'Turbo means the running MJobs fleet is already dispatched');
+  f.master.turbo.config.enabled=false;
+  f.master.sustain.config.enabled=true;
+  assert.equal(deps.dispatchEnabled(),true,'Sustained remains a supported dispatcher');
+});

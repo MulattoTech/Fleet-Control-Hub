@@ -127,7 +127,7 @@ class RunAdapter {
   }
   deps() {
     return { quota: () => this.quotaStatus(), recoveryBlockReason: () => this.recoveryBlockReason(), emergencyLocked: () => this.master.locked?.() === true,
-      dispatchEnabled: () => this.master.sustain.config.enabled,
+      dispatchEnabled: () => !!(this.master.sustain?.config.enabled || this.master.turbo?.config.enabled),
       blockReason: ({ prepared } = {}) => this.recoveryBlockReason() || (prepared ? this.master.locked() ? 'Emergency Stop is active' : this.quota.dispatchBlockReason() : null),
       pause: () => this.master.disableAutomaticDispatch(), prepare: check => this.prepare(check), inspect: pending => this.inspect({ pending }),
       launch: (pending, check) => this.launch(pending, check), instruct: (current, id, check) => this.instruct(current, id, check),
