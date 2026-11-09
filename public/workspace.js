@@ -102,9 +102,32 @@
     finally{loadingMission=false;}
   }
 
+  let loadingDelivery=false;
+  async function refreshDelivery(){
+    if(loadingDelivery)return;loadingDelivery=true;
+    const holder=$('delivery-metrics');
+    try{
+      const response=await fetch('/api/delivery',{cache:'no-store',signal:AbortSignal.timeout(6000)});
+      const data=await response.json();
+      if(!response.ok||data.available!==true||
+         ![data.openTotal,data.openDrafts,data.mergedSince].every(Number.isSafeInteger)||
+         typeof data.sinceUTC!=='string')throw Error('GitHub delivery unavailable');
+      holder.replaceChildren();
+      holder.append(metric('Open pull requests',data.openTotal.toLocaleString(),data.openDrafts+' drafts included · not yet merged'));
+      holder.append(metric('Merged since '+data.sinceUTC,data.mergedSince.toLocaleString(),'GitHub merged PRs · not requirements accepted'));
+      $('delivery-freshness').textContent='GitHub checked '+new Date(data.observedAt).toLocaleTimeString();
+      $('delivery-warning').textContent=data.note||'Pull request activity does not establish requirement acceptance or active agents.';
+    }catch{
+      holder.replaceChildren();
+      $('delivery-freshness').textContent='GitHub activity unavailable';
+      $('delivery-warning').textContent='Current pull request counts could not be verified. This does not mean zero work; canonical acceptance remains separate.';
+    }finally{loadingDelivery=false;}
+  }
+
   const babyNav=document.querySelector('aside nav a[href="http://127.0.0.1:4319/"]');
   if(babyNav){babyNav.href='/babytracker/';babyNav.classList.remove('local-only');}
   if(!isLocal)document.querySelectorAll('.local-only').forEach(n=>{n.hidden=true;});
   $('add-project-form').addEventListener('submit',registerProject);
-  refreshProjects();refreshMission();setInterval(refreshProjects,15000);setInterval(refreshMission,5000);
+  $('refresh').addEventListener('click',()=>{refreshProjects();refreshMission();refreshDelivery();});
+  refreshProjects();refreshMission();refreshDelivery();setInterval(refreshProjects,15000);setInterval(refreshMission,5000);setInterval(refreshDelivery,30000);
 })();
