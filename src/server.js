@@ -12,9 +12,10 @@ const {createBabyTrackerBridge}=require('./babytracker-bridge');
 const {createProjectRegistry}=require('./project-registry');
 const {createMissionStatus}=require('./mission-status');
 const {createGitHubDelivery}=require('./github-delivery');
+const {createMJobsDevelopment}=require('./mjobs-development');
 const root=path.join(__dirname,'..','public');
 
-function makeServer({adapters=createAdapters(),services=createServiceLaunchpad(),parity=createParityTracker(),nativeFleetBridge=createNativeFleetBridge(),babyTrackerBridge=createBabyTrackerBridge(),registry=createProjectRegistry(),mission=createMissionStatus(),delivery=createGitHubDelivery(),port=Number(process.env.FLEET_HUB_PORT||4320),remote=configuredRemote(),verifyRemote=remote?createRemoteAuth(remote):null}={}) {
+function makeServer({adapters=createAdapters(),services=createServiceLaunchpad(),parity=createParityTracker(),nativeFleetBridge=createNativeFleetBridge(),babyTrackerBridge=createBabyTrackerBridge(),registry=createProjectRegistry(),mission=createMissionStatus(),delivery=createGitHubDelivery(),development=createMJobsDevelopment(),port=Number(process.env.FLEET_HUB_PORT||4320),remote=configuredRemote(),verifyRemote=remote?createRemoteAuth(remote):null}={}) {
   if(!Number.isInteger(port)||port<1||port>65535)throw Error('Invalid port');
   const token=randomBytes(32).toString('hex');
   const serviceNonces=new Map();
@@ -40,6 +41,7 @@ function makeServer({adapters=createAdapters(),services=createServiceLaunchpad()
         if(url.pathname==='/api/projects')return json(200,{projects:registry.list({includeLocalPaths:!remoteRequest}),observedAt:new Date().toISOString(),controllerRegistration:'explicit-adapter-required'});
         if(url.pathname==='/api/mission-status')return json(200,await mission.status());
         if(url.pathname==='/api/delivery')return json(200,await delivery.status());
+        if(url.pathname==='/api/development')return json(200,await development.status());
         if(url.pathname==='/api/parity')return json(200,await parity.status({refresh:url.searchParams.get('refresh')==='1'}));
         if(url.pathname==='/api/services')return json(200,await services.status());
         if(url.pathname==='/api/services/nonce'){
