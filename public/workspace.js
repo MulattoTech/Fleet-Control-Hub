@@ -114,6 +114,20 @@
            data.confirmedRequirementMappings,data.validatedRequirementMappings,data.linkedNotAccepted,
            data.unmappedCommits].every(Number.isSafeInteger))throw Error('Development evidence unavailable');
       holder.replaceChildren();
+      const observedDay=data.observedDeltas?.day;
+      const signed=n=>Number.isSafeInteger(n)?(n>0?'+'+n:String(n)):'n/a';
+      for(const key of ['hour','day','week']){
+        const row=data.activityWindows?.[key];if(!row||![row.commits,row.mergeCommits,row.requirementsWithIntegratedWork,row.requirementsWithValidatedWork].every(Number.isSafeInteger))continue;
+        holder.append(metric(row.label,row.commits+' main commit'+(row.commits===1?'':'s')+' · '+row.mergeCommits+' merge'+(row.mergeCommits===1?'':'s'),
+          row.requirementsWithIntegratedWork+' mapped requirements with integrated work · '+row.requirementsWithValidatedWork+' with PASS validation trailers'));
+      }
+      if(observedDay?.available){
+        holder.append(metric('Observed 24h delta',signed(observedDay.mainCommitDelta)+' main commits',
+          'formal acceptance '+signed(observedDay.acceptancePassDelta)+' PASS · exact Hub observations since '+new Date(observedDay.baselineAt).toLocaleTimeString()));
+      }else if(data.history?.persistent){
+        holder.append(metric('Durable history baseline',Number.isSafeInteger(data.history.sampleCount)?data.history.sampleCount.toLocaleString():'building',
+          'sanitized Hub counters only · more comparison windows unlock as history ages'));
+      }
       holder.append(metric('Main commits since accepted checkpoint',data.commitsSinceCheckpoint.toLocaleString(),
         data.commitsLast24h+' in the last 24h · '+data.mergeCommitsSinceCheckpoint+' merge commits'));
       holder.append(metric('Requirement-linked main work',data.confirmedRequirementMappings.toLocaleString(),
@@ -126,7 +140,11 @@
         'unchanged unless canonical acceptance evidence is approved'));
       $('development-freshness').textContent='Main '+String(data.mainSha||'').slice(0,12)+' · checked '+new Date(data.observedAt).toLocaleTimeString();
       const since=new Date(data.checkpoint.asOf).toLocaleString();
-      $('implementation-warning').textContent='Formal acceptance has not automatically moved because no newer approved acceptance checkpoint is being inferred. These implementation/integration signals are derived from main since '+since+'.';
+      if(observedDay?.available&&observedDay.acceptancePassDelta===0&&Number.isSafeInteger(observedDay.mainCommitDelta)&&observedDay.mainCommitDelta>0){
+        $('implementation-warning').textContent='Formal acceptance has not automatically moved: the Hub observed '+observedDay.mainCommitDelta+' additional main commits over the comparison window while canonical PASS changed by 0. Development, integration, validation and acceptance remain separate.';
+      }else{
+        $('implementation-warning').textContent='Formal acceptance has not automatically moved because no newer approved acceptance checkpoint is being inferred. These implementation/integration signals are derived from main since '+since+'.';
+      }
     }catch{
       holder.replaceChildren();
       $('development-freshness').textContent='Implementation evidence unavailable';
