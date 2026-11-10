@@ -47,6 +47,11 @@
 .turbo-config-grid label{display:grid;gap:7px;color:#9db4bf;font-size:10px;line-height:1.4;align-content:end;font-weight:650}
 .turbo-config-grid input{width:100%;padding:10px 11px;border-radius:8px;outline:none;border:1px solid #355366;background:#102333;color:#e0f4f6;font-size:13px;font-weight:720;font-variant-numeric:tabular-nums}
 .turbo-config-grid input:focus{border-color:#6ce6cc}
+.turbo-target-control{grid-column:span 2}
+.turbo-target-control input[type="range"]{padding:0;border:0;background:transparent;accent-color:#6ce6cc;cursor:pointer}
+.turbo-target-control input[type="range"]:disabled{cursor:not-allowed;opacity:.55}
+.turbo-target-control small{color:#78949f;font-size:9px;font-weight:650;line-height:1.45}
+@media(max-width:600px){.turbo-target-control{grid-column:span 2}}
 .turbo-setting-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:17px}
 .turbo-setting-actions span{font-size:9px;color:#78949f;text-align:right}
 .turbo-bottom{font-size:10px;color:#8ba8b0;display:flex;gap:10px;margin-top:15px;line-height:1.5;align-items:flex-start}

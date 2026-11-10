@@ -151,6 +151,11 @@ class Turbo {
  }
  update(changes){
    const value=configWithChanges(this.config,changes);
+   if(Object.hasOwn(changes||{},'targetWorking')){
+    const roster=this.roster.read(),limit=roster?.safety?.maxTotalSessions;
+    if(!Number.isInteger(limit)||limit<1||limit>40)throw Error('Roster capacity unavailable; targetWorking was not changed');
+    if(value.targetWorking>limit)throw Error('targetWorking exceeds current roster capacity ('+limit+')');
+   }
    this.config=value;atomic(this.configPath,value);this.restartTimer();
    this.log('settings',{settings:changes});
    return this.summary();
