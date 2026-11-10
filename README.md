@@ -27,6 +27,16 @@ reference acceptance matrices remain distinct. The protected remote Mission
 status page is still a **read-only** reporter; no Python launcher commands are
 proxied by this Hub.
 
+The separate read-only `/api/development` stream reports rolling **hour / 24-hour /
+7-day** activity from canonical MJobs `main`, including merge counts, explicit
+`Requirement:` mappings and PASS-validation trailers. The production Hub also
+keeps a bounded 30-day history of **sanitized counters, timestamps and main
+SHAs only** under its local application-data directory. Those observations let
+the UI show exact deltas once a sufficiently close baseline exists; a long
+monitoring gap is reported as unavailable rather than stretched into a fake
+time window. This history never contains commit messages, requirement text,
+task content or private paths and never edits the MJobs acceptance matrices.
+
 The shared design tokens now generate BabyTracker's native `fleet-theme.css`
 and the existing MJobs/Hub presentation, keeping the individual project action
 contracts unchanged. Grafana's provisioned Fleet Atlas dashboard gains
