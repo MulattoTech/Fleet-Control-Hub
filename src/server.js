@@ -12,10 +12,10 @@ const {createBabyTrackerBridge}=require('./babytracker-bridge');
 const {createProjectRegistry}=require('./project-registry');
 const {createMissionStatus}=require('./mission-status');
 const {createGitHubDelivery}=require('./github-delivery');
-const {createMJobsDevelopment}=require('./mjobs-development');
+const {createMJobsDevelopment,defaultHistoryFile}=require('./mjobs-development');
 const root=path.join(__dirname,'..','public');
 
-function makeServer({adapters=createAdapters(),services=createServiceLaunchpad(),parity=createParityTracker(),nativeFleetBridge=createNativeFleetBridge(),babyTrackerBridge=createBabyTrackerBridge(),registry=createProjectRegistry(),mission=createMissionStatus(),delivery=createGitHubDelivery(),development=createMJobsDevelopment(),port=Number(process.env.FLEET_HUB_PORT||4320),remote=configuredRemote(),verifyRemote=remote?createRemoteAuth(remote):null}={}) {
+function makeServer({adapters=createAdapters(),services=createServiceLaunchpad(),parity=createParityTracker(),nativeFleetBridge=createNativeFleetBridge(),babyTrackerBridge=createBabyTrackerBridge(),registry=createProjectRegistry(),mission=createMissionStatus(),delivery=createGitHubDelivery(),development=createMJobsDevelopment({historyFile:null}),port=Number(process.env.FLEET_HUB_PORT||4320),remote=configuredRemote(),verifyRemote=remote?createRemoteAuth(remote):null}={}) {
   if(!Number.isInteger(port)||port<1||port>65535)throw Error('Invalid port');
   const token=randomBytes(32).toString('hex');
   const serviceNonces=new Map();
@@ -98,5 +98,5 @@ function makeServer({adapters=createAdapters(),services=createServiceLaunchpad()
   });
   return server;
 }
-if(require.main===module){const server=makeServer();server.listen(Number(process.env.FLEET_HUB_PORT||4320),'127.0.0.1',()=>process.stdout.write('Fleet hub on http://127.0.0.1:'+server.address().port+'\n'));}
+if(require.main===module){const server=makeServer({development:createMJobsDevelopment({historyFile:defaultHistoryFile()})});server.listen(Number(process.env.FLEET_HUB_PORT||4320),'127.0.0.1',()=>process.stdout.write('Fleet hub on http://127.0.0.1:'+server.address().port+'\n'));}
 module.exports={makeServer};

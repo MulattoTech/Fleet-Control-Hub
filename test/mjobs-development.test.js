@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { test } = require('node:test');
-const { createMJobsDevelopment, parseRecord, summarize } = require('../src/mjobs-development');
+const { createMJobsDevelopment, parseRecord, summarize, recordHistorySnapshot, buildHistoryDeltas } = require('../src/mjobs-development');
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-mjobs-development-'));
@@ -64,6 +64,11 @@ test('summarize keeps activity, implementation evidence, validation and acceptan
   const result = summarize(commits, index, { asOf: '2026-11-03T05:59:31Z', pass: 183, total: 366 }, observed);
   assert.equal(result.commitsSinceCheckpoint, 3);
   assert.equal(result.mergeCommitsSinceCheckpoint, 1);
+  assert.equal(result.activityWindows.hour.commits, 0);
+  assert.equal(result.activityWindows.day.commits, 2);
+  assert.equal(result.activityWindows.day.requirementsWithIntegratedWork, 2);
+  assert.equal(result.activityWindows.day.requirementsWithValidatedWork, 2);
+  assert.equal(result.activityWindows.week.commits, 3);
   assert.equal(result.confirmedRequirementMappings, 2);
   assert.equal(result.validatedRequirementMappings, 2);
   assert.equal(result.linkedNotAccepted, 1);
@@ -83,9 +88,11 @@ test('development source reads bounded local evidence and does not mutate accept
   const source = createMJobsDevelopment({
     root,
     clock: () => Date.parse('2026-11-10T03:00:00Z'),
+    historyFile: path.join(root, 'development-history.json'),
     runGit: async args => {
       calls.push(args);
       if (args[0] === 'rev-parse') return 'c'.repeat(40) + '\n';
+      if (args[0] === 'rev-list') return '321\n';
       if (args[0] === 'log') return log;
       throw Error('unexpected git call');
     }
@@ -93,11 +100,70 @@ test('development source reads bounded local evidence and does not mutate accept
   const result = await source.status();
   assert.equal(result.available, true);
   assert.equal(result.mainSha, 'c'.repeat(40));
+  assert.equal(result.mainCommitCount, 321);
   assert.equal(result.confirmedRequirementMappings, 1);
   assert.equal(result.linkedNotAccepted, 1);
   assert.equal(result.checkpoint.pass, 183);
   assert.equal(result.checkpoint.total, 366);
+  assert.equal(result.history.available, true);
+  assert.equal(result.history.sampleCount, 1);
+  assert.equal(result.observedDeltas.day.available, false);
   assert.ok(calls.some(args => args[0] === 'log' && args.some(x => String(x).startsWith('--since='))));
+});
+
+test('durable development history stores sanitized counters and computes observed deltas', t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-development-history-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const file = path.join(root, 'history.json');
+  const firstMs = Date.parse('2026-11-10T02:00:00Z');
+  const secondMs = Date.parse('2026-11-10T03:00:00Z');
+  const first = {
+    observedAt: new Date(firstMs).toISOString(),
+    mainSha: 'a'.repeat(40),
+    mainCommitCount: 100,
+    checkpoint: { asOf: '2026-11-03T05:59:31Z', pass: 183, total: 366 },
+    commitsSinceCheckpoint: 10,
+    mergeCommitsSinceCheckpoint: 2,
+    confirmedRequirementMappings: 4,
+    validatedRequirementMappings: 3,
+    linkedNotAccepted: 2,
+    unmappedCommits: 3,
+    requirements: [{ id: 'MJ-REQ-292', subject: 'private detail' }]
+  };
+  const firstHistory = recordHistorySnapshot(file, first, firstMs, 0);
+  assert.equal(firstHistory.metadata.sampleCount, 1);
+
+  const second = {
+    ...first,
+    observedAt: new Date(secondMs).toISOString(),
+    mainSha: 'b'.repeat(40),
+    mainCommitCount: 102,
+    checkpoint: { asOf: '2026-11-03T05:59:31Z', pass: 184, total: 366 },
+    commitsSinceCheckpoint: 12,
+    mergeCommitsSinceCheckpoint: 3,
+    confirmedRequirementMappings: 6,
+    validatedRequirementMappings: 5,
+    linkedNotAccepted: 3,
+    unmappedCommits: 4
+  };
+  const secondHistory = recordHistorySnapshot(file, second, secondMs, 0);
+  const deltas = buildHistoryDeltas(secondHistory.snapshots, second, secondMs);
+  assert.equal(secondHistory.metadata.sampleCount, 2);
+  assert.equal(deltas.hour.available, true);
+  assert.equal(deltas.hour.mainCommitDelta, 2);
+  assert.equal(deltas.hour.acceptancePassDelta, 1);
+  assert.equal(deltas.hour.requirementMappingsDelta, 2);
+  assert.equal(deltas.hour.validatedMappingsDelta, 2);
+
+  const raw = fs.readFileSync(file, 'utf8');
+  assert.equal(raw.includes('private detail'), false);
+  assert.equal(raw.includes('requirements'), false);
+  const stored = JSON.parse(raw);
+  assert.deepEqual(Object.keys(stored.snapshots[0]).sort(), [
+    'acceptancePass','acceptanceTotal','checkpointAsOf','commitsSinceCheckpoint',
+    'confirmedRequirementMappings','linkedNotAccepted','mainCommitCount','mainSha',
+    'mergeCommitsSinceCheckpoint','observedAt','unmappedCommits','validatedRequirementMappings'
+  ].sort());
 });
 
 test('development source fails closed when local evidence is unavailable', async t => {
@@ -148,6 +214,8 @@ test('development HTTP route is read-only and dashboard renders it separately fr
   assert.match(html, /Development progress/);
   assert.match(html, /implementation-metrics/);
   assert.match(ui, /fetch\('\/api\/development'/);
+  assert.match(ui, /activityWindows/);
+  assert.match(ui, /Observed 24h delta/);
   assert.match(ui, /Linked but not formally accepted/);
   assert.match(ui, /acceptance has not automatically moved/);
 });
