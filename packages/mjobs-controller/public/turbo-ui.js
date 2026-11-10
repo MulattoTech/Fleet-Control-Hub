@@ -18,10 +18,14 @@ const FleetTurboUI=(()=>{
   const desired=settingsDirty&&Number.isInteger(draft)?draft:data.config.targetWorking;
   const effective=Math.min(Math.max(desired,1),limit);
   const current=Number.isInteger(data.lastPlan?.counts?.working)?data.lastPlan.counts.working:'—';
+  const prefix=settingsDirty?'Draft ':'Configured ';
   el('tTarget').max=String(limit);el('tTargetRange').max=String(limit);
   el('tTargetRange').setAttribute('aria-valuemax',String(limit));
-  el('tTargetRange').setAttribute('aria-valuetext',(settingsDirty?'Draft ':'Configured ')+desired+'; effective ceiling '+effective+'; current '+current);
-  el('tTargetState').textContent=(settingsDirty?'Draft ':'Configured ')+desired+' · effective ceiling '+effective+' · current '+current;
+  el('tTargetRange').setAttribute('aria-valuetext',prefix+desired+'; effective ceiling '+effective+'; current '+current);
+  el('tTarget').setAttribute('aria-valuemax',String(limit));
+  el('tTargetRoster').textContent=limit+' roster max';
+  el('tTargetState').textContent=prefix+desired+' · effective ceiling '+effective+' · current '+current;
+  el('tTargetState').classList.toggle('draft',settingsDirty);
  }
  const stamp=iso=>{
   if(!iso)return 'Never';
