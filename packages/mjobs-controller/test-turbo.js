@@ -62,6 +62,12 @@ const run=async()=>{
  snapshot.metrics.ramFree=17*1024**3;
  control.update({maxActionsPerCycle:2,pollingSeconds:90});
  assert.equal(control.configuration().pollingSeconds,90);
+ const rosterRead=control.roster.read.bind(control.roster);
+ control.roster.read=()=>{const value=rosterRead();return {...value,safety:{...value.safety,maxTotalSessions:24}}};
+ assert.throws(()=>control.update({targetWorking:25}),/current roster capacity \(24\)/);
+ control.update({targetWorking:24});
+ control.roster.read=rosterRead;
+ assert.equal(control.configuration().targetWorking,24);
  assert.throws(()=>control.update({maxActionsPerCycle:30}),/between/);
  assert.throws(()=>control.update({enabled:true}),/Unrecognized/);
  control.enable(false);

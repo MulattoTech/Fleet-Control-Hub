@@ -4,16 +4,37 @@ const FleetTurboUI=(()=>{
  let mutationRevision=0,readRevision=0;
  const el=id=>document.getElementById(id);
  const integer=id=>Number.parseInt(el(id).value,10);
+ const rosterLimit=data=>{
+  const value=data?.roster?.profile?.safety?.maxTotalSessions;
+  return Number.isInteger(value)&&value>=1&&value<=40?value:40;
+ };
+ const targetValue=()=>integer('tTarget');
+ function setSettingsDisabled(value){
+  ['tTargetRange','tTarget','tActions','tRam','tCooldown','tPoll','tHourly','turboSave'].forEach(id=>{el(id).disabled=value});
+ }
+ function renderTargetState(data=last){
+  if(!data?.config)return;
+  const limit=rosterLimit(data),draft=targetValue();
+  const desired=settingsDirty&&Number.isInteger(draft)?draft:data.config.targetWorking;
+  const effective=Math.min(Math.max(desired,1),limit);
+  const current=Number.isInteger(data.lastPlan?.counts?.working)?data.lastPlan.counts.working:'—';
+  el('tTarget').max=String(limit);el('tTargetRange').max=String(limit);
+  el('tTargetRange').setAttribute('aria-valuemax',String(limit));
+  el('tTargetRange').setAttribute('aria-valuetext',(settingsDirty?'Draft ':'Configured ')+desired+'; effective ceiling '+effective+'; current '+current);
+  el('tTargetState').textContent=(settingsDirty?'Draft ':'Configured ')+desired+' · effective ceiling '+effective+' · current '+current;
+ }
  const stamp=iso=>{
   if(!iso)return 'Never';
   const date=new Date(iso);
   if(!Number.isFinite(date.getTime()))return 'Unknown';
   return date.toLocaleTimeString();
  };
- function beginBusy(){busy=true;mutationRevision++;if(last)updateBadge(last.config.enabled,last.lastPlan?.pausedReason);}
- function finishBusy(){busy=false;if(last)updateBadge(last.config.enabled,last.lastPlan?.pausedReason);}
+ function beginBusy(){busy=true;mutationRevision++;setSettingsDisabled(true);if(last)updateBadge(last.config.enabled,last.lastPlan?.pausedReason);}
+ function finishBusy(){busy=false;setSettingsDisabled(false);if(last){updateBadge(last.config.enabled,last.lastPlan?.pausedReason);renderTargetState(last);}}
  function fillSettings(c){
-  el('tTarget').value=c.targetWorking;
+  const limit=rosterLimit(last);
+  el('tTarget').max=String(limit);el('tTarget').value=c.targetWorking;
+  el('tTargetRange').max=String(limit);el('tTargetRange').value=Math.min(c.targetWorking,limit);
   el('tActions').value=c.maxActionsPerCycle;
   el('tRam').value=c.minFreeRamGiB;
   el('tCooldown').value=c.perAgentCooldownMinutes;
@@ -53,7 +74,9 @@ const FleetTurboUI=(()=>{
  function draw(data){
   last=data;
   if(!configured||!settingsDirty){fillSettings(data.config);configured=true}
-  el('turboTarget').textContent=data.config.targetWorking+' agents';
+  renderTargetState(data);
+  const effective=Math.min(data.config.targetWorking,rosterLimit(data));
+  el('turboTarget').textContent=data.config.targetWorking+' configured · '+effective+' effective';
   el('turboHour').textContent=data.sentThisHour+' / '+data.config.maxActionsPerHour;
   const pausedReason=data.lastPlan?.pausedReason || null;
   updateBadge(data.config.enabled,pausedReason);
@@ -185,7 +208,15 @@ const FleetTurboUI=(()=>{
  }
  function bind(){
   el('turboToggle').disabled=true;el('turboToggleLabel').textContent='Checking controller...';
-  ['tTarget','tActions','tRam','tCooldown','tPoll','tHourly'].forEach(id=>el(id).addEventListener('input',()=>{settingsDirty=true}));
+  el('tTargetRange').addEventListener('input',()=>{
+   el('tTarget').value=el('tTargetRange').value;settingsDirty=true;renderTargetState(last);
+  });
+  el('tTarget').addEventListener('input',()=>{
+   const value=targetValue(),limit=rosterLimit(last);
+   if(Number.isInteger(value))el('tTargetRange').value=Math.min(Math.max(value,1),limit);
+   settingsDirty=true;renderTargetState(last);
+  });
+  ['tActions','tRam','tCooldown','tPoll','tHourly'].forEach(id=>el(id).addEventListener('input',()=>{settingsDirty=true}));
   el('turboAllHands').addEventListener('click',allHands);
   el('turboToggle').addEventListener('click',toggle);
   el('turboPreview').addEventListener('click',()=>preview());

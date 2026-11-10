@@ -102,6 +102,38 @@
     finally{loadingMission=false;}
   }
 
+  let loadingDevelopment=false;
+  async function refreshDevelopment(){
+    if(loadingDevelopment)return;loadingDevelopment=true;
+    const holder=$('implementation-metrics');
+    try{
+      const response=await fetch('/api/development',{cache:'no-store',signal:AbortSignal.timeout(6000)});
+      const data=await response.json();
+      if(!response.ok||data.available!==true||!data.checkpoint||
+         ![data.commitsSinceCheckpoint,data.commitsLast24h,data.mergeCommitsSinceCheckpoint,
+           data.confirmedRequirementMappings,data.validatedRequirementMappings,data.linkedNotAccepted,
+           data.unmappedCommits].every(Number.isSafeInteger))throw Error('Development evidence unavailable');
+      holder.replaceChildren();
+      holder.append(metric('Main commits since accepted checkpoint',data.commitsSinceCheckpoint.toLocaleString(),
+        data.commitsLast24h+' in the last 24h · '+data.mergeCommitsSinceCheckpoint+' merge commits'));
+      holder.append(metric('Requirement-linked main work',data.confirmedRequirementMappings.toLocaleString(),
+        data.validatedRequirementMappings+' have PASS validation trailers · explicit Requirement: mappings'));
+      holder.append(metric('Linked but not formally accepted',data.linkedNotAccepted.toLocaleString(),
+        (data.mappingStatus?.PARTIAL||0)+' PARTIAL · '+(data.mappingStatus?.NOT_RUN||0)+' NOT_RUN · not assumed ready for approval'));
+      holder.append(metric('Unmapped main commits',data.unmappedCommits.toLocaleString(),
+        'Activity retained as activity · not converted into requirement completion'));
+      holder.append(metric('Formal acceptance checkpoint',data.checkpoint.pass+' / '+data.checkpoint.total+' PASS',
+        'unchanged unless canonical acceptance evidence is approved'));
+      $('development-freshness').textContent='Main '+String(data.mainSha||'').slice(0,12)+' · checked '+new Date(data.observedAt).toLocaleTimeString();
+      const since=new Date(data.checkpoint.asOf).toLocaleString();
+      $('implementation-warning').textContent='Formal acceptance has not automatically moved because no newer approved acceptance checkpoint is being inferred. These implementation/integration signals are derived from main since '+since+'.';
+    }catch{
+      holder.replaceChildren();
+      $('development-freshness').textContent='Implementation evidence unavailable';
+      $('implementation-warning').textContent='Local MJobs main history or requirement mapping could not be verified. No implementation count is inferred; formal acceptance remains authoritative.';
+    }finally{loadingDevelopment=false;}
+  }
+
   let loadingDelivery=false;
   async function refreshDelivery(){
     if(loadingDelivery)return;loadingDelivery=true;
@@ -128,6 +160,7 @@
   if(babyNav){babyNav.href='/babytracker/';babyNav.classList.remove('local-only');}
   if(!isLocal)document.querySelectorAll('.local-only').forEach(n=>{n.hidden=true;});
   $('add-project-form').addEventListener('submit',registerProject);
-  $('refresh').addEventListener('click',()=>{refreshProjects();refreshMission();refreshDelivery();});
-  refreshProjects();refreshMission();refreshDelivery();setInterval(refreshProjects,15000);setInterval(refreshMission,5000);setInterval(refreshDelivery,30000);
+  $('refresh').addEventListener('click',()=>{refreshProjects();refreshMission();refreshDevelopment();refreshDelivery();});
+  refreshProjects();refreshMission();refreshDevelopment();refreshDelivery();
+  setInterval(refreshProjects,15000);setInterval(refreshMission,5000);setInterval(refreshDevelopment,12000);setInterval(refreshDelivery,30000);
 })();

@@ -209,7 +209,7 @@
             <div class="turbo-settings">
               <div class="turbo-subhead"><span>Turbo settings</span><small>Saved on this PC</small></div>
               <div class="turbo-config-grid">
-                <label>Concurrent turns <input id="tTarget" type="number" min="1" max="25" step="1" value="12"></label>
+                <label class="turbo-target-control">Concurrent turns <input id="tTargetRange" type="range" min="1" max="40" step="1" value="12" aria-label="Concurrent turn target slider"><input id="tTarget" type="number" min="1" max="40" step="1" value="12" inputmode="numeric" aria-label="Concurrent turn target numeric value"><small id="tTargetState">Configured 12 · effective ceiling 12 · current —</small></label>
                 <label>Dispatches / cycle <input id="tActions" type="number" min="1" max="6" step="1" value="3"></label>
                 <label>Minimum free RAM (GiB) <input id="tRam" type="number" min="6" max="32" step="1" value="9"></label>
                 <label>Per-agent cooldown (min) <input id="tCooldown" type="number" min="5" max="120" step="1" value="18"></label>
