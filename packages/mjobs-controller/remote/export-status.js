@@ -9,10 +9,10 @@ const {projectAgent,providerOverview}=require('../agent-observability');
 const { setTimeout: delay } = require('node:timers/promises');
 
 const SOURCES = Object.freeze({
-  fleetHealth: 'http://127.0.0.1:8787/api/health',
-  fleetState: 'http://127.0.0.1:8787/api/state',
-  fleetMaster: 'http://127.0.0.1:8787/api/master',
-  quota: 'http://127.0.0.1:8787/api/quota',
+  fleetHealth: 'http://127.0.0.1:4320/fleet/api/health',
+  fleetState: 'http://127.0.0.1:4320/fleet/api/state',
+  fleetMaster: 'http://127.0.0.1:4320/fleet/api/master',
+  quota: 'http://127.0.0.1:4320/fleet/api/quota',
   missionHealth: 'http://127.0.0.1:18726/api/launcher/health',
   missionState: 'http://127.0.0.1:18726/api/state',
   acceptanceProgress: 'http://127.0.0.1:18726/api/progress',

@@ -1,8 +1,8 @@
 'use strict';
-// Standalone Hub releases only include src/ and public/. The native-binding parity test prevents ID drift.
+// The Hub owns a packaged MJobs controller; native-binding parity tests prevent project ID drift.
 const MJOBS_PROJECT_ID = 'mjobs';
 const DEFAULT_ENDPOINTS = Object.freeze({
-  mjobs: 'http://127.0.0.1:8787',
+  mjobs: 'http://127.0.0.1:4320/fleet',
   babytracker: 'http://127.0.0.1:4319'
 });
 const {readMJobsProgress,babyProgress,mjobsLifecycle,mjobsPipeline,readMJobsReviewCandidates}=require('./progress');
@@ -14,10 +14,10 @@ const LIMIT_PROFILES=Object.freeze({
 
 function loopbackEndpoint(value) {
   const url = new URL(value);
-  if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(url.hostname) || url.username || url.password || url.search || url.hash || url.pathname !== '/') {
+  if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost'].includes(url.hostname) || url.username || url.password || url.search || url.hash || !['/','/fleet'].includes(url.pathname)) {
     throw Error('Controller endpoints must be plain loopback HTTP origins');
   }
-  return url.origin;
+  return url.origin+(url.pathname==='/fleet'?'/fleet':'');
 }
 
 function int(value) { return Number.isSafeInteger(value) && value >= 0 ? value : null; }
@@ -126,7 +126,7 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
     if(preview.blocked||!preview.quotaFresh)throw Error('Current controller or quota state blocks one-session Startup');
     if(typeof requestId!=='string'||!/^[A-Za-z0-9._:-]{8,128}$/.test(requestId)||manifestRevision!==preview.manifestRevision||primaryId!==preview.primaryId)
       throw Error('Stable request ID and unchanged one-session binding required');
-    const origin=urls[id],headers={'content-type':'application/json','origin':origin,'host':new URL(origin).host,'x-ao-fleet':'1'};
+    const origin=urls[id],headers={'content-type':'application/json','origin':new URL(origin).origin,'host':new URL(origin).host,'x-ao-fleet':'1'};
     const body={confirm:'STARTUP',requestId,openUi:false,startWorkAfter:false,expectedProjectId:'mjobs-luna',expectedManifestRevision:manifestRevision,boundedPrimaryId:primaryId};
     const response=await fetcher(origin+'/api/startup',{method:'POST',headers,body:JSON.stringify(body),signal:AbortSignal.timeout(10000)});
     const result=await response.json();if(!response.ok||result?.error||result?.ok===false)throw Error(String(result?.error||result?.note||'Controller refused one-session Startup').slice(0,200));
@@ -136,7 +136,7 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
     if (!['mjobs','babytracker'].includes(id)) throw Error('Unknown fleet');
     if (!['pause','graceful-stop'].includes(action)) throw Error('Unknown control action');
     const origin=urls[id];
-    const headers={'content-type':'application/json','origin':origin,'host':new URL(origin).host};
+    const headers={'content-type':'application/json','origin':new URL(origin).origin,'host':new URL(origin).host};
     let path,body;
     if(id==='mjobs') {path=action==='pause'?'/api/master/pause':'/api/master/drain';body=action==='pause'?{}:{confirm:'GRACEFUL STOP'};headers['x-ao-fleet']='1';}
     else {path='/api/action';body={action:action==='pause'?'pause':'drain'};const session=await read(id,'/api/session');if(typeof session.token!=='string'||session.token.length<32)throw Error('BabyTracker action token unavailable');headers['x-babytracker-fleet']=session.token;}
@@ -150,7 +150,7 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
     if(confirmation!==preview.confirmation)throw Object.assign(Error('Exact start confirmation required'),{definitive:true});
     if(preview.blocked)throw Object.assign(Error('Current controller or quota state blocks start: '+preview.blockedReasons.join('; ')),{definitive:true});
     if(typeof requestId!=='string'||!/^[A-Za-z0-9._:-]{8,128}$/.test(requestId))throw Object.assign(Error('Stable request ID required'),{definitive:true});
-    const origin=urls[id];const headers={'content-type':'application/json','origin':origin,'host':new URL(origin).host};
+    const origin=urls[id];const headers={'content-type':'application/json','origin':new URL(origin).origin,'host':new URL(origin).host};
     let route,body;
     if(id==='mjobs'){
       route='/api/run/start';body={requestId};headers['x-ao-fleet']='1';
@@ -190,7 +190,7 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
     const current=await limits(id),chosen=current.profiles.find(p=>p.key===profile);
     if(!current.editable)throw Error(current.reason);
     if(keys.some(key=>chosen.values[key]!==expected[key]))throw Error('Native limits changed since preview');
-    const origin=urls[id],headers={'content-type':'application/json','origin':origin,'host':new URL(origin).host};
+    const origin=urls[id],headers={'content-type':'application/json','origin':new URL(origin).origin,'host':new URL(origin).host};
     let body=values;if(id==='babytracker'){
       const session=await read(id,'/api/session');if(typeof session.token!=='string'||session.token.length<32)throw Error('BabyTracker action token unavailable');
       headers['x-babytracker-fleet']=session.token;body={action:'limits',limits:values};
@@ -216,7 +216,7 @@ function createAdapters({ endpoints=DEFAULT_ENDPOINTS, fetcher=fetch, progressRe
     if(!['accepted','revision_requested','rejected'].includes(decision)||confirmation!==('ASSESS '+(id==='mjobs'?'MJobs':id==='babytracker'?'BabyTracker':''))||evidenceReviewed!==true)throw Error('Exact assessment and evidence confirmation required');
     const candidates=await reviewCandidates(id,0,3000);
     if(!candidates.supported||!candidates.candidates.some(c=>c.id===candidateId))throw Error('Review candidate is unavailable');
-    const origin=urls[id],headers={'content-type':'application/json','origin':origin,'host':new URL(origin).host};
+    const origin=urls[id],headers={'content-type':'application/json','origin':new URL(origin).origin,'host':new URL(origin).host};
     let route,body;
     if(id==='mjobs'){
       route='/api/sustain/assess-review';body={key:candidateId,decision};headers['x-ao-fleet']='1';

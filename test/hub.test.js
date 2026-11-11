@@ -11,7 +11,7 @@ const fs=require('node:fs');const os=require('node:os');const path=require('node
 const http=require('node:http');
 
 function fixture(){const calls=[];const fetcher=async(url,options={})=>{calls.push({url,options});
-  if(url.endsWith('/api/state')&&url.includes(':8787'))return {ok:true,json:async()=>({projectId:'mjobs',sessions:[{id:'a'}],summary:{total:1,working:0,idle:1,idlePending:0,ciAttention:0}})};
+  if(url.endsWith('/api/state')&&url.includes('/fleet/'))return {ok:true,json:async()=>({projectId:'mjobs',sessions:[{id:'a'}],summary:{total:1,working:0,idle:1,idlePending:0,ciAttention:0}})};
   if(url.endsWith('/api/master'))return {ok:true,json:async()=>({dispatch:{sustainedEnabled:false,turboEnabled:false},emergency:{latched:false,scope:'machine'},drain:{enabled:true}})};
   if(url.endsWith('/api/sustain'))return {ok:true,json:async()=>({workItems:[{state:'approved'},{state:'leased'}],artifactReviews:{ready:1}})};
   if(url.endsWith('/api/run'))return {ok:true,json:async()=>({projectId:'mjobs',phase:'idle',active:false,running:false,primaryId:'mjobs-luna-40',quota:{fresh:true,remainingPercent:46,minimumRemainingPercent:0,blocked:false},blockedReasons:[]})};
@@ -59,7 +59,7 @@ test('project-specific limits require paused controllers, exact revision and nat
   const mjobs=(await api.limits('mjobs')).profiles[0];mjobsEnabled=true;
   await assert.rejects(api.saveLimits('mjobs','sustain',{targetWorking:13,maxDispatchPerTick:2},mjobs.values,'SAVE mjobs sustain'),/Pause MJobs/);
   mjobsEnabled=false;await api.saveLimits('mjobs','sustain',{targetWorking:13,maxDispatchPerTick:2},mjobs.values,'SAVE mjobs sustain');
-  assert.equal(calls.filter(c=>c.options.method==='POST').at(-1).url,'http://127.0.0.1:8787/api/sustain/config');assert.equal(calls.filter(c=>c.options.method==='POST').at(-1).options.headers['x-ao-fleet'],'1');
+  assert.equal(calls.filter(c=>c.options.method==='POST').at(-1).url,'http://127.0.0.1:4320/fleet/api/sustain/config');assert.equal(calls.filter(c=>c.options.method==='POST').at(-1).options.headers['x-ao-fleet'],'1');
   assert.equal((await api.limits('mjobs')).profiles[1].values.maxActionsPerHour,10);
 });
 
@@ -143,11 +143,11 @@ test('MJobs status overlaps independent native reads instead of serializing five
   const {fetcher}=fixture(),entered=[];
   let release;const gate=new Promise(resolve=>{release=resolve;});
   const api=createAdapters({fetcher:async(url,options)=>{
-    if(url.includes(':8787')){entered.push(new URL(url).pathname);await gate;}
+    if(url.includes('/fleet/')){entered.push(new URL(url).pathname);await gate;}
     return fetcher(url,options);
   },progressReader:()=>({available:false})});
   const result=api.status('mjobs');
-  try{assert.deepEqual(entered.sort(),['/api/state','/api/master','/api/sustain','/api/quota','/api/run'].sort());}
+  try{assert.deepEqual(entered.sort(),['/fleet/api/state','/fleet/api/master','/fleet/api/sustain','/fleet/api/quota','/fleet/api/run'].sort());}
   finally{release();}
   assert.equal((await result).id,'mjobs');
 });
@@ -171,7 +171,7 @@ test('MJobs status projects native run progress and errors while preserving obse
 test('native MJobs controller stays actionable when the AO worker runtime is offline',async()=>{
   const {calls,fetcher}=fixture();
   const api=createAdapters({fetcher:async(url,options)=>{
-    if(url.endsWith('/api/state')&&url.includes(':8787'))return {ok:true,json:async()=>({projectId:'mjobs',offline:true,sessions:[],summary:{total:70,working:null,idle:null}})};
+    if(url.endsWith('/api/state')&&url.includes('/fleet/'))return {ok:true,json:async()=>({projectId:'mjobs',offline:true,sessions:[],summary:{total:70,working:null,idle:null}})};
     if(url.endsWith('/api/run'))return {ok:true,json:async()=>({projectId:'mjobs',phase:'blocked',active:false,running:false,error:'Outer MJobs checkout was not clean',quota:{fresh:true,remainingPercent:80,minimumRemainingPercent:7,blocked:false},blockedReasons:[]})};
     return fetcher(url,options);
   },progressReader:()=>({available:false})});
@@ -245,10 +245,10 @@ test('pause targets only the selected controller',async()=>{
   assert.equal(calls.at(-1).url,'http://127.0.0.1:4319/api/action');
   assert.equal(JSON.parse(calls.at(-1).options.body).action,'pause');
   assert.equal(calls.at(-1).options.headers['x-babytracker-fleet'],'x'.repeat(64));
-  await api.pause('mjobs');assert.equal(calls.at(-1).url,'http://127.0.0.1:8787/api/master/pause');
+  await api.pause('mjobs');assert.equal(calls.at(-1).url,'http://127.0.0.1:4320/fleet/api/master/pause');
   assert.equal(calls.at(-1).options.headers['x-ao-fleet'],'1');
   await assert.rejects(api.pause('other'));
-  await api.control('mjobs','graceful-stop');assert.equal(calls.at(-1).url,'http://127.0.0.1:8787/api/master/drain');
+  await api.control('mjobs','graceful-stop');assert.equal(calls.at(-1).url,'http://127.0.0.1:4320/fleet/api/master/drain');
   assert.equal(JSON.parse(calls.at(-1).options.body).confirm,'GRACEFUL STOP');
   await api.control('babytracker','graceful-stop');assert.equal(JSON.parse(calls.at(-1).options.body).action,'drain');
   await assert.rejects(api.control('babytracker','start'));
@@ -260,10 +260,10 @@ test('Start uses native simple run routes, stable request IDs and project action
   await assert.rejects(api.start('mjobs','START MJobs','bad'),/Stable request ID/);
   assert.equal(calls.filter(x=>x.options.method==='POST').length,0);
   await api.start('mjobs','START MJobs','stable-123');
-  assert.equal(calls.at(-1).url,'http://127.0.0.1:8787/api/run/start');
+  assert.equal(calls.at(-1).url,'http://127.0.0.1:4320/fleet/api/run/start');
   assert.deepEqual(JSON.parse(calls.at(-1).options.body),{requestId:'stable-123'});
   assert.equal(calls.at(-1).options.headers['x-ao-fleet'],'1');
-  assert.equal(calls.at(-1).options.headers.origin,'http://127.0.0.1:8787');
+  assert.equal(calls.at(-1).options.headers.origin,'http://127.0.0.1:4320');
   await assert.rejects(api.start('babytracker','wrong','stable-124'));
   await api.start('babytracker','START BabyTracker','stable-124');
   assert.deepEqual(JSON.parse(calls.at(-1).options.body),{action:'simpleStart',requestId:'stable-124'});
@@ -341,7 +341,7 @@ test('one assessment interface binds each controller and refuses BabyTracker bef
   await assert.rejects(api.assessReview('babytracker','task-1','accepted','ASSESS BabyTracker',true,48,101),/unavailable/);
   assert.equal(calls.filter(x=>x.options.method==='POST').length,0);
   await api.assessReview('mjobs',key,'accepted','ASSESS MJobs',true);
-  assert.equal(calls.at(-1).url,'http://127.0.0.1:8787/api/sustain/assess-review');
+  assert.equal(calls.at(-1).url,'http://127.0.0.1:4320/fleet/api/sustain/assess-review');
   assert.deepEqual(JSON.parse(calls.at(-1).options.body),{key,decision:'accepted'});
   assert.equal(calls.at(-1).options.headers['x-ao-fleet'],'1');
   const supported=createAdapters({reviewReader,fetcher:async(url,options)=>{

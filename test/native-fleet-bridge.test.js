@@ -51,7 +51,7 @@ test('full native route comes directly from the controller with safe asset rebas
     const state=await (await fetch(base+'/fleet/api/state')).json();
     assert.equal(state.projectId,'mjobs-luna');
     assert.deepEqual(f.calls.map(c=>c.url),[NATIVE_ORIGIN+'/',NATIVE_ORIGIN+'/app.js',NATIVE_ORIGIN+'/api/state']);
-    assert.ok(f.calls.every(c=>c.options.headers.Host==='127.0.0.1:8787'&&!('Cookie' in c.options.headers)));
+    assert.ok(f.calls.every(c=>c.options.headers.Host==='127.0.0.1:4320'&&!('Cookie' in c.options.headers)));
   });
 });
 
@@ -99,4 +99,26 @@ test('Cloudflare-protected remote path refuses missing owner assertion before na
     assert.equal(good.status,200);
     assert.equal(f.calls.length,2);
   });
+});
+
+test('embedded controller serves fleet requests in-process without any other listener',async()=>{
+  const calls=[];let forwarded=0;
+  const bridge=createNativeFleetBridge({hubPort:4352,fetcher:async()=>{forwarded++;throw Error('Network forwarding forbidden');},
+    handler:async(req,res)=>{
+      calls.push({url:req.url,host:req.headers.host,origin:req.headers.origin,base:req.embeddedFleetBasePath});
+      if(req.method==='POST'){const chunks=[];for await(const chunk of req)chunks.push(chunk);assert.equal(Buffer.concat(chunks).toString(),'{}');}
+      res.writeHead(200,{'content-type':'application/json'});res.end(JSON.stringify({ok:true,embedded:true}));
+    }});
+  await withHub(4352,{nativeFleetBridge:bridge},async base=>{
+    const state=await fetch(base+'/fleet/api/state');
+    assert.equal(state.status,200);assert.equal((await state.json()).embedded,true);
+    const invalid=await rawRequest(4352,'/fleet/api/master/pause',{method:'POST',origin:'https://evil.example',headers:{'content-type':'application/json','x-ao-fleet':'1'},body:'{}'});
+    assert.equal(invalid.status,403);
+    const valid=await rawRequest(4352,'/fleet/api/master/pause',{method:'POST',origin:base,headers:{'content-type':'application/json','x-ao-fleet':'1'},body:'{}'});
+    assert.equal(valid.status,200);
+  });
+  assert.equal(forwarded,0);
+  assert.deepEqual(calls.map(c=>c.url),['/api/state','/api/master/pause']);
+  assert.ok(calls.every(c=>c.host==='127.0.0.1:4352'&&c.base==='/fleet/'));
+  assert.equal(calls[1].origin,'http://127.0.0.1:4352');
 });

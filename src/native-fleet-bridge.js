@@ -2,7 +2,7 @@
 
 // Serve the existing native MJobs UI through the Hub using its authoritative
 // controller. Do not depend on the retired Mission Control compatibility proxy.
-const NATIVE_ORIGIN = 'http://127.0.0.1:8787';
+const NATIVE_ORIGIN = 'http://127.0.0.1:4320';
 const ASSETS = new Set([
   '', 'index.html', 'app.js', 'run-ui.js', 'startup-ui.js', 'startup.css',
   'style.css', 'turbo.css', 'turbo-ui.js', 'sustain-ui.js',
@@ -29,13 +29,15 @@ const WRITES = new Set([
   'api/startup/reconcile', 'api/orchestrator/open', 'api/run/start'
 ]);
 
-function createNativeFleetBridge({fetcher=fetch}={}) {
+function createNativeFleetBridge({fetcher=null,handler=null,hubPort=4320}={}) {
+  if(handler!==null&&typeof handler!=='function')throw Error('Native fleet handler must be a function');
+  if(!Number.isInteger(hubPort)||hubPort<1||hubPort>65535)throw Error('Invalid Hub port');
   let inFlight=0;
   function send(res,code,data) {
     res.writeHead(code,{'Content-Type':'application/json; charset=utf-8'});
     res.end(JSON.stringify(data));
   }
-  return async function nativeFleetBridge(req,res,{url,publicOrigin}) {
+  const bridge=async function nativeFleetBridge(req,res,{url,publicOrigin}) {
     if(url.pathname==='/fleet') {
       res.writeHead(307,{Location:'/fleet/'});
       return res.end();
@@ -56,6 +58,20 @@ function createNativeFleetBridge({fetcher=fetch}={}) {
       if(type!=='application/json')return send(res,415,{error:'JSON action required'});
       if(Number(req.headers['content-length'])>65536)return send(res,413,{error:'Native fleet action is too large'});
     }
+    if(handler){
+      // Invoke the packaged controller in this Hub process. There is no 8787
+      // listener, sidecar server, or external HTTP service in this path.
+      const originalUrl=req.url,originalHeaders=req.headers;
+      req.url='/'+tail;
+      req.headers={...originalHeaders,host:'127.0.0.1:'+hubPort};
+      if(writing)req.headers.origin='http://127.0.0.1:'+hubPort;
+      req.embeddedFleetBasePath='/fleet/';
+      inFlight++;
+      try{return await handler(req,res);}
+      catch{return send(res,503,{error:'Embedded native MJobs controller failed; inspect the Hub process before retrying an action.'});}
+      finally{inFlight--;req.url=originalUrl;req.headers=originalHeaders;delete req.embeddedFleetBasePath;}
+    }
+    if(!fetcher)return send(res,503,{error:'Embedded native MJobs controller unavailable'});
     let body;
     if(writing) {
       const chunks=[];let size=0;
@@ -68,7 +84,7 @@ function createNativeFleetBridge({fetcher=fetch}={}) {
     }
     inFlight++;
     try {
-      const headers={Host:'127.0.0.1:8787'};
+      const headers={Host:new URL(NATIVE_ORIGIN).host};
       if(writing)Object.assign(headers,{'Content-Type':'application/json','X-AO-Fleet':'1',Origin:NATIVE_ORIGIN});
       const upstream=await fetcher(NATIVE_ORIGIN+'/'+tail,{
         method,headers,body,redirect:'manual',signal:AbortSignal.timeout(writing?95000:10000)
@@ -96,5 +112,7 @@ function createNativeFleetBridge({fetcher=fetch}={}) {
       return send(res,503,{error:writing?'Native action outcome is unknown; inspect the local controller before retrying.':'Native MJobs Fleet is temporarily unavailable.'});
     }finally{inFlight--;}
   };
+  bridge.embedded=handler!==null;
+  return bridge;
 }
 module.exports={createNativeFleetBridge,ASSETS,READS,WRITES,NATIVE_ORIGIN};

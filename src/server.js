@@ -36,7 +36,7 @@ function makeServer({adapters=createAdapters(),services=createServiceLaunchpad()
       if(url.pathname==='/babytracker'||url.pathname.startsWith('/babytracker/'))
         return await babyTrackerBridge(req,res,{url,publicOrigin:remoteRequest?'https://'+remote.hostname:'http://'+host});
       if(req.method==='GET') {
-        if(url.pathname==='/api/health')return json(200,{ok:true,service:'fleet-control-hub',version:2,nativeFleetOrigin:'controller:8787',acceptanceSource:'local-canonical-matrices'});
+        if(url.pathname==='/api/health')return json(200,{ok:true,service:'fleet-control-hub',version:2,nativeFleetOrigin:nativeFleetBridge.embedded?'embedded:in-process':'unavailable',acceptanceSource:'local-canonical-matrices'});
         if(url.pathname==='/api/session')return json(200,{token});
         if(url.pathname==='/api/status')return json(200,{observedAt:new Date().toISOString(),fleets:await Promise.all(['mjobs','babytracker'].map(adapters.status))});
         if(url.pathname==='/api/projects')return json(200,{projects:registry.list({includeLocalPaths:!remoteRequest}),observedAt:new Date().toISOString(),controllerRegistration:'explicit-adapter-required'});
@@ -99,5 +99,20 @@ function makeServer({adapters=createAdapters(),services=createServiceLaunchpad()
   });
   return server;
 }
-if(require.main===module){const server=makeServer({development:createMJobsDevelopment({historyFile:defaultHistoryFile()})});server.listen(Number(process.env.FLEET_HUB_PORT||4320),'127.0.0.1',()=>process.stdout.write('Fleet hub on http://127.0.0.1:'+server.address().port+'\n'));}
+if(require.main===module){
+ const listenPort=Number(process.env.FLEET_HUB_PORT||4320);
+ // The native controller is a module owned by the Hub, not an HTTP service on 8787.
+ // The optional persistent runtime directory preserves the existing MJobs safety state.
+ process.env.FLEET_DASHBOARD_PORT=String(listenPort);
+ const nativeRoot=process.env.FLEET_MJOBS_RUNTIME_DIR||path.join(__dirname,'..','packages','mjobs-controller');
+ const {handleRequest}=require(path.join(nativeRoot,'server.js'));
+ if(typeof handleRequest!=='function')throw Error('MJobs controller must export handleRequest; install the verified controller package first');
+ const server=makeServer({
+  nativeFleetBridge:createNativeFleetBridge({handler:handleRequest,hubPort:listenPort}),
+  adapters:createAdapters({endpoints:{mjobs:'http://127.0.0.1:'+listenPort+'/fleet',babytracker:'http://127.0.0.1:4319'}}),
+  development:createMJobsDevelopment({historyFile:defaultHistoryFile()}),
+  port:listenPort
+ });
+ server.listen(listenPort,'127.0.0.1',()=>process.stdout.write('Fleet hub with embedded MJobs on http://127.0.0.1:'+server.address().port+'\n'));
+}
 module.exports={makeServer};

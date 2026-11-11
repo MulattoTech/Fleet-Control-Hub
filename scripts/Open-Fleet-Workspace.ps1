@@ -1,19 +1,18 @@
 param(
   [switch]$NoBrowser,
-  [ValidateSet('BabyTracker - Fleet Control','MJobs Fleet - Dashboards Standard','Fleet Control Hub')]
-  [ValidateCount(3,3)][string[]]$DashboardTaskNames = @('BabyTracker - Fleet Control','MJobs Fleet - Dashboards Standard','Fleet Control Hub'),
+  [ValidateSet('BabyTracker - Fleet Control','Fleet Control Hub')]
+  [ValidateCount(2,2)][string[]]$DashboardTaskNames = @('BabyTracker - Fleet Control','Fleet Control Hub'),
   [ValidatePattern('^\\(?:[^\\:*?"<>|\x00-\x1f]+\\)*$')][string]$DashboardTaskPath = '\',
   [ValidateRange(1024,65535)][int]$HubPort = 4320,
   [ValidateRange(1024,65535)][int]$BabyTrackerPort = 4319,
-  [ValidateRange(1024,65535)][int]$MJobsFleetPort = 8787,
   [ValidateRange(2,20)][int]$ReadyTimeoutSeconds = 20
 )
-# Start/reuse dashboard tasks only: no Mission Control bridge, agents, controller
-# action POSTs, process takeover, task registration, or automatic retries.
+# One Hub task owns Fleet Control and its embedded MJobs controller.
+# No separate native dashboard task or legacy HTTP listener is launched.
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
-if (@($DashboardTaskNames | Select-Object -Unique).Count -ne 3) { throw 'Choose each dashboard task exactly once.' }
-if (@(@($HubPort,$BabyTrackerPort,$MJobsFleetPort) | Select-Object -Unique).Count -ne 3) { throw 'Dashboard ports must be distinct.' }
+if (@($DashboardTaskNames | Select-Object -Unique).Count -ne 2) { throw 'Choose each dashboard task exactly once.' }
+if ($HubPort -eq $BabyTrackerPort) { throw 'Dashboard ports must be distinct.' }
 $hubUrl = "http://127.0.0.1:$HubPort/"
 $frequency = [Diagnostics.Stopwatch]::Frequency
 function New-Deadline([int]$Seconds) { return [Diagnostics.Stopwatch]::GetTimestamp() + $Seconds * $frequency }
@@ -28,17 +27,15 @@ function Test-Dashboard([string]$Name,[long]$Deadline = 0) {
       $page = Invoke-WebRequest -UseBasicParsing -Uri $hubUrl -TimeoutSec 1 -MaximumRedirection 0 -ErrorAction Stop
       if ($page.StatusCode -ne 200 -or $page.Content -notmatch 'id="fleets"' -or $page.Content -notmatch 'id="mission-control"') { return $false }
       $health = Read-Health "$($hubUrl)api/health" $Deadline
+      $native = Read-Health "$($hubUrl)fleet/api/health" $Deadline
       return ($health.ok -eq $true -and $health.service -eq 'fleet-control-hub' -and
-        $health.nativeFleetOrigin -eq 'controller:8787' -and $health.acceptanceSource -eq 'local-canonical-matrices')
+        $health.nativeFleetOrigin -eq 'embedded:in-process' -and $health.acceptanceSource -eq 'local-canonical-matrices' -and
+        $native.ok -eq $true -and $native.port -eq $HubPort)
     } catch { return $false }
   }
   if ($Name -eq 'BabyTracker - Fleet Control') {
     $health = Read-Health "http://127.0.0.1:$BabyTrackerPort/api/health" $Deadline
     return $health.status -eq 'ok' -and $health.spendingOnPageLoad -eq $false
-  }
-  if ($Name -eq 'MJobs Fleet - Dashboards Standard') {
-    $health = Read-Health "http://127.0.0.1:$MJobsFleetPort/api/health" $Deadline
-    return $health.ok -eq $true
   }
   throw "Unknown dashboard identity: $Name"
 }

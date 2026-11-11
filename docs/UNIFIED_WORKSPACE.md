@@ -5,15 +5,15 @@
 | View | Local entry | Owner-protected remote entry | Authority |
 | --- | --- | --- | --- |
 | Fleet Overview | `127.0.0.1:4320/` | `fleet.m-techlabs.com/` | MJobs + BabyTracker summary and scoped controls |
-| MJobs native Fleet | `127.0.0.1:4320/fleet/` (`8787` direct fallback) | `fleet.m-techlabs.com/fleet/` | MJobs controller on `8787`, relayed directly by the Hub |
+| MJobs native Fleet | `127.0.0.1:4320/fleet/` | `fleet.m-techlabs.com/fleet/` | Native MJobs controller embedded in Hub 4320; no independent HTTP service |
 | BabyTracker native Fleet | `127.0.0.1:4319/` or `127.0.0.1:4320/babytracker/` | `fleet.m-techlabs.com/babytracker/` (owner Access) | BabyTracker controller only |
 | Mission evidence API | `127.0.0.1:18726/` (separate optional operator tool) | `m-techlabs.com/mission-control/` reports read-only status | Verified Mission supervisor; Hub acceptance reads canonical matrices itself |
 | Fleet Atlas / Grafana | `127.0.0.1:20800/mission-control/analytics/` / `127.0.0.1:18731/mission-control/grafana/` | `m-techlabs.com/mission-control/analytics/` / `.../grafana/` | Sanitized analytics, no fleet commands |
 
 The return-to-overview link stays visible on native Fleet desktop and mobile
-views. Native fleet assets and allowlisted controls now travel directly from
-controller `8787` to Hub `4320`; neither the native Hub route nor its canonical
-acceptance reader contacts the deprecated `18729` Python proxy.
+views. Native MJobs assets and allowlisted controls now execute inside the
+Hub's own Node process on `4320`; neither its fleet controls nor canonical
+acceptance reader contacts the deprecated `18729` or `8787` listeners.
 The protected `/fleet/` copy returns to its authenticated Hub origin.
 BabyTracker likewise uses relative assets and API paths so the identical native
 UI works directly on port 4319 and under the protected `/babytracker/` Hub path.
