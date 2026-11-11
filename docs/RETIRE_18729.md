@@ -1,4 +1,6 @@
-# Fleet Control port 18729 retirement · guarded cutover
+# Fleet Control port 18729 retirement · historical guarded cutover
+
+**Superseded by [4320 standalone cutover](4320_STANDALONE.md).** The ownership and fallback details below describe the earlier intermediate migration through 8787. Current source embeds native MJobs directly in Hub 4320. Do not follow the old standalone 8787 startup instructions.
 
 ## New ownership
 

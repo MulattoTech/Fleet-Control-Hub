@@ -63,31 +63,31 @@ Cloudflare Tunnel ingress must not be replaced by repository source copying.
 The Hub remains a lightweight Node-powered web interface. Dashboard load, refresh and server restart do not launch agents. Do not copy controller runtime state from this repository when deploying.
 
 
-## One native MJobs Fleet UI, two entry points
+## Standalone native MJobs controls on 4320
 
-The **Full agent controls** link opens `/fleet/`, which relays the installed, guarded
-Mission Control UI at `127.0.0.1:18729/fleet/`. Its HTML, JavaScript, CSS and
-native API response bodies are passed through unchanged; there is no second
-copy of agent operations to maintain.
+**The Hub process now embeds the native MJobs controller.** Its `/fleet/` UI,
+`/fleet/api/*` endpoints, and shared MJobs controls use the same Node process
+and its existing safety gates. No 18729 or 8787 listener is required.
 
 | Access | Address |
 | --- | --- |
-| Direct original MJobs UI | `http://127.0.0.1:18729/fleet/` |
-| Full controls through local Hub | `http://127.0.0.1:4320/fleet/` |
-| Same full controls through Cloudflare Access | `https://fleet.m-techlabs.com/fleet/` |
-| Simple shared overview (same Node application) | `http://127.0.0.1:4320/` or `https://fleet.m-techlabs.com/` |
+| Full native MJobs controls | `http://127.0.0.1:4320/fleet/` |
+| Protected remote controls | `https://fleet.m-techlabs.com/fleet/` |
+| Fleet overview and delivery | `http://127.0.0.1:4320/` or `https://fleet.m-techlabs.com/` |
 
-The remote bridge preserves the Hub's existing owner-verified Access gate. It
-accepts only fixed native routes, checks same-origin and native action headers
-on writes, forwards no browser cookies or Access JWTs to the native endpoint,
-and never automatically retries a write. The native Mission Control proxy
-retains its own loopback restrictions, route allowlist and native action guards.
-A backend or tunnel outage reports unavailability; it never starts agents.
+The native controller code is packaged and digest-verified here; its mutable
+runtime state remains outside Git in a persistent directory. Set
+`FLEET_MJOBS_RUNTIME_DIR` to that installed directory on the production
+launcher. Native controller source must be installed with the verified
+source-only package installer while the old independent controller is stopped.
+This preserves quota, restore, emergency, and dispatch state across releases.
+Without the required persisted snapshot, native status fails closed.
 
-Status reads for separate native endpoints run concurrently for lower latency.
-Click feedback appears immediately, but **Running** still requires native
-verification. Native route updates require review of the Hub allowlist before
-new capabilities can be exposed remotely. This is a deliberate security gate.
+The Hub verifies Cloudflare Access before dispatching a remote native request,
+allows only enumerated GET/POST routes, and enforces same-origin JSON actions
+and the native action header. **Starting a dashboard does not authorize work.**
+The standalone cutover/rollback procedure is in
+[docs/4320_STANDALONE.md](docs/4320_STANDALONE.md).
 
 ## Fleet UI 1.0
 

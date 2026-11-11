@@ -733,7 +733,12 @@ async function main(req,res){
  const file=assets[item];
  if(!file)return json(res,404,{error:'Not found'});
  try{
-  const data=fs.readFileSync(path.join(publicRoot,file));
+  let data=fs.readFileSync(path.join(publicRoot,file));
+  if(file==='index.html'&&req.embeddedFleetBasePath==='/fleet/'){
+   const known=new Set(Object.values(assets));
+   data=Buffer.from(data.toString('utf8').replace(/\b(src|href)="\/([^"?#]*)"/g,(match,attr,name)=>
+    !name||known.has(name)?`${attr}="/fleet/${name}"`:match),'utf8');
+  }
   const mime=file.endsWith('.js')?'application/javascript; charset=utf-8':file.endsWith('.css')?'text/css; charset=utf-8':'text/html; charset=utf-8';
   res.writeHead(200,{'Content-Type':mime,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'self'; style-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'","Referrer-Policy":'no-referrer'});
   res.end(data);
@@ -782,5 +787,11 @@ findWork=new FindWork({root,getState:state,command,audit,guard:()=>{
  if(master?.restore?.state?.active)return 'Fleet restoration is active';
  return quota?.dispatchBlockReason()||startupBlockReason()||null;
 }});
-const server=http.createServer((req,res)=>{main(req,res).catch(e=>json(res,500,{error:e.message}))});
-server.listen(port,listenHost,()=>console.log('MJobs Fleet Control listening on http://'+listenHost+':'+port));
+async function handleRequest(req,res){
+ try{return await main(req,res);}catch(e){return json(res,500,{error:String(e.message).slice(0,200)});}
+}
+if(require.main===module){
+ const server=http.createServer(handleRequest);
+ server.listen(port,listenHost,()=>console.log('MJobs Fleet Control listening on http://'+listenHost+':'+port));
+}
+module.exports={handleRequest};
