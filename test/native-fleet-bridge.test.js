@@ -122,3 +122,15 @@ test('embedded controller serves fleet requests in-process without any other lis
   assert.ok(calls.every(c=>c.host==='127.0.0.1:4352'&&c.base==='/fleet/'));
   assert.equal(calls[1].origin,'http://127.0.0.1:4352');
 });
+
+test('legacy MJobs startup entry points only reuse embedded Fleet Hub',()=>{
+  const fs=require('node:fs'),path=require('node:path');
+  const root=path.join(__dirname,'..','packages','mjobs-controller');
+  const launcher=fs.readFileSync(path.join(root,'Start-Fleet-Control.ps1'),'utf8');
+  const installer=fs.readFileSync(path.join(root,'Install-Fleet-Dashboard-Task.ps1'),'utf8');
+  assert.match(launcher,/Fleet Control Hub/);
+  assert.match(launcher,/embedded:in-process/);
+  assert.match(installer,/separateMJobsTaskRegistered=\$false/);
+  assert.doesNotMatch(launcher,/8787|18729|Start-Process\s+-FilePath\s+\$node|AO-Fleet-Control\\server\.js/);
+  assert.doesNotMatch(installer,/8787|18729|Register-ScheduledTask/);
+});
