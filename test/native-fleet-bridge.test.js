@@ -13,15 +13,15 @@ async function withHub(port,options,run){
 }
 function fixture(){
   const calls=[];
-  const html=Buffer.from('<!doctype html><title>Native MJobs Fleet</title><script defer src="/fleet/app.js"></script>');
+  const html=Buffer.from('<!doctype html><title>Native MJobs Fleet</title><script defer src="/app.js"></script><a href="/">Home</a><a href="/unlisted">Other</a>');
   const js=Buffer.from('window.nativeFleetMarker="native";');
   const fetcher=async (url,options)=>{
     calls.push({url,options});
     const path=new URL(url).pathname;
-    if(path==='/fleet/')return new Response(html,{status:200,headers:{'content-type':'text/html; charset=utf-8','content-security-policy':"default-src 'self'; script-src 'self'; connect-src 'self'"}});
-    if(path==='/fleet/app.js')return new Response(js,{status:200,headers:{'content-type':'application/javascript; charset=utf-8'}});
-    if(path==='/fleet/api/state')return Response.json({projectId:'mjobs-luna',sessions:[]});
-    if(path==='/fleet/api/master/pause')return Response.json({ok:true});
+    if(path==='/')return new Response(html,{status:200,headers:{'content-type':'text/html; charset=utf-8','content-security-policy':"default-src 'self'; script-src 'self'; connect-src 'self'"}});
+    if(path==='/app.js')return new Response(js,{status:200,headers:{'content-type':'application/javascript; charset=utf-8'}});
+    if(path==='/api/state')return Response.json({projectId:'mjobs-luna',sessions:[]});
+    if(path==='/api/master/pause')return Response.json({ok:true});
     throw Error('Unexpected upstream route');
   };
   return {calls,fetcher,html,js};
@@ -35,20 +35,23 @@ function rawRequest(port,path,{method='GET',host,origin,access,headers={},body}=
   });
 }
 
-test('full native route is proxied byte-for-byte on the local Hub without changing backend identity',async()=>{
+test('full native route comes directly from the controller with safe asset rebasing',async()=>{
   const f=fixture();
   await withHub(4342,{nativeFleetBridge:createNativeFleetBridge({fetcher:f.fetcher})},async base=>{
     const redirect=await fetch(base+'/fleet',{redirect:'manual'});
     assert.equal(redirect.status,307);assert.equal(redirect.headers.get('location'),'/fleet/');
     const page=await fetch(base+'/fleet/');assert.equal(page.status,200);
-    assert.deepEqual(Buffer.from(await page.arrayBuffer()),f.html);
+    const rendered=Buffer.from(await page.arrayBuffer()).toString();
+    assert.match(rendered,/src="\/fleet\/app\.js"/);
+    assert.match(rendered,/href="\/fleet\/"/);
+    assert.match(rendered,/href="\/unlisted"/);
     assert.match(page.headers.get('content-security-policy'),/script-src 'self'/);
     const script=await fetch(base+'/fleet/app.js');
     assert.deepEqual(Buffer.from(await script.arrayBuffer()),f.js);
     const state=await (await fetch(base+'/fleet/api/state')).json();
     assert.equal(state.projectId,'mjobs-luna');
-    assert.deepEqual(f.calls.map(c=>c.url),[NATIVE_ORIGIN+'/fleet/',NATIVE_ORIGIN+'/fleet/app.js',NATIVE_ORIGIN+'/fleet/api/state']);
-    assert.ok(f.calls.every(c=>c.options.headers.Host==='127.0.0.1:18729'&&!('Cookie' in c.options.headers)));
+    assert.deepEqual(f.calls.map(c=>c.url),[NATIVE_ORIGIN+'/',NATIVE_ORIGIN+'/app.js',NATIVE_ORIGIN+'/api/state']);
+    assert.ok(f.calls.every(c=>c.options.headers.Host==='127.0.0.1:8787'&&!('Cookie' in c.options.headers)));
   });
 });
 

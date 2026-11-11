@@ -16,8 +16,10 @@ Local Orchestrator.inc controls for MJobs, with a shared entry point in Mission 
 
 ## Open and start
 
-- Mission Control: http://127.0.0.1:18729/
-- Fleet controls on the same browser port: http://127.0.0.1:18729/fleet/
+- Unified Fleet Hub: http://127.0.0.1:4320/
+- MJobs Fleet controls: http://127.0.0.1:4320/fleet/ (native controller 8787)
+- Mission-only evidence and launcher API: http://127.0.0.1:18726/ (separate service)
+- Port 18729 is retired; never use it as a startup or control dependency.
 - Direct fallback: http://127.0.0.1:8787/
 - Desktop shortcut: **MJobs Fleet Control**.
 - Start the dashboards: `pwsh -NoProfile -File C:\Tools\AO-Fleet-Control\Start-Fleet-Control.ps1 -OpenBrowser`.

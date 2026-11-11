@@ -131,3 +131,21 @@ def test_changed_route_contract_cannot_partially_register(tmp_path):
         module.configure_current_run_proxy(proxy, tmp_path)
     assert "run-ui.js" not in proxy.ASSETS
     assert "api/run" not in proxy.READS
+
+
+def test_retired_port_cannot_be_started(monkeypatch, tmp_path):
+    import sys
+    monkeypatch.setattr(sys, "argv", [
+        "Run-Mission-Control.py", "--root", str(tmp_path),
+        "--port", "18729", "--mission-control",
+    ])
+    with pytest.raises(SystemExit) as failure:
+        module.main()
+    assert failure.value.code == 2
+
+
+def test_direct_mission_port_is_the_only_supported_port():
+    source = SOURCE.read_text(encoding="utf-8")
+    assert 'default=18726' in source
+    assert 'args.port != 18726' in source
+    assert 'port=18726' in source

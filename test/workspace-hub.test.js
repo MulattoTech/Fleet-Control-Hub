@@ -63,11 +63,10 @@ test('mission progress is read-only, not inferred from PRs, and flags mismatched
   assert.equal(project(base).areas[0].total,23);
   assert.equal(project({...base,original:{...base.original,pass:400}}).available,false);
   const calls=[];let time=10000;
-  const reader=createMissionStatus({clock:()=>time,ttlMs:5000,fetcher:async(url,opts)=>{calls.push({url,opts});return {ok:true,json:async()=>base};}});
+  const reader=createMissionStatus({clock:()=>time,ttlMs:5000,reader:async()=>{calls.push(true);return base;}});
   assert.equal((await reader.status()).available,true);await reader.status();assert.equal(calls.length,1);
-  assert.equal(calls[0].url,'http://127.0.0.1:18726/api/progress');
-  assert.equal(calls[0].opts.method,undefined);time+=5000;await reader.status();assert.equal(calls.length,2);
-  const offline=createMissionStatus({fetcher:async()=>{throw Error('offline');}});
+  time+=5000;await reader.status();assert.equal(calls.length,2);
+  const offline=createMissionStatus({reader:async()=>{throw Error('evidence unavailable');}});
   assert.equal((await offline.status()).available,false);
 });
 

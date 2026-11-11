@@ -1,8 +1,8 @@
 'use strict';
 
-// The full MJobs Fleet UI already runs at the local Mission Control service.
-// Relay that exact guarded surface; never copy controller code, state or secrets.
-const NATIVE_ORIGIN = 'http://127.0.0.1:18729';
+// Serve the existing native MJobs UI through the Hub using its authoritative
+// controller. Do not depend on the retired Mission Control compatibility proxy.
+const NATIVE_ORIGIN = 'http://127.0.0.1:8787';
 const ASSETS = new Set([
   '', 'index.html', 'app.js', 'run-ui.js', 'startup-ui.js', 'startup.css',
   'style.css', 'turbo.css', 'turbo-ui.js', 'sustain-ui.js',
@@ -68,18 +68,26 @@ function createNativeFleetBridge({fetcher=fetch}={}) {
     }
     inFlight++;
     try {
-      const headers={Host:'127.0.0.1:18729'};
+      const headers={Host:'127.0.0.1:8787'};
       if(writing)Object.assign(headers,{'Content-Type':'application/json','X-AO-Fleet':'1',Origin:NATIVE_ORIGIN});
-      const upstream=await fetcher(NATIVE_ORIGIN+'/fleet/'+tail,{
+      const upstream=await fetcher(NATIVE_ORIGIN+'/'+tail,{
         method,headers,body,redirect:'manual',signal:AbortSignal.timeout(writing?95000:10000)
       });
       if(upstream.status>=300&&upstream.status<400)
         return send(res,502,{error:'Unexpected native redirect refused'});
-      const bytes=Buffer.from(await upstream.arrayBuffer());
+      let bytes=Buffer.from(await upstream.arrayBuffer());
       if(bytes.length>2*1024*1024)return send(res,502,{error:'Native response exceeds safe size'});
       const type=upstream.headers.get('content-type')||'application/octet-stream';
       if(!/^(text\/html|text\/css|text\/plain|application\/(json|javascript)|text\/javascript)(;|$)/i.test(type))
         return send(res,502,{error:'Native response type refused'});
+      if(/^text\/html(?:;|$)/i.test(type)){
+        // Native HTML uses root-relative assets. Rewrite only known assets so
+        // the browser stays under the Hub's authenticated /fleet/ boundary.
+        const html=bytes.toString('utf8').replace(/\b(src|href)="\/([^"?#]*)"/g,(match,attr,asset)=>
+          ASSETS.has(asset)?`${attr}="/fleet/${asset}"`:match);
+        bytes=Buffer.from(html,'utf8');
+        if(bytes.length>2*1024*1024)return send(res,502,{error:'Native response exceeds safe size'});
+      }
       const csp=upstream.headers.get('content-security-policy');
       if(csp)res.setHeader('Content-Security-Policy',csp);
       res.writeHead(upstream.status,{'Content-Type':type,'Cache-Control':'no-store'});

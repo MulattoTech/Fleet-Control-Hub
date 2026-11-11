@@ -1,10 +1,8 @@
 param([switch]$OpenBrowser)
 $ErrorActionPreference='Stop'
 $root='C:\Tools\AO-Fleet-Control'
-$repo='C:\Tools\Dev\MJobs'
 $node='C:\Program Files\nodejs\node.exe'
 $fleetHealth='http://127.0.0.1:8787/api/health'
-$missionHealth='http://127.0.0.1:18729/api/launcher/health'
 $destination='http://127.0.0.1:8787/'
 $launchMutex=[System.Threading.Mutex]::new($false,'Local\MJobsFleetDashboardLauncher')
 $ownsMutex=$false
@@ -29,24 +27,11 @@ try {
   if(!$status.ok){throw 'Fleet dashboard failed to start. See server-error.log.'}
   Write-Host "Started Fleet dashboard with PID $($fleetProcess.Id)"
  }
- $mission=Read-Health $missionHealth
- if(!$mission -and !(Get-NetTCPConnection -LocalPort 18729 -State Listen -ErrorAction SilentlyContinue)){
-  $python=Join-Path $repo '.venv\Scripts\python.exe'
-  if(Test-Path $python){
-   $missionArgs=@('-m','tools.agent_dashboard.server','--root',$repo,'--port','18729','--no-open','--mission-control')
-   if((Test-Path (Join-Path $root 'Run-Mission-Control.py')) -and (Test-Path (Join-Path $root 'mission-runtime\source-manifest.json'))){$missionArgs=@((Join-Path $root 'Run-Mission-Control.py'),'--root',$repo,'--port','18729','--no-open','--mission-control')}
-   $missionProcess=Start-Process -FilePath $python -ArgumentList $missionArgs -WorkingDirectory $repo -RedirectStandardOutput (Join-Path $root 'mission-control.log') -RedirectStandardError (Join-Path $root 'mission-control-error.log') -WindowStyle Hidden -PassThru
-   foreach($attempt in 1..18){
-    Start-Sleep -Milliseconds 400
-    $mission=Read-Health $missionHealth
-    if($mission){break}
-   }
-  }
- }
- if($mission.service -eq 'mjobs-mission-control' -and $mission.fleet_control_path -eq '/fleet/'){
-  $destination='http://127.0.0.1:18729/fleet/'
+ $hub=Read-Health 'http://127.0.0.1:4320/api/health'
+ if($hub.ok -eq $true -and $hub.service -eq 'fleet-control-hub' -and $hub.nativeFleetOrigin -eq 'controller:8787'){
+  $destination='http://127.0.0.1:4320/fleet/'
  }else{
-  Write-Warning 'Shared Mission Control route is unavailable; using the direct Fleet dashboard.'
+  Write-Warning 'Updated Fleet Hub is unavailable; use the direct native controller temporarily.'
  }
 }finally{
  if($ownsMutex){$launchMutex.ReleaseMutex()}

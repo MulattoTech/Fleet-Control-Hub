@@ -1,7 +1,9 @@
 'use strict';
 const http=require('node:http');
 const host='127.0.0.1', port=18726;
-const destination='http://127.0.0.1:18729';
+// Retained only as a fail-closed UI alias if an old task accidentally launches.
+// Live Mission API ownership moves to the verified Python service on 18726.
+const destination='http://127.0.0.1:4320';
 const server=http.createServer((req,res)=>{
   if(req.method!=='GET'&&req.method!=='HEAD'){
     res.writeHead(405,{'Allow':'GET, HEAD','Cache-Control':'no-store'});return res.end();
@@ -14,7 +16,11 @@ const server=http.createServer((req,res)=>{
     if(parsed.origin!==destination)throw Error('Other origin');
     path=parsed.pathname+parsed.search;
   }catch{res.writeHead(400,{'Cache-Control':'no-store'});return res.end('Invalid path');}
-  res.writeHead(307,{'Location':destination+path,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
+  if(path.startsWith('/api/')){
+    res.writeHead(410,{'Content-Type':'application/json','Cache-Control':'no-store'});
+    return res.end(JSON.stringify({error:'Legacy redirect API retired; use the current Mission service or Fleet Hub'}));
+  }
+  res.writeHead(307,{'Location':destination+(path==='/'?'/#development-delivery':path),'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
   res.end();
 });
 server.on('error',e=>{console.error('Mission port compatibility failed:',e.code);process.exitCode=1;});

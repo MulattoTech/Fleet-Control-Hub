@@ -1,7 +1,7 @@
 'use strict';
-// The local MJobs Mission Control owns acceptance accounting. Do not infer PASS
-// from PRs, commit counts, controller activity or disconnected local checkouts.
-const ORIGIN='http://127.0.0.1:18726';
+// Local canonical matrices own acceptance accounting; no legacy HTTP dashboard
+// is required. Never infer PASS from PRs, commits or controller activity.
+const {readCanonicalProgress}=require('./canonical-acceptance');
 const SHA=/^[a-f0-9]{40}$/;
 function counts(input){
   if(!input||!['pass','partial','not_run','total'].every(k=>Number.isSafeInteger(input[k])&&input[k]>=0&&input[k]<=10000)||
@@ -16,9 +16,9 @@ function breakdown(input,limit){
   });
 }
 function project(raw){
-  if(raw?.available!==true)return {available:false,reason:'Mission Control has no verified acceptance reading.'};
+  if(raw?.available!==true)return {available:false,reason:'Canonical MJobs acceptance evidence is unavailable.'};
   const original=counts(raw.original),reference=counts(raw.reference);
-  if(!original||!reference)return {available:false,reason:'Mission Control acceptance contract changed.'};
+  if(!original||!reference)return {available:false,reason:'Canonical MJobs acceptance contract changed.'};
   const local=SHA.test(raw.git?.local_main_sha)?raw.git.local_main_sha:null;
   const checkout=SHA.test(raw.git?.checkout_head_sha)?raw.git.checkout_head_sha:null;
   const published=SHA.test(raw.git?.github_main_sha)?raw.git.github_main_sha:null;
@@ -40,17 +40,14 @@ function project(raw){
     githubSynced:synced,localMainSynced,publicationVerified:false,
     source:'Local canonical MJobs matrices (working-tree snapshot)',warning};
 }
-function createMissionStatus({fetcher=fetch,clock=Date.now,ttlMs=5000}={}){
-  let last=0,snapshot={available:false,reason:'Mission Control has not been checked.'},pending;
+function createMissionStatus({reader=readCanonicalProgress,clock=Date.now,ttlMs=5000}={}){
+  let last=0,snapshot={available:false,reason:'Canonical MJobs evidence has not been checked.'},pending;
   async function status(){
     if(pending)return pending;
     if(last&&clock()-last<ttlMs)return snapshot;
     pending=(async()=>{
-      try{
-        const reply=await fetcher(ORIGIN+'/api/progress',{cache:'no-store',signal:AbortSignal.timeout(3500)});
-        if(!reply.ok)throw Error('Mission Control response unavailable');
-        snapshot=project(await reply.json());
-      }catch{snapshot={available:false,reason:'Standalone MJobs Mission Control is offline or its evidence is unavailable.'};}
+      try{snapshot=project(await reader());}
+      catch{snapshot={available:false,reason:'Local canonical MJobs matrices are unavailable or invalid.'};}
       last=clock();pending=null;return snapshot;
     })();return pending;
   }
