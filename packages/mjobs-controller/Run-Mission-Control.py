@@ -68,11 +68,11 @@ def configure_current_run_proxy(proxy, code: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", required=True)
-    parser.add_argument("--port", type=int, default=18729)
+    parser.add_argument("--port", type=int, default=18726)
     parser.add_argument("--no-open", action="store_true")
     parser.add_argument("--mission-control", action="store_true")
     args = parser.parse_args()
-    if args.port != 18729 or not args.mission_control:
+    if args.port != 18726 or not args.mission_control:
         parser.error("This entry point is restricted to the local Mission Control service")
     repo = Path(args.root).resolve()
     if not (repo / "tools").is_dir():
@@ -87,7 +87,7 @@ def main() -> None:
     proxy = importlib.import_module("tools.agent_dashboard.fleet_proxy")
     configure_current_run_proxy(proxy, code)
     import uvicorn
-    uvicorn.run(server.create_app(repo, mission_instance=True), host="127.0.0.1", port=18729, log_level="warning")
+    uvicorn.run(server.create_app(repo, mission_instance=True), host="127.0.0.1", port=18726, log_level="warning")
 
 
 if __name__ == "__main__":

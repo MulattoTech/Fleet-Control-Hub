@@ -39,7 +39,7 @@ hidden Limited scheduled task wrapper, with `MultipleInstances=IgnoreNew`, so du
 dashboard launches do not create duplicate monitors. The exporter itself never starts or
 stops agents. It only writes `status.json` via a same-directory temporary file and rename.
 
-The eight source URLs are hardcoded GETs to ports 8787 and 18729. The two acceptance
+The eight source URLs are hardcoded GETs to ports 8787 and the verified Mission-only API at 18726. No source targets the retired 18729 port. The two acceptance
 sources are `GET /api/progress` for the canonical original/reference and priority
 totals, and `GET /api/progress/campaigns` for the read-only campaign checkpoint. The
 remote page keeps overall acceptance first, then expands priority → requirement →

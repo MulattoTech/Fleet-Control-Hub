@@ -13,10 +13,10 @@ const SOURCES = Object.freeze({
   fleetState: 'http://127.0.0.1:8787/api/state',
   fleetMaster: 'http://127.0.0.1:8787/api/master',
   quota: 'http://127.0.0.1:8787/api/quota',
-  missionHealth: 'http://127.0.0.1:18729/api/launcher/health',
-  missionState: 'http://127.0.0.1:18729/api/state',
-  acceptanceProgress: 'http://127.0.0.1:18729/api/progress',
-  campaignProgress: 'http://127.0.0.1:18729/api/progress/campaigns',
+  missionHealth: 'http://127.0.0.1:18726/api/launcher/health',
+  missionState: 'http://127.0.0.1:18726/api/state',
+  acceptanceProgress: 'http://127.0.0.1:18726/api/progress',
+  campaignProgress: 'http://127.0.0.1:18726/api/progress/campaigns',
 });
 const INTERVAL_MS = 10000;
 const STALE_AFTER_SECONDS = 45;

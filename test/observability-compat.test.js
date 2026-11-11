@@ -5,13 +5,22 @@ const fs=require('node:fs');
 const path=require('node:path');
 const pkg=path.resolve(__dirname,'../packages/mjobs-controller');
 
-test('legacy Mission route is strictly localhost and fixed-target',()=>{
+test('retired Mission redirect cannot route clients to the old Fleet service',()=>{
  const source=fs.readFileSync(path.join(pkg,'Mission-Control-18726-Redirect.js'),'utf8');
  assert.match(source,/const host='127\.0\.0\.1', port=18726/);
- assert.match(source,/const destination='http:\/\/127\.0\.0\.1:18729'/);
+ assert.match(source,/const destination='http:\/\/127\.0\.0\.1:4320'/);
+ assert.match(source,/res\.writeHead\(410/);
+ assert.doesNotMatch(source,/18729/);
  assert.match(source,/server\.listen\(port,host/);
  assert.match(source,/res\.writeHead\(307/);
  assert.doesNotMatch(source,/0\.0\.0\.0/);
+});
+
+test('Mission 18726 supervisor starts verified Python directly, never the retired redirect',()=>{
+ const source=fs.readFileSync(path.join(pkg,'Mission-Control-18726-Hidden.pyw'),'utf8');
+ assert.match(source,/Run-Mission-Control\.py/);
+ assert.match(source,/"--port", "18726"/);
+ assert.doesNotMatch(source,/18729|Mission-Control-18726-Redirect\.js|node\.exe/);
 });
 
 test('Grafana source dashboard contains no stale machine-specific agent list',()=>{

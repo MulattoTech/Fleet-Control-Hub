@@ -36,6 +36,7 @@ function makeServer({adapters=createAdapters(),services=createServiceLaunchpad()
       if(url.pathname==='/babytracker'||url.pathname.startsWith('/babytracker/'))
         return await babyTrackerBridge(req,res,{url,publicOrigin:remoteRequest?'https://'+remote.hostname:'http://'+host});
       if(req.method==='GET') {
+        if(url.pathname==='/api/health')return json(200,{ok:true,service:'fleet-control-hub',version:2,nativeFleetOrigin:'controller:8787',acceptanceSource:'local-canonical-matrices'});
         if(url.pathname==='/api/session')return json(200,{token});
         if(url.pathname==='/api/status')return json(200,{observedAt:new Date().toISOString(),fleets:await Promise.all(['mjobs','babytracker'].map(adapters.status))});
         if(url.pathname==='/api/projects')return json(200,{projects:registry.list({includeLocalPaths:!remoteRequest}),observedAt:new Date().toISOString(),controllerRegistration:'explicit-adapter-required'});
