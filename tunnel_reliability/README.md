@@ -20,8 +20,13 @@ the user's `%LOCALAPPDATA%` and must never be committed.
   two minutes. It waits for MSI/WinGet cloudflared installers and never restarts
   a running connector simply because its network or origin is unhealthy.
 - Restart attempts are limited to three per 30 minutes, separated by five
-  minutes. Disabled/deleted tasks are never re-enabled automatically. Disable
-  the corresponding task before migrating that connector to a new homelab host.
+  minutes. A healthy observation ends the current outage but keeps recent
+  attempts in that rolling window, so a flapping connector cannot reset its
+  restart budget or cooldown. Old attempts expire by age.
+- Disabled/deleted tasks are never re-enabled automatically. For an intentional
+  stop or migration, disable the corresponding tunnel task before stopping its
+  connector. Ending an enabled task leaves it `Ready`; the watchdog treats that
+  as recoverable after the grace period.
 
 ## Installation / verification
 
@@ -59,10 +64,14 @@ No credentials or token contents are written by these scripts.
    and `M-TechLabs - Cloudflare Tunnel Watchdog` are enabled and working.
 4. Read the most recent tunnel log files and watchdog events. If the watchdog
    is rate-limited, fix the underlying issue before triggering a manual restart.
-5. For deliberate connector upgrades, pause the *watchdog* scheduled task
-   before maintenance, perform the upgrade, verify both routes, then re-enable
-   the watchdog. When moving a tunnel to another host, disable its *old*
-   tunnel task so it is not automatically recovered there.
+5. For deliberate connector upgrades, use `Disable-ScheduledTask` on
+   `M-TechLabs - Cloudflare Tunnel Watchdog` before maintenance and wait for any
+   running watchdog invocation to finish. Disabling a task prevents new triggers;
+   it does not stop an invocation already running. Perform the upgrade, verify
+   both routes, then use `Enable-ScheduledTask` to restore watchdog monitoring.
+   When moving a tunnel to another host or intentionally keeping it stopped,
+   disable its *old* tunnel task before stopping its connector so it is not
+   automatically recovered there.
 
 The Cloudflare dashboard can report a tunnel as healthy even when its local
 origin is unreachable; the watchdog separately reports TCP port reachability
