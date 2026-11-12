@@ -153,7 +153,8 @@ def mark_observation(tracked: dict, process_count: int, now: float) -> None:
     """Preserve the beginning of an outage, including after a healthy period."""
     if process_count > 0:
         tracked["missing_since"] = None
-        tracked["attempts"] = []
+        # Recovery ends this outage, but recent attempts still consume the rolling
+        # restart budget and cooldown. check_once expires them by age.
     elif tracked.get("missing_since") is None:
         tracked["missing_since"] = now
 
