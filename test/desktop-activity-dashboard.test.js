@@ -44,3 +44,18 @@ test('Grafana activity counts admit only fresh observations and retain literal z
   assert.match(query.root_selector,/\{'status':'stale_or_unavailable'\}/);
   assert.doesNotMatch(query.root_selector,/\|\|\s*0|\?:\s*0/);
 });
+
+test('Grafana shows project-scoped slices from fresh sanitized exports',()=>{
+  const panel=panels.find(item=>item.title==='Codex Desktop activity · recent slices');
+  assert.ok(panel);
+  const query=panel.targets[0];
+  assert.equal(query.url,'http://fleet-analytics-data:8080/desktop-activity.json');
+  assert.equal(query.url_options.method,'GET');
+  assert.match(query.root_selector,/\$rows\[status = 'fresh'\]/);
+  assert.match(query.root_selector,/'project_id': \$project\.project_id/);
+  assert.match(query.root_selector,/no_recent_slices/);
+  assert.match(query.root_selector,/stale_or_unavailable/);
+  assert.deepEqual(query.columns.map(column=>column.selector),
+    ['project_id','status','label','role','latest_activity_utc','observed_at','age_seconds']);
+  assert.doesNotMatch(query.root_selector,/session_id|workspace_path|transcript/);
+});

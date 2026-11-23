@@ -384,6 +384,34 @@ source_health["fieldConfig"]["overrides"] = [{
         },
     }]}],
 }]
+panel(
+    "Codex Desktop activity · recent slices",
+    "table",
+    0,
+    73,
+    24,
+    8,
+    desktop_activity_query(
+        "(" + desktop_freshness + "$live := $rows[status = 'fresh']; "
+        "$slices := $live.($project := $; slices.{"
+        "'project_id': $project.project_id, 'status': $project.status, "
+        "'observed_at': $project.observed_at, 'age_seconds': $project.age_seconds, "
+        "'label': label, 'role': role, 'latest_activity_utc': latest_activity_utc"
+        "}); "
+        "$count($slices) > 0 ? [$slices] : "
+        "[{'status': $count($live) > 0 ? 'no_recent_slices' : 'stale_or_unavailable'}])",
+        [
+            ("project_id", "Project", "string"),
+            ("status", "Source status", "string"),
+            ("label", "Slice", "string"),
+            ("role", "Role", "string"),
+            ("latest_activity_utc", "Last slice activity", "timestamp"),
+            ("observed_at", "Observed at", "timestamp"),
+            ("age_seconds", "Age (seconds)", "number"),
+        ],
+    ),
+    description="Recent slice activity from fresh project observations. Slice labels are temporary and carry no session identifiers.",
+)
 PANELS.sort(key=lambda item: (item["gridPos"]["y"], item["gridPos"]["x"]))
 # Provision a portable placeholder. The existing observer refreshes the choices
 # only after validating a live native source for this installation.

@@ -1862,6 +1862,104 @@
         },
         "sortBy": []
       }
+    },
+    {
+      "id": 23,
+      "title": "Codex Desktop activity \u00b7 recent slices",
+      "description": "Recent slice activity from fresh project observations. Slice labels are temporary and carry no session identifiers.",
+      "type": "table",
+      "gridPos": {
+        "x": 0,
+        "y": 73,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "fleet-native"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "fleet-native"
+          },
+          "type": "json",
+          "source": "url",
+          "url": "http://fleet-analytics-data:8080/desktop-activity.json",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "parser": "backend",
+          "format": "table",
+          "root_selector": "($now := $millis(); $valid := $type(schema_version) = 'number' and schema_version = 1; $export := $type(exported_at) = 'string' ? exported_at : null; $feedAge := $export ? $now - $toMillis($export) : 90001; $ageMs := function($row) { $type($row.observed_at) = 'string' ? $now - $toMillis($row.observed_at) : 90001 }; $fresh := function($row) { ($age := $ageMs($row); $row.status = 'fresh' and $feedAge >= -10000 and $feedAge <= 90000 and $type($row.max_age_seconds) = 'number' and $row.max_age_seconds >= 0 and $row.max_age_seconds <= 90 and $age >= -10000 and $age <= $row.max_age_seconds * 1000) }; $rows := $valid ? projects.($row := $; $merge([$row, { 'status': $row.status = 'unavailable' ? 'unavailable' : $fresh($row) ? 'fresh' : 'stale', 'exported_at': $export, 'age_seconds': $type($row.observed_at) = 'string' ? $floor($ageMs($row) / 1000) : null }])) : []; $live := $rows[status = 'fresh']; $slices := $live.($project := $; slices.{'project_id': $project.project_id, 'status': $project.status, 'observed_at': $project.observed_at, 'age_seconds': $project.age_seconds, 'label': label, 'role': role, 'latest_activity_utc': latest_activity_utc}); $count($slices) > 0 ? [$slices] : [{'status': $count($live) > 0 ? 'no_recent_slices' : 'stale_or_unavailable'}])",
+          "columns": [
+            {
+              "selector": "project_id",
+              "text": "Project",
+              "type": "string"
+            },
+            {
+              "selector": "status",
+              "text": "Source status",
+              "type": "string"
+            },
+            {
+              "selector": "label",
+              "text": "Slice",
+              "type": "string"
+            },
+            {
+              "selector": "role",
+              "text": "Role",
+              "type": "string"
+            },
+            {
+              "selector": "latest_activity_utc",
+              "text": "Last slice activity",
+              "type": "timestamp"
+            },
+            {
+              "selector": "observed_at",
+              "text": "Observed at",
+              "type": "timestamp"
+            },
+            {
+              "selector": "age_seconds",
+              "text": "Age (seconds)",
+              "type": "number"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#8bbcff",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        },
+        "sortBy": []
+      }
     }
   ]
 }
