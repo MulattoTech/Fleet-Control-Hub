@@ -35,6 +35,8 @@ test('Atlas drawer, heatmap and generated theme share Flight Deck tokens',()=>{
  assert.match(shared,/dialog,\.drawer-header\{background:var\(--fd-surface\)/);
  assert.match(shared,/\.level-4\{background:var\(--fd-accent\)/);
  const js=fs.readFileSync(path.join(__dirname,'../packages/mjobs-controller/remote/public/analytics/atlas.js'),'utf8');
- assert.match(js,/'grafana-link':'http:\/\/127\.0\.0\.1:18731\/mission-control\/grafana\/'/);
+ const html=fs.readFileSync(path.join(__dirname,'../packages/mjobs-controller/remote/public/analytics/index.html'),'utf8');
+ assert.match(html,/id="grafana-link" href="\.\.\/grafana\/"/);
+ assert.doesNotMatch(js,/127\.0\.0\.1:\d+/);
  assert.match(js,/30000/); // Keep queries aligned with the existing collector.
 });

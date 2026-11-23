@@ -7,6 +7,7 @@ ROOT = Path(__file__).parent
 DS = {"type": "yesoreyeram-infinity-datasource", "uid": "fleet-native"}
 URL = "http://fleet-analytics-data:8080/analytics.json"
 STATUS_URL = "http://fleet-analytics-data:8080/collector-status.json"
+DESKTOP_ACTIVITY_URL = "http://fleet-analytics-data:8080/desktop-activity.json"
 PANELS = []
 
 
@@ -21,6 +22,24 @@ def query(root, columns, fmt="table"):
         "parser": "backend",
         "format": fmt,
         "root_selector": root if root == "$" else "($age := $millis() - $toMillis(generatedAt); $age >= -10000 and $age <= 90000 ? (" + root + ") : [])",
+        "columns": [
+            {"selector": selector, "text": name, "type": kind}
+            for selector, name, kind in columns
+        ],
+    }
+
+
+def desktop_activity_query(root, columns):
+    return {
+        "refId": "A",
+        "datasource": DS,
+        "type": "json",
+        "source": "url",
+        "url": DESKTOP_ACTIVITY_URL,
+        "url_options": {"method": "GET", "data": ""},
+        "parser": "backend",
+        "format": "table",
+        "root_selector": root,
         "columns": [
             {"selector": selector, "text": name, "type": kind}
             for selector, name, kind in columns
@@ -95,11 +114,11 @@ def panel(title, kind, x, y, w, h, target=None, unit="none", description=""):
 
 
 intro = panel(
-    "FLEET ATLAS · Native telemetry, not simulated productivity", "text", 0, 0, 24, 3
+    "FLEET TRACKER · Native telemetry, not simulated productivity", "text", 0, 0, 24, 3
 )
 intro["options"] = {
     "mode": "markdown",
-    "content": "## Fleet workspace\n[← Fleet Overview](https://fleet.m-techlabs.com/) · [Fleet Atlas](https://m-techlabs.com/mission-control/analytics/) · [Mission Control](https://m-techlabs.com/mission-control/)\n\n**On this PC:** [Local Overview](http://127.0.0.1:4320/) · [Local Atlas](http://127.0.0.1:20800/mission-control/analytics/) · [Local Mission Control](http://127.0.0.1:18726/)\n\n**Executing** means a native active turn. Reserved agents are **on-call**, not busy. ETA values are conditional. Token use is not acceptance. Missing per-turn attribution remains unavailable.",
+    "content": "## Fleet Tracker\n[← Fleet Overview](https://fleet.m-techlabs.com/) · [Fleet Tracker](https://m-techlabs.com/mission-control/analytics/) · [Requirements and campaign progress](https://m-techlabs.com/mission-control/analytics/#requirements)\n\n**Executing** means a native active turn. Reserved agents are **on-call**, not busy. ETA values are conditional. Token use is not acceptance. Missing per-turn attribution remains unavailable.",
 }
 for i, (title, key, unit) in enumerate(
     [
@@ -257,6 +276,73 @@ panel(
     ),
     description="Do not infer current activity when the feed timestamp is over 90 seconds old. Fleet Atlas marks stale data explicitly.",
 )
+
+# Infinity reports an empty JSONata result as a query error. Keep a status-only
+# row when the feed has no current counts, with absent numeric fields.
+desktop_freshness = (
+    "$now := $millis(); "
+    "$valid := $type(schema_version) = 'number' and schema_version = 1; "
+    "$export := $type(exported_at) = 'string' ? exported_at : null; "
+    "$feedAge := $export ? $now - $toMillis($export) : 90001; "
+    "$ageMs := function($row) { $type($row.observed_at) = 'string' ? $now - $toMillis($row.observed_at) : 90001 }; "
+    "$fresh := function($row) { ($age := $ageMs($row); "
+    "$row.status = 'fresh' and $feedAge >= -10000 and $feedAge <= 90000 "
+    "and $type($row.max_age_seconds) = 'number' and $row.max_age_seconds >= 0 and $row.max_age_seconds <= 90 "
+    "and $age >= -10000 and $age <= $row.max_age_seconds * 1000) }; "
+    "$rows := $valid ? projects.($row := $; $merge([$row, { "
+    "'status': $row.status = 'unavailable' ? 'unavailable' : $fresh($row) ? 'fresh' : 'stale', "
+    "'exported_at': $export, 'age_seconds': $type($row.observed_at) = 'string' ? $floor($ageMs($row) / 1000) : null "
+    "}])) : []; "
+)
+desktop_status = panel(
+    "Codex Desktop activity · source status",
+    "table",
+    0,
+    55,
+    24,
+    6,
+    desktop_activity_query(
+        "(" + desktop_freshness + "$count($rows) > 0 ? [$rows] : [{'status':'unavailable'}])",
+        [
+            ("project_id", "Project", "string"),
+            ("source", "Source", "string"),
+            ("status", "Source status", "string"),
+            ("exported_at", "Feed exported", "timestamp"),
+            ("observed_at", "Observed at", "timestamp"),
+            ("latest_activity_utc", "Latest activity", "timestamp"),
+            ("age_seconds", "Age (seconds)", "number"),
+            ("max_age_seconds", "Freshness limit (seconds)", "number"),
+            ("coverage_partial", "Coverage partial", "boolean"),
+        ],
+    ),
+    description="Shows the project, collector and observation together. Freshness is evaluated when Grafana reads the export.",
+)
+desktop_counts = panel(
+    "Codex Desktop activity · fresh project counts",
+    "table",
+    0,
+    61,
+    24,
+    7,
+    desktop_activity_query(
+        "(" + desktop_freshness + "$live := $rows[status = 'fresh']; "
+        "$count($live) > 0 ? [$live] : [{'status':'stale_or_unavailable'}])",
+        [
+            ("project_id", "Project", "string"),
+            ("source", "Source", "string"),
+            ("status", "Source status", "string"),
+            ("exported_at", "Feed exported", "timestamp"),
+            ("observed_at", "Observed at", "timestamp"),
+            ("latest_activity_utc", "Latest activity", "timestamp"),
+            ("age_seconds", "Age (seconds)", "number"),
+            ("coverage_partial", "Coverage partial", "boolean"),
+            ("counts.session_count", "Sessions", "number"),
+            ("counts.active_process_count", "Active processes", "number"),
+            ("counts.workspace_count", "Workspaces", "number"),
+        ],
+    ),
+    description="Counts appear only for fresh observations. An expired or unavailable source leaves the count cells empty. Recorded zeroes remain visible.",
+)
 for item in PANELS:
     if item["gridPos"]["y"] >= 3:
         item["gridPos"]["y"] += 5
@@ -299,46 +385,13 @@ source_health["fieldConfig"]["overrides"] = [{
     }]}],
 }]
 PANELS.sort(key=lambda item: (item["gridPos"]["y"], item["gridPos"]["x"]))
-agents = [
-    "mjobs-luna-" + str(n)
-    for n in [
-        3,
-        4,
-        5,
-        6,
-        7,
-        8,
-        9,
-        10,
-        11,
-        12,
-        17,
-        18,
-        19,
-        20,
-        21,
-        22,
-        23,
-        24,
-        25,
-        26,
-        27,
-        28,
-        29,
-        30,
-        31,
-        32,
-        33,
-        36,
-        37,
-        38,
-        39,
-    ]
-]
+# Provision a portable placeholder. The existing observer refreshes the choices
+# only after validating a live native source for this installation.
+agents = ["mjobs-1"]
 dashboard = {
     "uid": "fleet-atlas",
-    "title": "Fleet Atlas · Operations Intelligence",
-    "description": "Fleet Control Flight Deck · read-only native observations sampled every 30 seconds. Missing token attribution remains unknown.",
+    "title": "Fleet Tracker · Operations Intelligence",
+    "description": "Fleet Tracker using the Fleet Atlas Flight Deck visual style · read-only native observations sampled every 30 seconds. Missing token attribution remains unknown.",
     "tags": ["fleet", "native-telemetry", "read-only"],
     "schemaVersion": 40,
     "version": 1,
@@ -348,8 +401,7 @@ dashboard = {
     "refresh": "30s",
     "links": [
         {"type": "link", "title": "Fleet Overview", "url": "https://fleet.m-techlabs.com/", "targetBlank": True, "includeVars": False, "keepTime": False},
-        {"type": "link", "title": "Mission Control", "url": "https://m-techlabs.com/mission-control/", "targetBlank": True, "includeVars": False, "keepTime": False},
-        {"type": "link", "title": "Fleet Atlas", "url": "https://m-techlabs.com/mission-control/analytics/", "targetBlank": True, "includeVars": False, "keepTime": False},
+        {"type": "link", "title": "Fleet Tracker", "url": "https://m-techlabs.com/mission-control/analytics/", "targetBlank": True, "includeVars": False, "keepTime": False},
     ],
     "time": {"from": "now-24h", "to": "now"},
     "graphTooltip": 1,
@@ -361,10 +413,10 @@ dashboard = {
                 "type": "custom",
                 "query": ",".join(agents),
                 "options": [
-                    {"text": x, "value": x, "selected": x == "mjobs-luna-36"}
+                    {"text": x, "value": x, "selected": x == agents[0]}
                     for x in agents
                 ],
-                "current": {"text": "mjobs-luna-36", "value": "mjobs-luna-36"},
+                "current": {"text": agents[0], "value": agents[0]},
                 "includeAll": False,
                 "multi": False,
                 "hide": 0,
@@ -375,7 +427,7 @@ dashboard = {
 }
 (ROOT / "dashboards").mkdir(exist_ok=True)
 (ROOT / "dashboards/fleet-atlas.json").write_text(
-    json.dumps(dashboard, indent=2), encoding="utf-8"
+    json.dumps(dashboard, indent=2), encoding="utf-8", newline="\n"
 )
 print(
     json.dumps({"dashboard": "fleet-atlas", "panels": len(PANELS), "modelRequests": 0})

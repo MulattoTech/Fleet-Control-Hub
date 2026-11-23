@@ -1,0 +1,17 @@
+services:
+  fleet-control-sync:
+    image: ${FLEET_CONTROL_IMAGE:?Set the reviewed Fleet Control image}
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 192m
+    cpus: 0.35
+    tmpfs: [/tmp:size=32m]
+    volumes:
+      - ${FLEET_CONTROL_OBSERVATIONS:?Set the sanitized tracker export directory}:/observations:ro
+    networks: [hub]
+networks:
+  hub:
+    external: true
+    name: ${FLEET_CONTROL_HUB_NETWORK:-mtechlabs-hub}

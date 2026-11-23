@@ -1,7 +1,7 @@
 {
   "uid": "fleet-atlas",
-  "title": "Fleet Atlas · Operations Intelligence",
-  "description": "Fleet Control Flight Deck · read-only native observations sampled every 30 seconds. Missing token attribution remains unknown.",
+  "title": "Fleet Tracker \u00b7 Operations Intelligence",
+  "description": "Fleet Tracker using the Fleet Atlas Flight Deck visual style \u00b7 read-only native observations sampled every 30 seconds. Missing token attribution remains unknown.",
   "tags": [
     "fleet",
     "native-telemetry",
@@ -24,15 +24,7 @@
     },
     {
       "type": "link",
-      "title": "Mission Control",
-      "url": "https://m-techlabs.com/mission-control/",
-      "targetBlank": true,
-      "includeVars": false,
-      "keepTime": false
-    },
-    {
-      "type": "link",
-      "title": "Fleet Atlas",
+      "title": "Fleet Tracker",
       "url": "https://m-techlabs.com/mission-control/analytics/",
       "targetBlank": true,
       "includeVars": false,
@@ -71,7 +63,7 @@
   "panels": [
     {
       "id": 1,
-      "title": "FLEET ATLAS · Native telemetry, not simulated productivity",
+      "title": "FLEET TRACKER \u00b7 Native telemetry, not simulated productivity",
       "description": "",
       "type": "text",
       "gridPos": {
@@ -105,12 +97,12 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "## Fleet workspace\n[← Fleet Overview](https://fleet.m-techlabs.com/) · [Fleet Atlas](https://m-techlabs.com/mission-control/analytics/) · [Mission Control](https://m-techlabs.com/mission-control/)\n\n**On this PC:** [Local Overview](http://127.0.0.1:4320/) · [Local Atlas](http://127.0.0.1:20800/mission-control/analytics/) · [Local Mission Control](http://127.0.0.1:18726/)\n\n**Executing** means a native active turn. Reserved agents are **on-call**, not busy. ETA values are conditional. Token use is not acceptance. Missing per-turn attribution remains unavailable."
+        "content": "## Fleet Tracker\n[\u2190 Fleet Overview](https://fleet.m-techlabs.com/) \u00b7 [Fleet Tracker](https://m-techlabs.com/mission-control/analytics/) \u00b7 [Requirements and campaign progress](https://m-techlabs.com/mission-control/analytics/#requirements)\n\n**Executing** means a native active turn. Reserved agents are **on-call**, not busy. ETA values are conditional. Token use is not acceptance. Missing per-turn attribution remains unavailable."
       }
     },
     {
-      "id": 20,
-      "title": "Source health · last check",
+      "id": 22,
+      "title": "Source health \u00b7 last check",
       "description": "No data means the source-health receipt is stale or invalid, not zero activity. This check is separate from the last successful observation. An offline source or identity mismatch never re-dates old counts. Data panels expire after 90 seconds.",
       "type": "table",
       "gridPos": {
@@ -225,7 +217,7 @@
     },
     {
       "id": 2,
-      "title": "Executing · last observation",
+      "title": "Executing \u00b7 last observation",
       "description": "",
       "type": "stat",
       "gridPos": {
@@ -258,7 +250,7 @@
           "columns": [
             {
               "selector": "executing",
-              "text": "Executing · last observation",
+              "text": "Executing \u00b7 last observation",
               "type": "number"
             }
           ]
@@ -453,7 +445,7 @@
     },
     {
       "id": 5,
-      "title": "Completed turns · 24h",
+      "title": "Completed turns \u00b7 24h",
       "description": "",
       "type": "stat",
       "gridPos": {
@@ -486,7 +478,7 @@
           "columns": [
             {
               "selector": "completedTurns",
-              "text": "Completed turns · 24h",
+              "text": "Completed turns \u00b7 24h",
               "type": "number"
             }
           ]
@@ -529,7 +521,7 @@
     },
     {
       "id": 6,
-      "title": "Output-token flow · 15-minute buckets",
+      "title": "Output-token flow \u00b7 15-minute buckets",
       "description": "Native reported usage. The underlying feed is a rolling 24-hour window.",
       "type": "timeseries",
       "gridPos": {
@@ -689,7 +681,7 @@
     },
     {
       "id": 8,
-      "title": "Input tokens · 24h",
+      "title": "Input tokens \u00b7 24h",
       "description": "",
       "type": "stat",
       "gridPos": {
@@ -722,7 +714,7 @@
           "columns": [
             {
               "selector": "inputTokens",
-              "text": "Input tokens · 24h",
+              "text": "Input tokens \u00b7 24h",
               "type": "number"
             }
           ]
@@ -765,7 +757,7 @@
     },
     {
       "id": 9,
-      "title": "Cache hits · 24h",
+      "title": "Cache hits \u00b7 24h",
       "description": "",
       "type": "stat",
       "gridPos": {
@@ -798,7 +790,7 @@
           "columns": [
             {
               "selector": "cachedInputTokens",
-              "text": "Cache hits · 24h",
+              "text": "Cache hits \u00b7 24h",
               "type": "number"
             }
           ]
@@ -1091,7 +1083,7 @@
     },
     {
       "id": 13,
-      "title": "Selected agent · completed turns",
+      "title": "Selected agent \u00b7 completed turns",
       "description": "",
       "type": "stat",
       "gridPos": {
@@ -1124,7 +1116,7 @@
           "columns": [
             {
               "selector": "turnsCompleted",
-              "text": "Selected agent · completed turns",
+              "text": "Selected agent \u00b7 completed turns",
               "type": "number"
             }
           ]
@@ -1395,7 +1387,7 @@
     },
     {
       "id": 17,
-      "title": "Selected agent · recorded workflow states",
+      "title": "Selected agent \u00b7 recorded workflow states",
       "description": "State observation begins when this collector was installed; no historical state is fabricated.",
       "type": "state-timeline",
       "gridPos": {
@@ -1461,7 +1453,7 @@
     },
     {
       "id": 18,
-      "title": "Selected agent · latest 30 turns",
+      "title": "Selected agent \u00b7 latest 30 turns",
       "description": "Per-turn usage requires a unique native-conversation and time-window match. Missing values are not zero; wall time includes tools and waiting.",
       "type": "table",
       "gridPos": {
@@ -1614,6 +1606,232 @@
               "selector": "dispatch.lastSuccess",
               "text": "Last dispatch",
               "type": "timestamp"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#8bbcff",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        },
+        "sortBy": []
+      }
+    },
+    {
+      "id": 20,
+      "title": "Codex Desktop activity \u00b7 source status",
+      "description": "Shows the project, collector and observation together. Freshness is evaluated when Grafana reads the export.",
+      "type": "table",
+      "gridPos": {
+        "x": 0,
+        "y": 60,
+        "w": 24,
+        "h": 6
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "fleet-native"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "fleet-native"
+          },
+          "type": "json",
+          "source": "url",
+          "url": "http://fleet-analytics-data:8080/desktop-activity.json",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "parser": "backend",
+          "format": "table",
+          "root_selector": "($now := $millis(); $valid := $type(schema_version) = 'number' and schema_version = 1; $export := $type(exported_at) = 'string' ? exported_at : null; $feedAge := $export ? $now - $toMillis($export) : 90001; $ageMs := function($row) { $type($row.observed_at) = 'string' ? $now - $toMillis($row.observed_at) : 90001 }; $fresh := function($row) { ($age := $ageMs($row); $row.status = 'fresh' and $feedAge >= -10000 and $feedAge <= 90000 and $type($row.max_age_seconds) = 'number' and $row.max_age_seconds >= 0 and $row.max_age_seconds <= 90 and $age >= -10000 and $age <= $row.max_age_seconds * 1000) }; $rows := $valid ? projects.($row := $; $merge([$row, { 'status': $row.status = 'unavailable' ? 'unavailable' : $fresh($row) ? 'fresh' : 'stale', 'exported_at': $export, 'age_seconds': $type($row.observed_at) = 'string' ? $floor($ageMs($row) / 1000) : null }])) : []; $count($rows) > 0 ? [$rows] : [{'status':'unavailable'}])",
+          "columns": [
+            {
+              "selector": "project_id",
+              "text": "Project",
+              "type": "string"
+            },
+            {
+              "selector": "source",
+              "text": "Source",
+              "type": "string"
+            },
+            {
+              "selector": "status",
+              "text": "Source status",
+              "type": "string"
+            },
+            {
+              "selector": "exported_at",
+              "text": "Feed exported",
+              "type": "timestamp"
+            },
+            {
+              "selector": "observed_at",
+              "text": "Observed at",
+              "type": "timestamp"
+            },
+            {
+              "selector": "latest_activity_utc",
+              "text": "Latest activity",
+              "type": "timestamp"
+            },
+            {
+              "selector": "age_seconds",
+              "text": "Age (seconds)",
+              "type": "number"
+            },
+            {
+              "selector": "max_age_seconds",
+              "text": "Freshness limit (seconds)",
+              "type": "number"
+            },
+            {
+              "selector": "coverage_partial",
+              "text": "Coverage partial",
+              "type": "boolean"
+            }
+          ]
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#8bbcff",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        },
+        "sortBy": []
+      }
+    },
+    {
+      "id": 21,
+      "title": "Codex Desktop activity \u00b7 fresh project counts",
+      "description": "Counts appear only for fresh observations. An expired or unavailable source leaves the count cells empty. Recorded zeroes remain visible.",
+      "type": "table",
+      "gridPos": {
+        "x": 0,
+        "y": 66,
+        "w": 24,
+        "h": 7
+      },
+      "datasource": {
+        "type": "yesoreyeram-infinity-datasource",
+        "uid": "fleet-native"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "yesoreyeram-infinity-datasource",
+            "uid": "fleet-native"
+          },
+          "type": "json",
+          "source": "url",
+          "url": "http://fleet-analytics-data:8080/desktop-activity.json",
+          "url_options": {
+            "method": "GET",
+            "data": ""
+          },
+          "parser": "backend",
+          "format": "table",
+          "root_selector": "($now := $millis(); $valid := $type(schema_version) = 'number' and schema_version = 1; $export := $type(exported_at) = 'string' ? exported_at : null; $feedAge := $export ? $now - $toMillis($export) : 90001; $ageMs := function($row) { $type($row.observed_at) = 'string' ? $now - $toMillis($row.observed_at) : 90001 }; $fresh := function($row) { ($age := $ageMs($row); $row.status = 'fresh' and $feedAge >= -10000 and $feedAge <= 90000 and $type($row.max_age_seconds) = 'number' and $row.max_age_seconds >= 0 and $row.max_age_seconds <= 90 and $age >= -10000 and $age <= $row.max_age_seconds * 1000) }; $rows := $valid ? projects.($row := $; $merge([$row, { 'status': $row.status = 'unavailable' ? 'unavailable' : $fresh($row) ? 'fresh' : 'stale', 'exported_at': $export, 'age_seconds': $type($row.observed_at) = 'string' ? $floor($ageMs($row) / 1000) : null }])) : []; $live := $rows[status = 'fresh']; $count($live) > 0 ? [$live] : [{'status':'stale_or_unavailable'}])",
+          "columns": [
+            {
+              "selector": "project_id",
+              "text": "Project",
+              "type": "string"
+            },
+            {
+              "selector": "source",
+              "text": "Source",
+              "type": "string"
+            },
+            {
+              "selector": "status",
+              "text": "Source status",
+              "type": "string"
+            },
+            {
+              "selector": "exported_at",
+              "text": "Feed exported",
+              "type": "timestamp"
+            },
+            {
+              "selector": "observed_at",
+              "text": "Observed at",
+              "type": "timestamp"
+            },
+            {
+              "selector": "latest_activity_utc",
+              "text": "Latest activity",
+              "type": "timestamp"
+            },
+            {
+              "selector": "age_seconds",
+              "text": "Age (seconds)",
+              "type": "number"
+            },
+            {
+              "selector": "coverage_partial",
+              "text": "Coverage partial",
+              "type": "boolean"
+            },
+            {
+              "selector": "counts.session_count",
+              "text": "Sessions",
+              "type": "number"
+            },
+            {
+              "selector": "counts.active_process_count",
+              "text": "Active processes",
+              "type": "number"
+            },
+            {
+              "selector": "counts.workspace_count",
+              "text": "Workspaces",
+              "type": "number"
             }
           ]
         }
