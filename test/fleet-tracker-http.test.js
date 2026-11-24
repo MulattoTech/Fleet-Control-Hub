@@ -4,7 +4,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const {makeServer} = require('../src/server');
-const {createFleetTracker, readCampaigns, resolvePublicGitHead} = require('../src/fleet-tracker');
+const {createFleetTracker, readCampaigns, resolvePublicGitHead, createTelemetryReader} = require('../src/fleet-tracker');
+const {mkdtemp, writeFile, rm} = require('node:fs/promises');
+const path = require('node:path');
+const {tmpdir} = require('node:os');
 
 const ROOT = '/mission-control/analytics/';
 const MJobs = 'mjobs';
@@ -38,6 +41,7 @@ test('Fleet Tracker opts into the existing owner gate and has read-only project-
     desktop: {snapshot: async () => ({status: 'fresh', project_id: MJobs,
       counts: {session_count: 0}, observed_at: fixtureTime})},
     campaignReader: async () => [],
+    telemetryReader: async name => name==='analytics.json'?{schemaVersion:1,agents:[],summary:{},generatedAt:fixtureTime}:null,
   });
   const remote = {hostname: 'fleet.fixture.invalid'};
   const server = makeServer({tracker, port: 48724, remote, verifyRemote: async token => {
@@ -53,6 +57,13 @@ test('Fleet Tracker opts into the existing owner gate and has read-only project-
     const alias = await request(server, '/mission-control/');
     assert.equal(alias.status, 308);
     assert.equal(alias.headers.location, ROOT);
+    const home = await request(server, '/?project=mjobs');
+    assert.equal(home.status, 308);
+    assert.equal(home.headers.location, ROOT + '?project=mjobs');
+    assert.equal((await request(server, '/controls/')).status, 200);
+    const grafana = await request(server, '/mission-control/grafana/');
+    assert.equal(grafana.status,308);
+    assert.equal(grafana.headers.location,'https://m-techlabs.com/mission-control/grafana/');
     const projects = JSON.parse((await request(server, api)).body).projects;
     assert.deepEqual(projects.map(p => p.project_id), ['babytracker','mjobs']);
     assert.equal((await request(server, `${api}/unknown`)).status, 404);
@@ -74,10 +85,57 @@ test('Fleet Tracker opts into the existing owner gate and has read-only project-
     for (const asset of ['', 'atlas.css', 'atlas.js', 'source-status.js']) {
       assert.equal((await request(server, ROOT + asset)).status, 200);
     }
+    const telemetry = await request(server, ROOT + 'analytics.json');
+    assert.equal(JSON.parse(telemetry.body).generatedAt, fixtureTime, 'a historical sample must retain its timestamp');
+    assert.equal((await request(server, ROOT + 'collector-status.json')).status,503);
+    assert.equal((await request(server, ROOT + 'analytics.json',{host:remote.hostname})).status,403);
     assert.equal((await request(server, `${ROOT}../../src/server.js`)).status, 404);
   } finally {
     await new Promise(resolve => server.close(resolve));
   }
+});
+
+test('inline telemetry reads only bounded sanitized publication files and never invents live data', async t => {
+  const root = await mkdtemp(path.join(tmpdir(),'fleet-telemetry-test-'));
+  t.after(() => rm(root,{recursive:true,force:true}));
+  const reader = createTelemetryReader(root);
+  assert.equal(await reader('analytics.json'),null);
+  assert.equal(await reader('../private.json'),null);
+  await writeFile(path.join(root,'analytics.json'),JSON.stringify({schemaVersion:1,agents:[],summary:{},generatedAt:fixtureTime}));
+  assert.equal((await reader('analytics.json')).generatedAt,fixtureTime);
+  await writeFile(path.join(root,'analytics.json'),'{}');
+  assert.equal(await reader('analytics.json'),null);
+  await writeFile(path.join(root,'collector-status.json'),' '.repeat(4097));
+  assert.equal(await reader('collector-status.json'),null);
+  await writeFile(path.join(root,'collector-status.json'),JSON.stringify({available:false,reasonCode:'COLLECTION_UNAVAILABLE'}));
+  assert.equal((await reader('collector-status.json')).available,false);
+});
+
+test('repository estimates share the owner gate and reject invalid destinations before reading', async t => {
+  const calls = [];
+  const tracker = createFleetTracker({repositoryProgress:{read:async (repository, options) => {
+    calls.push({repository, ...options});
+    return {status:'ESTIMATED', repository, percent:25, total:4, done:1};
+  }}});
+  const server = makeServer({tracker, port:48724, remote:{hostname:'fleet.fixture.invalid'},
+    verifyRemote:async token => {if(token !== 'owner-fixture') throw Error('Denied');}});
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const endpoint = ROOT + 'api/repository-progress';
+  const query = '?repository=' + encodeURIComponent('https://github.com/Owner/Example') + '&refresh=1';
+  assert.equal((await request(server, endpoint + query, {host:'fleet.fixture.invalid'})).status,403);
+  assert.equal((await request(server, endpoint + query, {method:'POST'})).status,405);
+  for(const invalid of ['?repository=http://127.0.0.1/private', '?repository=a/b&repository=c/d',
+    '?repository=a/b&path=secret', '?repository=a/b&refresh=2', '']) {
+    assert.equal((await request(server, endpoint + invalid)).status,400);
+  }
+  assert.deepEqual(calls,[]);
+  const result = await request(server,endpoint + query,{host:'fleet.fixture.invalid',token:'owner-fixture'});
+  assert.equal(result.status,200);
+  assert.equal(JSON.parse(result.body).status,'ESTIMATED');
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].repository.toLowerCase(),'owner/example');
+  assert.equal(calls[0].refresh,true);
 });
 
 test('campaign bridge reports approved fields, keeps zero and drops private decorations', async () => {

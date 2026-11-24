@@ -22,6 +22,7 @@ test('internal Fleet Control API joins a live GitHub reader with project-bound l
   await writeFile(path.join(directory, 'babytracker.json'), JSON.stringify({project, local_progress:local}));
   const reads = [];
   const tracker = createFleetTracker({
+    repositoryProgress:{read:async repository => ({repository,status:'UNAVAILABLE',reason:'NO_GOALS'})},
     observationReader:readExport(root),
     acceptance:{read:async (id,{refresh}) => {
       reads.push({id,refresh});
@@ -47,4 +48,7 @@ test('internal Fleet Control API joins a live GitHub reader with project-bound l
   assert.equal((await fetch(base+'/mjobs?refresh=1',{method:'POST'})).status,405);
   assert.equal((await fetch(origin+'/api/session')).status,404);
   assert.deepEqual(reads,[{id:'mjobs',refresh:false},{id:'mjobs',refresh:true}]);
+  const repositoryEndpoint = origin + '/mission-control/analytics/api/repository-progress?repository=owner/repo';
+  assert.equal((await (await fetch(repositoryEndpoint)).json()).status,'UNAVAILABLE');
+  assert.equal((await fetch(repositoryEndpoint,{method:'POST'})).status,405);
 });

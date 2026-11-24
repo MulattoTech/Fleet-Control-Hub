@@ -1,5 +1,55 @@
 # Fleet Tracker
 
+## Unified Hub continuation — November 24, 2026 UTC
+
+The Hub root redirects to this shared tracking page. Operator controls remain at
+`/controls/` and native project control routes; they do not become the progress
+authority. The shared page reads the existing sanitized analytics publication
+directory for its inline graphs. Historical samples retain their original time
+and unavailable collector status, rather than becoming fresh when served.
+
+Paste a public GitHub repository URL or `owner/name` into **Goal progress
+estimate**. Existing MJobs and BabyTracker entries reuse their configured
+adapters. Other repositories read a bounded, revision-pinned
+`.fleet/progress.json` from the default branch. For example:
+
+```json
+{"schema_version":1,"goals":[{"id":"search","title":"Search works","status":"done"},{"id":"recovery","title":"Resume after restart","status":"in_progress"}]}
+```
+
+Supported states are `done`, `in_progress`, `not_started`, and `blocked`.
+Completion is the unweighted share of goals marked done. If the manifest is
+absent, a README task checklist can supply a clearly labeled estimate. Invalid
+manifests and missing goals are unavailable, not zero percent or verified PASS.
+These are repository-reported estimates, not independent acceptance evidence.
+Bookmarks are stored in this browser only (up to20); registration does not clone,
+write to GitHub, enable a controller, or start agents. Private repositories are
+not supported by this anonymous reader. The protected web ingress uses the same
+read-only route without forwarding browser credentials to the reader.
+
+The active continuation uses `codex/fleet-hub-unified-20261123` atop the existing
+PR43 head `2752bfa32029649be81489ff096667279d377e2a`, preserving its completed
+acceptance, Desktop activity and Grafana work. The paired ingress continuation
+uses `codex/fleet-hub-unified-ingress-20261123` atop Access PR48 head
+`69153ab3521e2c2d87d7f31022bd7439ec6262c8`. The original review revisions and
+installed runtime remain preserved. Private Access CI is blocked; no hosted
+rollout, listener retirement or shortcut installation is implied by local tests.
+
+Local continuation verification: the200-test Node suite passed before the final
+UI review corrections; all24 affected UI/HTTP tests passed after those changes.
+The Python suite passed35 tests and13 subtests. UI synchronization and all three
+controller package manifests passed. The ingress continuation passed174 tests
+and an isolated `nginx -t`. Browser verification matched live MJobs main at
+`9298ae6584f28b5daca40d39e7ff917b4f8de332` (190/366 original,20/59 reference),
+rejected a non-GitHub URL, and exercised a clearly synthetic two-goal manifest
+through the real reader/API/UI, producing50% and preserving browser selection
+after reload. Synthetic results are not repository acceptance.
+
+The native analytics collector also now uses `4320/fleet/api/`, replacing the
+retired8787 origin. All four canonical read routes returned200, but native state
+reported offline. No AO roster freshness or installed collector repair is
+claimed until the reviewed deployment and a fresh successful collection.
+
 The shared tracker is served under `/mission-control/analytics/`. Each selected project declares its repository, branch, and reporting adapters in `projects.json`. The published acceptance reader resolves the public Git branch and validates both matrix files at that commit. A failed refresh preserves the last known counts with a check time and stale state.
 
 MJobs workspace counts and campaign status come from local evidence. The Desktop observer supplies aggregate counts and recent slice timestamps from registered MJobs worktrees. The public-facing projection uses temporary opaque slice labels and omits session identifiers, workspace paths, transcripts, and token data. Existing AO telemetry has its own source and freshness.

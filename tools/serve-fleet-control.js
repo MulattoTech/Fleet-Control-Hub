@@ -6,6 +6,7 @@ const path = require('node:path');
 const {createFleetTracker} = require('../src/fleet-tracker');
 
 const PROJECT_API = '/mission-control/analytics/api/projects';
+const REPOSITORY_API = '/mission-control/analytics/api/repository-progress';
 const ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const MAX_SNAPSHOT_BYTES = 524288;
 
@@ -39,7 +40,7 @@ function createFleetControlServer({snapshotRoot, tracker = createFleetTracker({
     }
     try {
       const {pathname, searchParams} = new URL(req.url, 'http://fleet-control.internal');
-      if (pathname !== PROJECT_API && !(pathname.startsWith(PROJECT_API + '/') &&
+      if (pathname !== REPOSITORY_API && pathname !== PROJECT_API && !(pathname.startsWith(PROJECT_API + '/') &&
           ID.test(pathname.slice(PROJECT_API.length + 1)))) return json(404, {error: 'Not found'});
       return await tracker.handle(req, res, {pathname, searchParams, json});
     } catch {

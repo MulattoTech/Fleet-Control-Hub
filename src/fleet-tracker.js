@@ -1,6 +1,6 @@
 'use strict';
 
-const {readFile} = require('node:fs/promises');
+const {readFile, open} = require('node:fs/promises');
 const {execFile} = require('node:child_process');
 const {tmpdir} = require('node:os');
 const path = require('node:path');
@@ -8,6 +8,7 @@ const {promisify} = require('node:util');
 const {defaultTrackerProject, projects: projectConfig} = require('../projects.json');
 const {createPublishedAcceptanceReader} = require('./published-acceptance');
 const {createProjectDesktopActivity} = require('./project-desktop-activity');
+const {createRepositoryProgressReader, normalizeRepository} = require('./repository-progress');
 
 const TRACKER = '/mission-control/analytics/';
 const OBSERVER = 'http://127.0.0.1:18726';
@@ -19,6 +20,29 @@ const ASSETS = new Map([
 ]);
 const ASSET_ROOT = path.join(__dirname, '..', 'packages', 'mjobs-controller', 'remote', 'public', 'analytics');
 const execFileAsync = promisify(execFile);
+const TELEMETRY_FILES = new Map([['analytics.json', 2_000_000], ['collector-status.json', 4096]]);
+
+// This is the existing sanitized publication directory, never an AO state root.
+function createTelemetryReader(root = process.env.FLEET_TRACKER_ANALYTICS_ROOT ||
+    'C:\\Tools\\Dev\\MTechLabs-Hub\\site\\mission-control\\analytics') {
+  return async name => {
+    const limit = TELEMETRY_FILES.get(name);
+    if (!limit || !path.isAbsolute(root)) return null;
+    let file;
+    try {
+      file = await open(path.join(root, name), 'r');
+      const info = await file.stat();
+      if (!info.isFile() || info.size > limit) return null;
+      const buffer = Buffer.alloc(limit + 1);
+      const {bytesRead} = await file.read(buffer, 0, buffer.length, 0);
+      if (bytesRead > limit) return null;
+      const value = JSON.parse(buffer.subarray(0, bytesRead).toString('utf8'));
+      if (name === 'analytics.json' && (value?.schemaVersion !== 1 || !Array.isArray(value.agents) || !value.summary)) return null;
+      return value;
+    } catch { return null; }
+    finally { await file?.close(); }
+  };
+}
 const SHA = /^[a-f0-9]{40}$/;
 const TRACKERS = Object.fromEntries(Object.entries(projectConfig).flatMap(([id, project]) =>
   project.tracker ? [[id, {repository: project.repository, ...project.tracker}]] : []));
@@ -83,6 +107,8 @@ async function readCampaigns(fetcher = globalThis.fetch) {
 }
 
 function createFleetTracker({projects = TRACKERS, defaultProject = defaultTrackerProject, mission, campaignReader = readCampaigns,
+    repositoryProgress = createRepositoryProgressReader(),
+    telemetryReader = createTelemetryReader(),
     observationReader,
     acceptance = createPublishedAcceptanceReader({
       projects: Object.fromEntries(Object.entries(projects).filter(([, p]) => p.originalPath && p.referencePath)),
@@ -136,6 +162,23 @@ function createFleetTracker({projects = TRACKERS, defaultProject = defaultTracke
       return res.end();
     }
     const route = pathname.slice(TRACKER.length);
+    if (TELEMETRY_FILES.has(route)) {
+      const observation = await telemetryReader(route);
+      return observation ? json(200, observation) : json(503, {error:'Sanitized telemetry unavailable'});
+    }
+    if (route === 'api/repository-progress') {
+      if (!searchParams || [...searchParams.keys()].some(key => !['repository', 'refresh'].includes(key)) ||
+          searchParams.getAll('repository').length !== 1 || searchParams.getAll('refresh').length > 1 ||
+          (searchParams.has('refresh') && !['0', '1'].includes(searchParams.get('refresh')))) {
+        return json(400, {error: 'Provide one public GitHub repository.'});
+      }
+      let repository;
+      try { repository = normalizeRepository(searchParams.get('repository')).key; }
+      catch { return json(400, {error: 'Use a public GitHub repository URL or owner/name.'}); }
+      return json(200, await repositoryProgress.read(repository, {
+        refresh: req.method === 'GET' && searchParams.get('refresh') === '1',
+      }));
+    }
     if (route === 'api/projects') return json(200, listProjects());
     if (route.startsWith('api/projects/')) {
       const refresh = req.method === 'GET' && searchParams?.get('refresh') === '1';
@@ -157,4 +200,4 @@ function isTrackerPath(pathname) {
     pathname === TRACKER.slice(0,-1) || pathname.startsWith(TRACKER);
 }
 
-module.exports = {createFleetTracker, isTrackerPath, readCampaigns, resolvePublicGitHead};
+module.exports = {createFleetTracker, isTrackerPath, readCampaigns, resolvePublicGitHead, createTelemetryReader};

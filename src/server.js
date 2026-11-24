@@ -32,12 +32,25 @@ function makeServer({adapters=createAdapters(),services=createServiceLaunchpad()
     if(remoteRequest){try{if(!verifyRemote)throw Error('Remote verification unavailable');await verifyRemote(req.headers['cf-access-jwt-assertion']);}catch{return json(403,{error:'Verified owner Access session required'});}}
     const url=new URL(req.url,'http://'+host);
     try {
+      if(isTrackerPath(url.pathname))res.setHeader('Content-Security-Policy',"default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'");
       if(isTrackerPath(url.pathname))return await tracker.handle(req,res,{pathname:url.pathname,searchParams:url.searchParams,json});
       if(url.pathname==='/fleet'||url.pathname.startsWith('/fleet/'))
         return await nativeFleetBridge(req,res,{url,publicOrigin:remoteRequest?'https://'+remote.hostname:'http://'+host});
       if(url.pathname==='/babytracker'||url.pathname.startsWith('/babytracker/'))
         return await babyTrackerBridge(req,res,{url,publicOrigin:remoteRequest?'https://'+remote.hostname:'http://'+host});
       if(req.method==='GET') {
+        if(url.pathname==='/' || url.pathname==='/controls') {
+          res.writeHead(308, {Location:(url.pathname==='/'?'/mission-control/analytics/':'/controls/')+url.search});
+          return res.end();
+        }
+        if(url.pathname==='/mission-control/grafana/' || url.pathname==='/mission-control/grafana') {
+          res.writeHead(308, {Location:'https://m-techlabs.com/mission-control/grafana/'});
+          return res.end();
+        }
+        if(url.pathname==='/controls/') {
+          res.writeHead(200, {'Content-Type':'text/html; charset=utf-8'});
+          return res.end(fs.readFileSync(path.join(root,'index.html')));
+        }
         if(url.pathname==='/api/health')return json(200,{ok:true,service:'fleet-control-hub',version:2,nativeFleetOrigin:nativeFleetBridge.embedded?'embedded:in-process':'unavailable',acceptanceSource:'local-canonical-matrices'});
         if(url.pathname==='/api/session')return json(200,{token});
         if(url.pathname==='/api/status')return json(200,{observedAt:new Date().toISOString(),fleets:await Promise.all(['mjobs','babytracker'].map(adapters.status))});
