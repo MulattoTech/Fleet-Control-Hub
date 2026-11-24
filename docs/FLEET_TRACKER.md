@@ -50,6 +50,35 @@ retired8787 origin. All four canonical read routes returned200, but native state
 reported offline. No AO roster freshness or installed collector repair is
 claimed until the reviewed deployment and a fresh successful collection.
 
+### Integration checkpoint — 2026-11-24T00:17:44Z
+
+Fleet Hub PR43 is merged as `e1ca68e80cd857e430edbc6d757d62b1de22c034`.
+Its source tree exactly matches reviewed head
+`6882233480115fb0116da35603016d519f281851`. Hosted workflow45295570486 passed
+at that head, including203 Node tests and35 Python tests with13 subtests.
+This was a normal PR merge after successful CI and local independent review;
+GitHub reported this repository's main branch as unprotected. MJobs' separate
+main protections were verified unchanged.
+
+The exact-source read-only image was
+`sha256:3c849a0480e2f1a71a542602149941d14e198ba47ace1c36ce8e5660d5a3f265`.
+A disposable nginx/reader test with Access ingress
+`9ad351459955bd6345d210863639bfe52c235371` passed live public repository revision
+readback, unavailable goals, invalid destination and duplicate-input rejection,
+POST denial, and inherited security headers. Test containers, network and local
+preview server were stopped/removed; installed services and data were preserved.
+
+Remaining release gate: Access PR48 still has failed private CI at69153ab.
+The reviewed ingress follow-up is published on
+`codex/fleet-hub-unified-ingress-20261123` at9ad3514 without another private CI
+trigger. When private CI is available, update the existing Access PR with that
+commit, run its required checks and integrate normally. Then deploy both
+reviewed sources, verify authenticated local/hosted parity, confirm native
+collector freshness (or report offline), and consolidate shortcuts/listeners
+under the existing rollout contract. No spending or protection bypass is
+authorized by this checkpoint. Deployed acceptance and final shortcut remain
+NOT_RUN; no unattended continuation is active.
+
 The shared tracker is served under `/mission-control/analytics/`. Each selected project declares its repository, branch, and reporting adapters in `projects.json`. The published acceptance reader resolves the public Git branch and validates both matrix files at that commit. A failed refresh preserves the last known counts with a check time and stale state.
 
 MJobs workspace counts and campaign status come from local evidence. The Desktop observer supplies aggregate counts and recent slice timestamps from registered MJobs worktrees. The public-facing projection uses temporary opaque slice labels and omits session identifiers, workspace paths, transcripts, and token data. Existing AO telemetry has its own source and freshness.
