@@ -9,8 +9,8 @@ const html=fs.readFileSync(path.join(analytics,'index.html'),'utf8');
 const script=fs.readFileSync(path.join(analytics,'atlas.js'),'utf8');
 const styles=fs.readFileSync(path.join(analytics,'atlas.css'),'utf8');
 
-test('Fleet Tracker exposes linkable project views with one shared navigation',()=>{
-  assert.match(html,/<title>Fleet Tracker/);
+test('Fleet Hub exposes linkable project views with one shared navigation',()=>{
+  assert.match(html,/<title>Fleet Hub/);
   assert.match(html,/aria-label="Fleet workspace"/);
   for(const view of ['overview','requirements','campaign-progress','codex-activity']){
     assert.match(html,new RegExp(`href="#${view}"`));
@@ -20,6 +20,7 @@ test('Fleet Tracker exposes linkable project views with one shared navigation',(
   assert.match(html,/<button id="refresh"/);
   assert.equal(styles.includes('\\n'),false,'escaped line breaks cannot consume the theme root selector');
   assert.match(html,/id="grafana-link" href="\.\.\/grafana\/"/);
+  assert.match(html,/id="fleet-controls"[^>]+href="\/controls\/"/);
   assert.doesNotMatch(html,/<iframe/i);
 });
 
