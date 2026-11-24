@@ -15,6 +15,7 @@ import urllib.request
 from pathlib import Path
 
 UTC = dt.UTC
+API_BASE = "http://127.0.0.1:4320/fleet/api/"
 STATUS_MESSAGES = {
     "OK": "Native observations are current.",
     "NATIVE_ROSTER_OFFLINE": "Native runtime is offline; the saved roster is historical.",
@@ -82,7 +83,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 def get(route):
     assert route in ("state", "sustain", "master", "quota")
     with urllib.request.build_opener(NoRedirect).open(
-        "http://127.0.0.1:8787/api/" + route, timeout=8
+        API_BASE + route, timeout=8
     ) as response:
         raw = response.read(2_000_001)
         if len(raw) > 2_000_000:
