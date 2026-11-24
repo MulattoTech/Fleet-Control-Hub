@@ -20,7 +20,7 @@ test('Fleet Hub exposes linkable project views with one shared navigation',()=>{
   assert.match(html,/<button id="refresh"/);
   assert.equal(styles.includes('\\n'),false,'escaped line breaks cannot consume the theme root selector');
   assert.match(html,/id="grafana-link" href="\.\.\/grafana\/"/);
-  assert.match(html,/id="fleet-controls"[^>]+href="\/controls\/"/);
+  assert.match(html,/id="fleet-controls"[^>]+href="https:\/\/fleet\.m-techlabs\.com\/controls\/"/);
   assert.doesNotMatch(html,/<iframe/i);
 });
 
