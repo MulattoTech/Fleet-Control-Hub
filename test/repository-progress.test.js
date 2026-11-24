@@ -21,7 +21,7 @@ function fetchFor({ manifest = response(200, json(progress)), readme = response(
   const calls = [];
   const fetcher = async (url, options) => {
     calls.push({ url: String(url), options });
-    if (String(url).includes('/repos/octo/project/commits/')) return response(200, json({ sha }));
+    if (String(url).includes('/repos/octo/project/git/ref/heads/')) return response(200, json({ ref: 'refs/heads/main', object: { type: 'commit', sha } }));
     if (String(url).endsWith('/repos/octo/project')) return response(200, json({ default_branch: 'main' }));
     if (String(url).includes('/.fleet/progress.json')) return manifest;
     if (String(url).includes('/README.md')) return readme;
@@ -35,7 +35,9 @@ test('normalizes owner/name and only exact public GitHub repository URLs', () =>
   assert.equal(normalizeRepository('https://github.com/octo/project.git/').key, 'octo/project');
   for (const bad of ['http://github.com/a/b', 'https://github.com.evil/a/b', 'https://user@github.com/a/b',
     'https://github.com/a/b?x=1', 'https://github.com/a/b#x', 'https://github.com/a/b/tree/main',
-    '../a/b', 'https://raw.githubusercontent.com/a/b']) assert.throws(() => normalizeRepository(bad));
+    '../a/b', 'https://raw.githubusercontent.com/a/b', 'https://github.com/a/../b',
+    'https://github.com/a/%2e%2e', 'https://github.com/a%2fb/c', 'https://github.com/a\\b/c']) assert.throws(() => normalizeRepository(bad));
+  assert.equal(normalizeRepository('OCTO/Project').key, 'octo/project');
 });
 
 test('reads goals at the resolved exact commit and reports an estimate', async () => {
@@ -47,6 +49,7 @@ test('reads goals at the resolved exact commit and reports an estimate', async (
   assert.equal(result.source_path, '.fleet/progress.json');
   assert.equal(calls.length, 3);
   assert.ok(calls.every(call => call.options.redirect === 'error' && call.options.signal));
+  assert.ok(calls[1].url.endsWith('/git/ref/heads/main'));
   assert.ok(calls[2].url.endsWith(`/${sha}/.fleet/progress.json`));
 });
 
@@ -73,6 +76,19 @@ test('uses a labeled checklist estimate only when the manifest is absent', async
     assert.equal(unavailable.status, 'UNAVAILABLE');
     assert.equal(unavailable.percent, null);
   }
+  let cancels = 0;
+  const missing = { ...response(404, ''), body: { cancel: async () => { cancels++; } } };
+  const withBody = fetchFor({ manifest: missing, readme: response(200, '- [x] goal') });
+  await createRepositoryProgressReader({ fetcher: withBody.fetcher }).read(repo);
+  assert.equal(cancels, 1, '404 response body is cancelled before trying the README');
+});
+
+test('ignores checklist examples inside fenced code and HTML comments', async () => {
+  const readme = response(200, ['```md', '- [x] example', '- [ ] sample', '```', '<!--', '- [x] commented', '-->', '- [ ] actual'].join('\n'));
+  const { fetcher } = fetchFor({ manifest: response(404, ''), readme });
+  const result = await createRepositoryProgressReader({ fetcher }).read(repo);
+  assert.equal(result.total, 1);
+  assert.equal(result.done, 0);
 });
 
 test('bounds file size, request time and total request count', async () => {
@@ -91,6 +107,19 @@ test('bounds file size, request time and total request count', async () => {
   assert.equal((await timed.read(repo)).status, 'UNAVAILABLE');
   assert.equal((await timed.read(repo)).reason, 'request_timeout');
   assert.equal(tooBig.calls.length, 3);
+});
+
+test('cancels a streaming response when the request deadline expires', async () => {
+  let cancels = 0; let finishRead;
+  const streamResponse = response(200, '');
+  Object.defineProperty(streamResponse, 'body', { value: { getReader: () => ({
+    read: () => new Promise(resolve => { finishRead = resolve; }),
+    cancel: async () => { cancels++; finishRead?.({ done: true }); }, releaseLock() {}
+  }) } });
+  const reader = createRepositoryProgressReader({ timeoutMs: 15, totalTimeoutMs: 15, fetcher: async () => streamResponse });
+  const result = await reader.read(repo);
+  assert.equal(result.reason, 'request_timeout');
+  assert.ok(cancels >= 1);
 });
 
 test('evicts the least recently used repository from the bounded cache', async () => {
@@ -141,6 +170,31 @@ test('caches and singleflights reads, and returns stale estimates after refresh 
   now += 101; fail = true;
   const stale = await reader.read(repo, { refresh: true });
   assert.equal(stale.status, 'STALE'); assert.equal(stale.total, 4); assert.equal(stale.reason, 'upstream_unavailable');
+});
+
+test('caches failures and coalesces case variants into one in-flight read', async () => {
+  let count = 0; let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const reader = createRepositoryProgressReader({ fetcher: async () => { count++; await gate; return response(503, 'private'); } });
+  const first = reader.read('OCTO/PROJECT');
+  const second = reader.read('octo/project');
+  await new Promise(resolve => setTimeout(resolve, 2)); release();
+  const [a, b] = await Promise.all([first, second]);
+  assert.equal(count, 1);
+  assert.deepEqual(a, b);
+  await reader.read(repo);
+  assert.equal(count, 1, 'unavailable result is cached for the default TTL');
+});
+
+test('rate limits set a global cooldown using Retry-After and cancel unused bodies', async () => {
+  let calls = 0; let cancels = 0;
+  const blocked = { ...response(429, ''), headers: { get: name => name.toLowerCase() === 'retry-after' ? '120' : null },
+    body: { cancel: async () => { cancels++; } } };
+  const reader = createRepositoryProgressReader({ fetcher: async () => { calls++; return blocked; } });
+  assert.equal((await reader.read(repo)).reason, 'rate_limited');
+  assert.equal((await reader.read('other/repo')).reason, 'rate_limited');
+  assert.equal(calls, 1, 'cooldown prevents queries for other repositories');
+  assert.equal(cancels, 1, 'unused rate-limit body is cancelled');
 });
 
 test('preserves rate-limit meaning and never returns upstream body text', async () => {
