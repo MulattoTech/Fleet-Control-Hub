@@ -1,19 +1,30 @@
 {
   "schema": 1,
+  "defaultTrackerProject": "mjobs",
   "projects": {
     "babytracker": {
       "repository": "MulattoTech/BabyTracker",
       "package": "babytracker-controller",
       "port": 4319,
       "stateSeparateFromSource": true,
-      "emergencyScope": "project"
+      "emergencyScope": "project",
+      "tracker": {"name": "BabyTracker", "branch": "main"}
     },
     "mjobs": {
       "repository": "MulattoTech/MJobs",
       "package": "mjobs-controller",
       "port": 8787,
       "stateSeparateFromSource": true,
-      "emergencyScope": "machine"
+      "emergencyScope": "machine",
+      "tracker": {
+        "name": "MJobs",
+        "branch": "main",
+        "originalPath": "planning/CAPABILITY_MATRIX.json",
+        "referencePath": "planning/REFERENCE_GAP_MATRIX.json",
+        "originalSchema": 1,
+        "referenceSchema": 3,
+        "localObserver": "mjobs"
+      }
     }
   }
 }

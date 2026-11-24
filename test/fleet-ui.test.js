@@ -20,10 +20,11 @@ test('a paused dispatch can resume even when the persisted phase still says runn
 test('presentation works with a future project without granting a capability',()=>{const x=present({name:'Research Lab'});assert.equal(x.label,'Start Research Lab');assert.equal(x.canStart,false);assert.equal(present({...ready,name:'Research Lab'}).label,'Start Research Lab');});
 test('canonical MJobs first screen contains ordinary Start and keeps advanced recovery separate',()=>{const html=fs.readFileSync(path.join(__dirname,'../packages/mjobs-controller/public/index.html'),'utf8');assert.match(html,/id="runSection"/);assert.match(html,/src="\/run-ui.js"/);assert.ok(html.indexOf('id="runSection"')<html.indexOf('id="quotaSection"'));assert.match(html,/Advanced: restore a saved fleet/);});
 test('the remote monitor links to the existing protected Hub rather than submitting commands',()=>{const source=fs.readFileSync(path.join(__dirname,'../packages/mjobs-controller/remote/public/remote-controls.js'),'utf8');assert.match(source,/https:\/\/fleet.m-techlabs.com/);assert.doesNotMatch(source,/fetch\s*\(/);assert.match(source,/available:\(\)=>false/);});
-test('remote monitor and Atlas expose a labelled Fleet Overview return link',()=>{
+test('legacy monitor returns to the Hub while unified tracking offers scoped controls',()=>{
  for(const name of ['index.html','analytics/index.html']){
   const page=fs.readFileSync(path.join(__dirname,'../packages/mjobs-controller/remote/public',name),'utf8');
-  assert.match(page,/<a id="fleet-overview" class="overview-home" href="https:\/\/fleet\.m-techlabs\.com\/">← Fleet Overview<\/a>/);
+  if(name==='index.html')assert.match(page,/<a id="fleet-overview" class="overview-home" href="https:\/\/fleet\.m-techlabs\.com\/">← Fleet Overview<\/a>/);
+  else assert.match(page,/<a id="fleet-controls" class="overview-home" href="https:\/\/fleet\.m-techlabs\.com\/controls\/">← Fleet Controls<\/a>/);
   assert.match(page,/aria-label="Fleet workspace"/);
  }
 });
@@ -35,6 +36,8 @@ test('Atlas drawer, heatmap and generated theme share Flight Deck tokens',()=>{
  assert.match(shared,/dialog,\.drawer-header\{background:var\(--fd-surface\)/);
  assert.match(shared,/\.level-4\{background:var\(--fd-accent\)/);
  const js=fs.readFileSync(path.join(__dirname,'../packages/mjobs-controller/remote/public/analytics/atlas.js'),'utf8');
- assert.match(js,/'grafana-link':'http:\/\/127\.0\.0\.1:18731\/mission-control\/grafana\/'/);
+ const html=fs.readFileSync(path.join(__dirname,'../packages/mjobs-controller/remote/public/analytics/index.html'),'utf8');
+ assert.match(html,/id="grafana-link" href="\.\.\/grafana\/"/);
+ assert.doesNotMatch(js,/127\.0\.0\.1:\d+/);
  assert.match(js,/30000/); // Keep queries aligned with the existing collector.
 });
